@@ -1,3 +1,30 @@
-.env
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
 
+# Env files
+.env
 .venv
+
+# VSCode
+.vscode/
+
+# Docker
+*.log
+*.pid
+
+# Database files
+*.sqlite3
+
+# macOS
+.DS_Store
+
+# Pycharm
+.idea/
