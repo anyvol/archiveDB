@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   db:
@@ -19,17 +18,16 @@ services:
     depends_on:
       - db
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - ALGORITHM=${ALGORITHM}
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES}
+      ALGORITHM: ${ALGORITHM}
     volumes:
-      - ./app:/app
+      - .:/app  # Монтируем всю директорию проекта
     ports:
       - "8000:8000"
-    working_dir: /app                          # <--- вот это добавить
+    working_dir: /app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
 
 volumes:
   pgdata:
