@@ -1,9 +1,11 @@
 # dependencies.py
-from fastapi import FastAPI, Security
+from fastapi import FastAPI, Security, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2AuthorizationCodeBearer
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
 from fastapi.security.oauth2 import OAuth2
 from fastapi.openapi.utils import get_openapi
+from app.auth import get_current_user
+from app.models import User
 
 app = FastAPI()
 
@@ -40,3 +42,11 @@ def custom_openapi():
     return app.openapi_schema
 
 app.openapi = custom_openapi
+
+async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    return current_user

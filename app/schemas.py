@@ -70,7 +70,7 @@ class BaseDocumentBase(BaseModel):
     uploaded_by: int
     position: Optional[str]
     department: Optional[str]
-    type: str  # 'KD' or 'TD'
+    type: str  # 'DD' or 'TD'
 
 class BaseDocumentCreate(BaseDocumentBase):
     pass

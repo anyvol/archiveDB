@@ -4,10 +4,12 @@ import os
 from app.database import engine
 from app.models import Base
 from app.routers import router as user_router
+from app import docs
 
 app = FastAPI()
 
 app.include_router(user_router, prefix="/users")
+app.include_router(docs.router, prefix="/docs")
 
 @app.on_event("startup")
 async def startup_event():
