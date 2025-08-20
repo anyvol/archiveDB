@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Security
 import os
+
 from app.database import engine
 from app.models import Base
+from app.routers import router as user_router
 
 app = FastAPI()
+
+app.include_router(user_router, prefix="/users")
 
 @app.on_event("startup")
 async def startup_event():
@@ -29,3 +33,4 @@ async def get_env():
         "ACCESS_TOKEN_MINUTES": os.getenv("ACCESS_TOKEN_MINUTES"),
         "ALGORITHM": os.getenv("ALGORITHM"),
     }
+

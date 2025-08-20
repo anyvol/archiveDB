@@ -13,8 +13,13 @@ class UserBase(BaseModel):
     department: Optional[str]
     role: UserRole = UserRole.user
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    login: str
     password: str
+    full_name: str | None = None
+    position: str | None = None
+    department: str | None = None
+    role: str = "user"
 
 class User(UserBase):
     id: int
@@ -103,3 +108,7 @@ class TechDocument(TechDocumentBase):
     id: int
     class Config:
         orm_mode = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
