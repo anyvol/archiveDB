@@ -1,0 +1,78 @@
+<!-- templates/register.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Регистрация</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background-color: #f0f2f5; 
+            margin: 0;
+        }
+        form { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            width: 400px;
+        }
+        input, select { 
+            width: 100%; 
+            padding: 0.5rem; 
+            margin-bottom: 1rem; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            box-sizing: border-box;
+        }
+        button { 
+            width: 100%; 
+            padding: 0.7rem; 
+            border: none; 
+            border-radius: 4px; 
+            background-color: #28a745; 
+            color: white; 
+            cursor: pointer; 
+        }
+        button:hover { background-color: #218838; }
+        .link { text-align: center; margin-top: 1rem; }
+        .link a { color: #007bff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <form action="/users/register" method="post">
+        <h2>Регистрация</h2>
+        
+        <label for="login">Логин (обязательно):</label>
+        <input type="text" id="login" name="login" required>
+        
+        <label for="password">Пароль (обязательно):</label>
+        <input type="password" id="password" name="password" required minlength="8">
+        
+        <label for="full_name">Полное имя:</label>
+        <input type="text" id="full_name" name="full_name">
+        
+        <label for="position">Должность:</label>
+        <input type="text" id="position" name="position">
+        
+        <label for="department">Отдел:</label>
+        <input type="text" id="department" name="department">
+        
+        <label for="role">Роль:</label>
+        <select id="role" name="role">
+            <option value="user">Пользователь</option>
+            <option value="admin">Администратор</option>
+        </select>
+        
+        <button type="submit">Зарегистрироваться</button>
+        
+        <div class="link">
+            <a href="/login">Уже есть аккаунт? Войти</a>
+        </div>
+    </form>
+</body>
+</html>

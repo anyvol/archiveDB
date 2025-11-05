@@ -1,11 +1,11 @@
 # app/routers.py
 
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import APIRouter, Depends, HTTPException, status, Security, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Security, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
-from typing import List
+from typing import List, Optional
 from app.database import get_session
 from app.models import UserRole, User # ORM-модель для запросов к БД
 from app.schemas import UserCreate, Token
@@ -17,24 +17,35 @@ from app.dependencies import oauth2_scheme, get_current_admin_user
 router = APIRouter()
 
 @router.post("/register", response_model=Token)
-async def register(user_create: UserCreate, session: AsyncSession = Depends(get_session)):
+async def register(
+    login: str = Form(..., description="Логин пользователя"),
+    password: str = Form(..., description="Пароль пользователя"),
+    full_name: Optional[str] = Form(None, description="Полное имя"),
+    position: Optional[str] = Form(None, description="Должность"),
+    department: Optional[str] = Form(None, description="Отдел"),
+    role: str = Form("user", description="Роль (user или admin)"),
+    session: AsyncSession = Depends(get_session)
+):
+    # Проверяем, существует ли пользователь (без изменений)
     result = await session.execute(
-        select(User).where(User.login == user_create.login)
+        select(User).where(User.login == login)
     )
     existing_user = result.scalars().first()
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Login already registered")
 
+    # Создаём пользователя (без изменений, только источники данных)
     user = User(
-        login=user_create.login,
-        password_hash=hash_password(user_create.password),
-        full_name=user_create.full_name,
-        position=user_create.position,
-        department=user_create.department,
-        role=UserRole(user_create.role)
+        login=login,
+        password_hash=hash_password(password),
+        full_name=full_name,
+        position=position,
+        department=department,
+        role=UserRole(role)
     )
     session.add(user)
     await session.commit()
+    
     access_token = create_access_token({"sub": user.login})
     return {"access_token": access_token, "token_type": "bearer"}
 
