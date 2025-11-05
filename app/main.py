@@ -1,10 +1,16 @@
-from fastapi import FastAPI, Security
+# app/main.py
+
+from fastapi import FastAPI, Security, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 import os
 
 from app.database import engine
 from app.models import Base
 from app.routers import router as user_router
 from app import docs
+
+templates = Jinja2Templates(directory="templates")
 
 app = FastAPI()
 
@@ -36,3 +42,7 @@ async def get_env():
         "ALGORITHM": os.getenv("ALGORITHM"),
     }
 
+# эндпоинт для страницы входа
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
