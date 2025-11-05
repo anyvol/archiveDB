@@ -3,10 +3,7 @@ services:
   db:
     image: postgres:15
     restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-archiveuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretpassword}
-      POSTGRES_DB: ${POSTGRES_DB:-archivedb}
+    env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -17,13 +14,9 @@ services:
     restart: always
     depends_on:
       - db
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY: ${SECRET_KEY}
-      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES}
-      ALGORITHM: ${ALGORITHM}
+    env_file: .env
     volumes:
-      - .:/app  # Монтируем всю директорию проекта
+      - .:/app
     ports:
       - "8000:8000"
     working_dir: /app

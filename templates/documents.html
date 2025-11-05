@@ -1,0 +1,137 @@
+<!-- templates/documents.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Архив документов</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; }
+        .header a { color: white; text-decoration: none; }
+        .container { padding: 2rem; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Архив документов</h1>
+        <a href="/logout">Выйти</a> <!-- Ссылку на выход добавим позже -->
+    </div>
+
+    <div class="container">
+        <h2>Список документов</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Обозначение</th>
+                    <th>Наименование файла</th>
+                    <th>Тип</th>
+                    <th>Автор</th>
+                    <th>Дата создания</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.designation }}</td>
+                    <td>{{ doc.file_name }}</td>
+                    <td>{{ doc.type }}</td>
+                    <td>{{ doc.created_by }}</td>
+                    <td>{{ doc.created_at }}</td>
+                    <td><a href="/docs/documents/{{ doc.id }}/download">Скачать</a></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center;">Документы не найдены.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h2 style="margin-top: 2rem;">Добавить новый документ</h2>
+        <form action="/documents/create" method="post" id="create-doc-form" class="form-container">
+            
+            <!-- 1. Выбор типа документа -->
+            <div class="form-group">
+                <label for="doc_type">1. Тип документа:</label>
+                <select id="doc_type" name="doc_type" required>
+                    <option value="" disabled selected>Выберите тип</option>
+                    <option value="DD">Конструкторский документ (КД)</option>
+                    <option value="TD">Технологический документ (ТД)</option>
+                </select>
+            </div>
+
+            <!-- 2. Выбор способа обозначения (только для КД) -->
+            <div id="designation-method-group" class="form-group" style="display: none;">
+                <label for="designation_method">2. Способ обозначения:</label>
+                <select id="designation_method" name="designation_method">
+                    <option value="impersonal">Обезличенный способ</option>
+                    <option value="object-oriented">Объектно-ориентированный способ</option>
+                </select>
+            </div>
+
+            <!-- 3. Поля для КД (Обезличенный способ) -->
+            <div id="impersonal-fields" style="display: none;">
+                <div class="form-group">
+                    <label for="org_code">3а. Код организации-разработчика (4 буквы или 8 цифр):</label>
+                    <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}" title="4 заглавные русские буквы или 8 цифр">
+                </div>
+                <div class="form-group">
+                    <label for="class_code">3б. Код классификационной характеристики (6 цифр):</label>
+                    <input type="text" id="class_code" name="class_code" pattern="\d{6}" title="6 цифр">
+                </div>
+                <div class="form-group">
+                    <label for="reg_number">3в. Порядковый регистрационный номер (ПРНИ):</label>
+                    <input type="text" id="reg_number" name="reg_number" pattern="\d{3,4}">
+                    <small>Оставьте пустым для автоматического присвоения. Заполняйте, только если документ уже был зарегистрирован.</small>
+                </div>
+                <div class="form-group">
+                    <label for="doc_name">3г. Наименование документа:</label>
+                    <input type="text" id="doc_name" name="doc_name">
+                </div>
+                <!-- Разработчик и загрузивший берутся с сервера -->
+            </div>
+            
+            <button type="submit">Создать запись и перейти к загрузке</button>
+        </form>
+
+        <script>
+            const docTypeSelect = document.getElementById('doc_type');
+            const designationMethodGroup = document.getElementById('designation-method-group');
+            const impersonalFields = document.getElementById('impersonal-fields');
+
+            docTypeSelect.addEventListener('change', function() {
+                if (this.value === 'DD') {
+                    designationMethodGroup.style.display = 'block';
+                    // По умолчанию показываем поля для обезличенного способа
+                    impersonalFields.style.display = 'block'; 
+                } else {
+                    designationMethodGroup.style.display = 'none';
+                    impersonalFields.style.display = 'none';
+                }
+            });
+
+            const designationMethodSelect = document.getElementById('designation_method');
+            designationMethodSelect.addEventListener('change', function() {
+                if (this.value === 'impersonal') {
+                    impersonalFields.style.display = 'block';
+                } else {
+                    // Сюда можно добавить логику для других способов
+                    impersonalFields.style.display = 'none';
+                }
+            });
+        </script>
+        <style>
+            .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; }
+            .form-group { margin-bottom: 1rem; }
+            .form-group label { display: block; margin-bottom: 0.5rem; }
+            .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        </style>
+
+    </div>
+</body>
+</html>

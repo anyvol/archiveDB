@@ -13,6 +13,7 @@ from app.schemas import User as UserSchema # Pydantic-модель для respon
 from app.utils import hash_password, verify_password
 from app.auth import create_access_token, get_current_user
 from app.dependencies import oauth2_scheme, get_current_admin_user
+from app.services import authenticate_user
 
 router = APIRouter()
 
@@ -50,17 +51,17 @@ async def register(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(User).where(User.login == form_data.username))
-    user = result.scalars().first()
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect login or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token = create_access_token({"sub": user.login})
-    return {"access_token": access_token, "token_type": "bearer"}
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), 
+    session: AsyncSession = Depends(get_session)
+):
+    """API-эндпоинт для входа (возвращает JSON)"""
+    token_data = await authenticate_user(
+        session=session, 
+        username=form_data.username, 
+        password=form_data.password
+    )
+    return token_data
 
 @router.get("/me", response_model=UserSchema, dependencies=[Security(oauth2_scheme)])
 async def read_users_me(current_user: User = Depends(get_current_user)):

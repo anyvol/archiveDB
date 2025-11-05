@@ -43,3 +43,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     if user is None:
         raise credentials_exception
     return user
+
+async def get_current_user_from_token(token: str, db: AsyncSession) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        login: str = payload.get("sub")
+        if login is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    result = await db.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        raise credentials_exception
+    return user

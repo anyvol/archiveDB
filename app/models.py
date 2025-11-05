@@ -54,11 +54,18 @@ class BaseDocument(Base):
 
 class DesignDocument(Base):
     __tablename__ = "design_documents"
+
     id = Column(Integer, ForeignKey("documents.id"), primary_key=True)
     org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
     kd_class_code_id = Column(Integer, ForeignKey("class_codes_kd.id"), nullable=False)
-    prni = Column(Integer, nullable=False)  # 001..999
-    designation = Column(String, unique=True, nullable=False)  # КО.ККХ.ПРНИ
+    prni = Column(Integer, nullable=False) # 001..9999
+    designation = Column(String, unique=True, nullable=False) # КО.ККХ.ПРНИ
+
+    # --- Новые поля для поиска ---
+    org_code_str = Column(String(8), index=True)
+    class_code_str = Column(String(6), index=True)
+    # -----------------------------
+
     organization = relationship("Organization")
     kd_class_code = relationship("ClassCodeKD")
 
