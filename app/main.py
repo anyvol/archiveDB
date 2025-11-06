@@ -13,6 +13,7 @@ from typing import Optional
 import shutil
 import os
 import logging
+from datetime import datetime
 
 from app.database import engine, get_session, get_or_create_org_id, get_or_create_class_id
 from app.models import Base, Organization, ClassCodeKD, ClassCodeTD, BaseDocument, DesignDocument, TechDocument, User
@@ -198,33 +199,46 @@ async def documents_page(
 
 @app.post("/documents/create", response_class=RedirectResponse)
 async def create_document_record(
-    doc_type: str = Form(...),
-    designation_method: Optional[str] = Form(None),
-    org_code: Optional[str] = Form(None),
-    class_code: Optional[str] = Form(None),
-    reg_number: Optional[str] = Form(None),
-    doc_name: Optional[str] = Form(None),
+    request: Request,
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None)
 ):
     if not access_token:
         return RedirectResponse(url="/login")
-    
+
     user = await get_current_user_from_token(access_token=access_token, db=session)
     
-    # Инициализация base_doc (для всех типов)
+    # Получение данных из формы
+    form_data = await request.form()
+    doc_type = form_data.get("doc_type")
+    designation_method = form_data.get("designation_method")
+    org_code = form_data.get("org_code")
+    class_code = form_data.get("class_code")
+    reg_number = form_data.get("reg_number")
+    doc_name = form_data.get("doc_name")
+    developed_by = form_data.get("developed_by")
+    if not developed_by:
+        raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
+
+    if not doc_type or doc_type not in ["DD", "TD"]:
+        raise HTTPException(status_code=400, detail="Неверный тип документа.")
+
+    # Инициализация base_doc с новыми полями
     base_doc = BaseDocument(
-        file_name=doc_name or "",
-        file_path="",
+        type=doc_type,
+        doc_name=doc_name,
+        developed_by=developed_by,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,
         department=user.department,
-        type=doc_type
+        checked=False  # По умолчанию "не проверено"
+        # file_name и file_path остаются NULL до загрузки файла
     )
     session.add(base_doc)
-    await session.flush()  # Получаем ID
-    
+    await session.flush()  # Получаем ID для связанных документов
+
+    # Логика для конкретных типов документов (DD/TD)
     if doc_type == "DD" and designation_method == "impersonal":
         if not all([org_code, class_code]):
             raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
@@ -262,11 +276,12 @@ async def create_document_record(
         session.add(specific_doc)
         
     elif doc_type == "TD" and designation_method == "impersonal":
+        # Предполагается, что для TD фронтенд также отправляет designation_method
         if not all([org_code, class_code]):
             raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
         
         org_id = await get_or_create_org_id(session, org_code)
-        class_code_id = await get_or_create_class_id(session, class_code, is_kd=False)  # TD: 7 цифр
+        class_code_id = await get_or_create_class_id(session, class_code, is_kd=False)
         
         prn_to_save = None
         if reg_number:
@@ -298,9 +313,10 @@ async def create_document_record(
         session.add(specific_doc)
         
     else:
-        raise HTTPException(status_code=400, detail="Поддерживается только DD/TD с impersonal методом.")
+        pass
     
     await session.commit()
+    logger.info(f"Document record {base_doc.id} created by user {user.login}")
     
     return RedirectResponse(url=f"/documents/{base_doc.id}/upload", status_code=status.HTTP_303_SEE_OTHER)
 

@@ -52,39 +52,44 @@
             <!-- 3. Поля для КД (Обезличенный способ) -->
             <div id="impersonal-fields" style="display: none;">
                 <div class="form-group">
-                    <label for="org_code">3а. Код организации-разработчика (4 буквы или 8 цифр):</label>
+                    <label for="org_code">Код организации-разработчика (4 буквы или 8 цифр):</label>
                     <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}" title="4 заглавные русские буквы или 8 цифр">
                 </div>
                 <div class="form-group">
-                    <label for="class_code">3б. Код классификационной характеристики (6 цифр):</label>
+                    <label for="class_code">Код классификационной характеристики (6 цифр):</label>
                     <input type="text" id="class_code" name="class_code" pattern="\d{6}" title="6 цифр">
                 </div>
                 <div class="form-group">
-                    <label for="reg_number">3в. Порядковый регистрационный номер (ПРНИ):</label>
+                    <label for="reg_number">Порядковый регистрационный номер (ПРНИ):</label>
                     <input type="text" id="reg_number" name="reg_number" pattern="\d{3,4}">
                     <small>Оставьте пустым для автоматического присвоения. Заполняйте, только если документ уже был зарегистрирован.</small>
                 </div>
                 <div class="form-group">
-                    <label for="doc_name">3г. Наименование документа:</label>
+                    <label for="doc_name">Наименование документа:</label>
                     <input type="text" id="doc_name" name="doc_name">
                 </div>
-                <!-- Разработчик и загрузивший берутся с сервера -->
+                <div class="form-group">
+                    <label for="developed_by">ФИО разработчика:</label>
+                    <input type="text" id="developed_by" name="developed_by" required>
+                </div>
             </div>
             
             <button type="submit">Создать запись и перейти к загрузке</button>
         </form>
 
-        <!-- Таблица документов с новой колонкой -->
         <h2>Список документов</h2>
         <table>
             <thead>
                 <tr>
                     <th>Обозначение</th>
-                    <th>Наименование документа</th> <!-- Новая колонка -->
+                    <th>Разработчик</th> 
+                    <th>Наименование документа</th> 
                     <th>Наименование файла</th>
                     <th>Тип</th>
-                    <th>Автор</th>
-                    <th>Дата создания</th>
+                    <th>Зарегистрировал</th>
+                    <th>Дата регистрации</th>
+                    <th>Последнее обновление</th>
+                    <th>Проверено</th>
                     <th>Действия</th>
                 </tr>
             </thead>
@@ -92,29 +97,18 @@
                 {% for doc in documents %}
                 <tr>
                     <td>
-                        {% if doc.design_document %}
-                            {{ doc.design_document.designation or 'N/A' }}
-                        {% elif doc.tech_document %}
-                            {{ doc.tech_document.designation or 'N/A' }}
-                        {% else %}
-                            N/A
-                        {% endif %}
+                        {% if doc.design_document %}{{ doc.design_document.designation or 'N/A' }}{% elif doc.tech_document %}{{ doc.tech_document.designation or 'N/A' }}{% else %}N/A{% endif %}
                     </td>
-                    <td>
-                        {% if doc.design_document %}
-                            {{ doc.design_document.doc_name or 'N/A' }}
-                        {% elif doc.tech_document %}
-                            {{ doc.tech_document.doc_name or 'N/A' }}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </td>
+                    <td>{{ doc.developed_by or 'N/A' }}</td>
+                    <td>{{ doc.doc_name or 'N/A' }}</td>
                     <td {% if not doc.file_name %}class="no-file"{% endif %}>
                         {{ doc.file_name or 'Файл не загружен!' }}
                     </td>
                     <td>{{ doc.type }}</td>
                     <td>{{ doc.created_by or 'N/A' }}</td>
                     <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else 'N/A' }}</td>
+                    <td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else 'N/A' }}</td>
+                    <td>{{ 'Да' if doc.checked else 'Нет' }}</td>
                     <td>
                         {% if doc.file_name %}
                             <a href="/documents/{{ doc.id }}/download">Скачать</a>
@@ -130,7 +124,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" style="text-align: center;">Документы не найдены.</td> <!-- colspan=7 из-за новой колонки -->
+                    <td colspan="11" style="text-align: center;">Документы не найдены.</td> <!-- colspan=11 -->
                 </tr>
                 {% endfor %}
             </tbody>
