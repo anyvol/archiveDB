@@ -51,6 +51,8 @@ class BaseDocument(Base):
     department = Column(String, nullable=True)
     type = Column(String, index=True)  # 'KD' или 'TD'
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    design_document = relationship("DesignDocument", back_populates="base_doc", uselist=False)
+    tech_document = relationship("TechDocument", back_populates="base_doc", uselist=False)
 
 class DesignDocument(Base):
     __tablename__ = "design_documents"
@@ -60,12 +62,9 @@ class DesignDocument(Base):
     kd_class_code_id = Column(Integer, ForeignKey("class_codes_kd.id"), nullable=False)
     prni = Column(Integer, nullable=False) # 001..9999
     designation = Column(String, unique=True, nullable=False) # КО.ККХ.ПРНИ
-
-    # --- Новые поля для поиска ---
+    base_doc = relationship("BaseDocument", back_populates="design_document")
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
-    # -----------------------------
-
     organization = relationship("Organization")
     kd_class_code = relationship("ClassCodeKD")
 
@@ -78,3 +77,4 @@ class TechDocument(Base):
     designation = Column(String, unique=True, nullable=False)  # КО.КХД.ПРН
     organization = relationship("Organization")
     td_class_code = relationship("ClassCodeTD")
+    base_doc = relationship("BaseDocument", back_populates="tech_document")

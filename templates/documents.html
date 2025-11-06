@@ -10,49 +10,24 @@
         .header h1 { margin: 0; }
         .header a { color: white; text-decoration: none; }
         .container { padding: 2rem; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 2rem; }
         th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #f8f9fa; }
+        .delete-form { display: inline; margin-left: 10px; }
+        .delete-form button { background-color: #dc3545; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; border-radius: 4px; }
+        .delete-form button:hover { background-color: #c82333; }
+        .no-file { color: red; font-weight: bold; } /* Стиль для незагруженного файла */
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Архив документов</h1>
-        <a href="/logout">Выйти</a> <!-- Ссылку на выход добавим позже -->
+        <a href="/logout">Выйти</a> <!-- Logout с удалением cookie -->
     </div>
 
     <div class="container">
-        <h2>Список документов</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Обозначение</th>
-                    <th>Наименование файла</th>
-                    <th>Тип</th>
-                    <th>Автор</th>
-                    <th>Дата создания</th>
-                    <th>Действия</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for doc in documents %}
-                <tr>
-                    <td>{{ doc.designation }}</td>
-                    <td>{{ doc.file_name }}</td>
-                    <td>{{ doc.type }}</td>
-                    <td>{{ doc.created_by }}</td>
-                    <td>{{ doc.created_at }}</td>
-                    <td><a href="/docs/documents/{{ doc.id }}/download">Скачать</a></td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" style="text-align: center;">Документы не найдены.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-
-        <h2 style="margin-top: 2rem;">Добавить новый документ</h2>
+        <!-- Форма добавления документа (без изменений) -->
+        <h2>Добавить новый документ</h2>
         <form action="/documents/create" method="post" id="create-doc-form" class="form-container">
             
             <!-- 1. Выбор типа документа -->
@@ -99,39 +74,99 @@
             <button type="submit">Создать запись и перейти к загрузке</button>
         </form>
 
-        <script>
-            const docTypeSelect = document.getElementById('doc_type');
-            const designationMethodGroup = document.getElementById('designation-method-group');
-            const impersonalFields = document.getElementById('impersonal-fields');
+        <!-- Таблица документов с новой колонкой -->
+        <h2>Список документов</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Обозначение</th>
+                    <th>Наименование документа</th> <!-- Новая колонка -->
+                    <th>Наименование файла</th>
+                    <th>Тип</th>
+                    <th>Автор</th>
+                    <th>Дата создания</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>
+                        {% if doc.design_document %}
+                            {{ doc.design_document.designation or 'N/A' }}
+                        {% elif doc.tech_document %}
+                            {{ doc.tech_document.designation or 'N/A' }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if doc.design_document %}
+                            {{ doc.design_document.doc_name or 'N/A' }}
+                        {% elif doc.tech_document %}
+                            {{ doc.tech_document.doc_name or 'N/A' }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </td>
+                    <td {% if not doc.file_name %}class="no-file"{% endif %}>
+                        {{ doc.file_name or 'Файл не загружен!' }}
+                    </td>
+                    <td>{{ doc.type }}</td>
+                    <td>{{ doc.created_by or 'N/A' }}</td>
+                    <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else 'N/A' }}</td>
+                    <td>
+                        {% if doc.file_name %}
+                            <a href="/documents/{{ doc.id }}/download">Скачать</a>
+                        {% else %}
+                            <a href="/documents/{{ doc.id }}/upload">Загрузить файл</a>
+                        {% endif %}
+                        {% if user and user.role == 'admin' %}
+                            <form method="post" action="/documents/{{ doc.id }}/delete" class="delete-form">
+                                <button type="submit" onclick="return confirm('Удалить запись документа (ID: {{ doc.id }})? Это удалит всю запись, включая файл, если он загружен.')">Удалить</button>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center;">Документы не найдены.</td> <!-- colspan=7 из-за новой колонки -->
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div> <!-- Закрытие container -->
 
-            docTypeSelect.addEventListener('change', function() {
-                if (this.value === 'DD') {
-                    designationMethodGroup.style.display = 'block';
-                    // По умолчанию показываем поля для обезличенного способа
-                    impersonalFields.style.display = 'block'; 
-                } else {
-                    designationMethodGroup.style.display = 'none';
-                    impersonalFields.style.display = 'none';
-                }
-            });
+    <script>
+        const docTypeSelect = document.getElementById('doc_type');
+        const designationMethodGroup = document.getElementById('designation-method-group');
+        const impersonalFields = document.getElementById('impersonal-fields');
 
-            const designationMethodSelect = document.getElementById('designation_method');
-            designationMethodSelect.addEventListener('change', function() {
-                if (this.value === 'impersonal') {
-                    impersonalFields.style.display = 'block';
-                } else {
-                    // Сюда можно добавить логику для других способов
-                    impersonalFields.style.display = 'none';
-                }
-            });
-        </script>
-        <style>
-            .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; }
-            .form-group { margin-bottom: 1rem; }
-            .form-group label { display: block; margin-bottom: 0.5rem; }
-            .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-        </style>
+        docTypeSelect.addEventListener('change', function() {
+            if (this.value === 'DD') {
+                designationMethodGroup.style.display = 'block';
+                impersonalFields.style.display = 'block'; 
+            } else {
+                designationMethodGroup.style.display = 'none';
+                impersonalFields.style.display = 'none';
+            }
+        });
 
-    </div>
+        const designationMethodSelect = document.getElementById('designation_method');
+        designationMethodSelect.addEventListener('change', function() {
+            if (this.value === 'impersonal') {
+                impersonalFields.style.display = 'block';
+            } else {
+                impersonalFields.style.display = 'none';
+            }
+        });
+    </script>
+    <style>
+        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
+    </style>
 </body>
 </html>

@@ -41,20 +41,35 @@
         button:hover { background-color: #218838; }
         .link { text-align: center; margin-top: 1rem; }
         .link a { color: #007bff; text-decoration: none; }
+        .alert { 
+            padding: 0.75rem; 
+            margin-bottom: 1rem; 
+            border-radius: 4px; 
+            color: white; 
+        }
+        .alert-error { background-color: #dc3545; }
+        .alert-success { background-color: #28a745; }  /* Если добавим success позже */
     </style>
 </head>
 <body>
-    <form action="/users/register" method="post">
+    <form action="/register" method="post">  <!-- Изменено: /register, не /users/register -->
         <h2>Регистрация</h2>
         
-        <label for="login">Логин (обязательно):</label>
-        <input type="text" id="login" name="login" required>
+        <!-- Сообщение об ошибке (из backend: ?error=true) -->
+        {% if error %}
+        <div class="alert alert-error">
+            Пользователь с таким логином уже существует или произошла ошибка. Попробуйте другой логин.
+        </div>
+        {% endif %}
         
-        <label for="password">Пароль (обязательно):</label>
+        <label for="login">Логин (обязательно):</label>
+        <input type="text" id="login" name="login" required minlength="3" maxlength="50">
+        
+        <label for="password">Пароль (обязательно, минимум 8 символов):</label>
         <input type="password" id="password" name="password" required minlength="8">
         
         <label for="full_name">Полное имя:</label>
-        <input type="text" id="full_name" name="full_name">
+        <input type="text" id="full_name" name="full_name" required>  <!-- Сделал required для полноты -->
         
         <label for="position">Должность:</label>
         <input type="text" id="position" name="position">
@@ -62,9 +77,9 @@
         <label for="department">Отдел:</label>
         <input type="text" id="department" name="department">
         
-        <label for="role">Роль:</label>
+        <label for="role">Роль (по умолчанию: пользователь):</label>
         <select id="role" name="role">
-            <option value="user">Пользователь</option>
+            <option value="user" selected>Пользователь</option>
             <option value="admin">Администратор</option>
         </select>
         
