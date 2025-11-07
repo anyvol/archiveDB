@@ -13,13 +13,14 @@ from typing import Optional
 import shutil
 import os
 import logging
-from datetime import datetime
 
 from app.database import engine, get_session, get_or_create_org_id, get_or_create_class_id
 from app.models import Base, Organization, ClassCodeKD, ClassCodeTD, BaseDocument, DesignDocument, TechDocument, User
 from app.routers import router as user_router
 from app import docs  # Предполагаю, что это ваш docs.router
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash  # Импорты из auth.py (authenticate_user и hash сюда)
+from app.database import get_next_prni, get_next_prn, check_prni_unique, check_prn_unique
+
 
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -178,11 +179,13 @@ async def documents_page(
         return RedirectResponse(url="/login")
     
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    
 
+    # Обновленный query: подгружаем design/tech с organization для доступа к code_okpo
     query = select(BaseDocument).options(
-        joinedload(BaseDocument.design_document),
-        joinedload(BaseDocument.tech_document)
+        # Для DesignDocument: joinedload org по foreign key
+        joinedload(BaseDocument.design_document).joinedload(DesignDocument.org),
+        # Для TechDocument: joinedload org по foreign key
+        joinedload(BaseDocument.tech_document).joinedload(TechDocument.org)
     ).order_by(BaseDocument.created_at.desc())
     
     result = await session.execute(query)
@@ -220,6 +223,10 @@ async def create_document_record(
     if not developed_by:
         raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
 
+    # Добавлено: Обработка флага ОКПО
+    is_okpo_str = form_data.get("is_okpo")
+    is_okpo = bool(is_okpo_str == "true")  # Checkbox отправляет "true" или None
+
     if not doc_type or doc_type not in ["DD", "TD"]:
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
 
@@ -238,29 +245,24 @@ async def create_document_record(
     session.add(base_doc)
     await session.flush()  # Получаем ID для связанных документов
 
-    # Логика для конкретных типов документов (DD/TD)
     if doc_type == "DD" and designation_method == "impersonal":
         if not all([org_code, class_code]):
             raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
         
-        org_id = await get_or_create_org_id(session, org_code)
+        # Обновлено: Передача is_okpo
+        org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo)
         class_code_id = await get_or_create_class_id(session, class_code, is_kd=True)
         
         prni_to_save = None
         if reg_number:
             try:
                 prni_to_save = int(reg_number)
+                if not await check_prni_unique(session, org_id, class_code_id, prni_to_save):
+                    raise HTTPException(status_code=400, detail="Указанный ПРНИ уже используется.")
             except ValueError:
                 raise HTTPException(status_code=400, detail="ПРНИ должен быть числом.")
         else:
-            max_prni_result = await session.execute(
-                select(func.max(DesignDocument.prni)).where(
-                    DesignDocument.org_id == org_id,
-                    DesignDocument.kd_class_code_id == class_code_id
-                )
-            )
-            max_prni = max_prni_result.scalar_one_or_none()
-            prni_to_save = (max_prni or 0) + 1
+            prni_to_save = await get_next_prni(session, org_id, class_code_id)
         
         designation = f"{org_code}.{class_code}.{prni_to_save:03d}"
         
@@ -270,13 +272,12 @@ async def create_document_record(
             kd_class_code_id=class_code_id,
             prni=prni_to_save,
             designation=designation,
-            org_code_str=org_code,
+            org_code_str=org_code,  # Сохраняем строку из формы (для ОКПО – 8 цифр)
             class_code_str=class_code
         )
         session.add(specific_doc)
-        
+
     elif doc_type == "TD" and designation_method == "impersonal":
-        # Предполагается, что для TD фронтенд также отправляет designation_method
         if not all([org_code, class_code]):
             raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
         
@@ -287,17 +288,12 @@ async def create_document_record(
         if reg_number:
             try:
                 prn_to_save = int(reg_number)
+                if not await check_prn_unique(session, org_id, class_code_id, prn_to_save):
+                    raise HTTPException(status_code=400, detail="Указанный ПРН уже используется.")
             except ValueError:
-                raise HTTPException(status_code=400, detail="PRN должен быть числом.")
+                raise HTTPException(status_code=400, detail="ПРН должен быть числом.")
         else:
-            max_prn_result = await session.execute(
-                select(func.max(TechDocument.prn)).where(
-                    TechDocument.org_id == org_id,
-                    TechDocument.td_class_code_id == class_code_id
-                )
-            )
-            max_prn = max_prn_result.scalar_one_or_none()
-            prn_to_save = (max_prn or 0) + 1
+            prn_to_save = await get_next_prn(session, org_id, class_code_id)
         
         designation = f"{org_code}.{class_code}.{prn_to_save:03d}"
         
@@ -418,7 +414,6 @@ async def download_document(
     
     user = await get_current_user_from_token(access_token=access_token, db=session)
     
-    # Загрузка doc (joinedload не обязательно; доступ ко всем, если авторизован)
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден")
@@ -426,11 +421,10 @@ async def download_document(
     if not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="Файл не найден")
     
-    # Убрали проверку doc.uploaded_by == user.id — все видят/скачивают все
     return FileResponse(
         path=doc.file_path,
-        filename=doc.file_name,  # Уникальное имя для скачивания (e.g., "angle_table1_2.pdf")
-        media_type="application/octet-stream"  # Универсальный; можно по extension
+        filename=doc.file_name,
+        media_type="application/octet-stream"
     )
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
@@ -447,7 +441,6 @@ async def delete_document(
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Доступ запрещен (только админ)")
     
-    # Загрузка doc (joinedload для удаления связанных, если нужно)
     result = await session.execute(
         select(BaseDocument)
         .options(
@@ -461,7 +454,6 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден")
     
-    # Удаление файла с FS, если существует
     if doc.file_path and os.path.exists(doc.file_path):
         os.remove(doc.file_path)
     

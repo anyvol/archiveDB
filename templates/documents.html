@@ -55,6 +55,13 @@
                     <label for="org_code">Код организации-разработчика (4 буквы или 8 цифр):</label>
                     <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}" title="4 заглавные русские буквы или 8 цифр">
                 </div>
+                <!-- Новый чекбокс для ОКПО -->
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="is_okpo" name="is_okpo" value="true"> Код по ОК 007-93 (ОКПО)
+                    </label>
+                    <small>Отметьте, если вводите 8-значный код ОКПО (по умолчанию – стандартный код организации).</small>
+                </div>
                 <div class="form-group">
                     <label for="class_code">Код классификационной характеристики (6 цифр):</label>
                     <input type="text" id="class_code" name="class_code" pattern="\d{6}" title="6 цифр">
@@ -82,6 +89,8 @@
             <thead>
                 <tr>
                     <th>Обозначение</th>
+                    <!-- Добавлено: Новый столбец ОКПО -->
+                    <th>ОКПО</th>
                     <th>Разработчик</th> 
                     <th>Наименование документа</th> 
                     <th>Наименование файла</th>
@@ -98,6 +107,16 @@
                 <tr>
                     <td>
                         {% if doc.design_document %}{{ doc.design_document.designation or 'N/A' }}{% elif doc.tech_document %}{{ doc.tech_document.designation or 'N/A' }}{% else %}N/A{% endif %}
+                    </td>
+                    <!-- Добавлено: Столбец ОКПО -->
+                    <td>
+                        {% if doc.design_document and doc.design_document.org %}
+                            {{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}
+                        {% elif doc.tech_document and doc.tech_document.org %}
+                            {{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}
+                        {% else %}
+                            Нет
+                        {% endif %}
                     </td>
                     <td>{{ doc.developed_by or 'N/A' }}</td>
                     <td>{{ doc.doc_name or 'N/A' }}</td>
@@ -124,7 +143,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="11" style="text-align: center;">Документы не найдены.</td> <!-- colspan=11 -->
+                    <td colspan="12" style="text-align: center;">Документы не найдены.</td> <!-- Обновлено: colspan=12 (было 11) -->
                 </tr>
                 {% endfor %}
             </tbody>
@@ -135,6 +154,8 @@
         const docTypeSelect = document.getElementById('doc_type');
         const designationMethodGroup = document.getElementById('designation-method-group');
         const impersonalFields = document.getElementById('impersonal-fields');
+        const isOkpoCheckbox = document.getElementById('is_okpo');
+        const orgCodeInput = document.getElementById('org_code');
 
         docTypeSelect.addEventListener('change', function() {
             if (this.value === 'DD') {
@@ -152,6 +173,17 @@
                 impersonalFields.style.display = 'block';
             } else {
                 impersonalFields.style.display = 'none';
+            }
+        });
+
+        // Динамическая валидация для ОКПО
+        isOkpoCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                orgCodeInput.pattern = '\\d{8}';
+                orgCodeInput.title = '8 цифр для ОКПО';
+            } else {
+                orgCodeInput.pattern = '[А-Я]{4}|[0-9]{8}';
+                orgCodeInput.title = '4 заглавные русские буквы или 8 цифр';
             }
         });
     </script>

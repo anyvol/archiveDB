@@ -25,9 +25,13 @@ class User(Base):
 class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Integer, primary_key=True)
-    code = Column(String(8), unique=True, index=True, nullable=False)
-    name = Column(String, nullable=False)
-    department = Column(String, nullable=True)
+    code = Column(String(8), nullable=True)  # Буквенный или None для числового
+    name = Column(String(255))
+    code_okpo = Column(Boolean, default=False)
+    num_code = Column(Integer, nullable=True)  # Общий числовой код
+    num_code_okpo = Column(Integer, nullable=True)  # ОКПО
+    design_documents = relationship("DesignDocument", back_populates="org")
+    tech_documents = relationship("TechDocument", back_populates="org")
 
 class ClassCodeKD(Base):
     __tablename__ = "class_codes_kd"
@@ -84,11 +88,12 @@ class DesignDocument(Base):
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
     
-    # ИСПРАВЛЕНО: Обратное отношение
+
     base_document = relationship("BaseDocument", back_populates="design_document")
     
-    organization = relationship("Organization")
+
     kd_class_code = relationship("ClassCodeKD")
+    org = relationship("Organization", back_populates="design_documents", foreign_keys=[org_id])
 
 class TechDocument(Base):
     __tablename__ = "tech_documents"
@@ -99,9 +104,8 @@ class TechDocument(Base):
     prn = Column(Integer, nullable=False)
     designation = Column(String, unique=True, nullable=False)
     
-    # ИСПРАВЛЕНО: Обратное отношение
+
     base_document = relationship("BaseDocument", back_populates="tech_document")
 
-    organization = relationship("Organization")
     td_class_code = relationship("ClassCodeTD")
-
+    org = relationship("Organization", back_populates="tech_documents", foreign_keys=[org_id])

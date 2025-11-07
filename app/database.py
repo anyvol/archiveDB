@@ -12,16 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngin
 from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException, status
 
-# Импорты моделей (предполагаем, что они в app/models.py)
-from app.models import Organization, ClassCodeKD, ClassCodeTD
+from app.models import Organization, ClassCodeKD, ClassCodeTD, DesignDocument, TechDocument 
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set in .env")
 
-
-# Создание async engine (echo=True для логов SQL-запросов)
 engine: AsyncEngine = create_async_engine(DATABASE_URL, echo=True)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -33,46 +30,84 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
 
-async def get_or_create_org_id(session: AsyncSession, org_code: str) -> int:
+async def get_or_create_org_id(session: AsyncSession, org_code: str, is_okpo: bool = False) -> int:
     """
     Находит ID организации по коду или создаёт новую запись.
-    Валидация: 4 заглавные кириллические буквы или 8 цифр.
+    Поддержка ОКПО: если is_okpo=True, валидация и хранение как 8-значный ОКПО.
     """
     if not org_code:
         raise HTTPException(status_code=400, detail="Код организации обязателен.")
     
-    # Валидация длины
-    if len(org_code) != 4 and len(org_code) != 8:
-        raise HTTPException(status_code=400, detail="Код организации должен иметь длину 4 (буквы) или 8 (цифры).")
-    
-    # Валидация содержимого с regex
-    if len(org_code) == 4:
-        # 4 заглавные кириллические буквы (А-Я)
-        if not re.match(r'^[А-Я]{4}$', org_code):
-            raise HTTPException(status_code=400, detail="Код организации (буквы) должен состоять из 4 заглавных кириллических букв (А-Я).")
-    elif len(org_code) == 8:
-        # 8 цифр
+    if is_okpo:
+        # Валидация ОКПО: 8 цифр
+        if len(org_code) != 8:
+            raise HTTPException(status_code=400, detail="Код ОКПО должен иметь длину 8 цифр.")
         if not re.match(r'^\d{8}$', org_code):
-            raise HTTPException(status_code=400, detail="Код организации (цифры) должен состоять из 8 цифр.")
-    
-    # Поиск существующей записи (await для async execute)
-    result = await session.execute(
-        select(Organization).where(Organization.code == org_code)
-    )
-    org = result.scalars().first()
-    
-    if org:
-        return org.id
-    
-    # Создание новой записи
-    new_org = Organization(
-        code=org_code,
-        name=f"Организация с кодом {org_code}",  # Заглушка; можно расширить
-        department="Не указано"
-    )
-    session.add(new_org)
-    await session.flush()  # Await для получения ID
-    return new_org.id
+            raise HTTPException(status_code=400, detail="Код ОКПО должен состоять из 8 цифр.")
+        
+        # Поиск по num_code_okpo
+        result = await session.execute(
+            select(Organization).where(Organization.num_code_okpo == int(org_code))
+        )
+        org = result.scalars().first()
+        
+        if org:
+            if not org.code_okpo:
+                raise HTTPException(status_code=400, detail="Этот числовой код уже используется как общий, не ОКПО.")
+            return org.id
+        
+        # Создание новой
+        new_org = Organization(
+            code=None,
+            name=f"Организация с ОКПО {org_code}",
+            code_okpo=True,
+            num_code=None,
+            num_code_okpo=int(org_code)
+        )
+        session.add(new_org)
+        await session.flush()
+        return new_org.id
+    else:
+        # Стандартная валидация (как раньше, но с хранением num_code для 8 цифр)
+        if len(org_code) != 4 and len(org_code) != 8:
+            raise HTTPException(status_code=400, detail="Код организации должен иметь длину 4 (буквы) или 8 (цифры).")
+        
+        if len(org_code) == 4:
+            # 4 заглавные кириллические буквы
+            if not re.match(r'^[А-Я]{4}$', org_code):
+                raise HTTPException(status_code=400, detail="Код организации (буквы) должен состоять из 4 заглавных кириллических букв (А-Я).")
+        elif len(org_code) == 8:
+            # 8 цифр (общий числовой)
+            if not re.match(r'^\d{8}$', org_code):
+                raise HTTPException(status_code=400, detail="Код организации (цифры) должен состоять из 8 цифр.")
+        
+        # Поиск: сначала по code (буквы), затем по num_code (цифры)
+        if len(org_code) == 4:
+            result = await session.execute(
+                select(Organization).where(Organization.code == org_code)
+            )
+        else:
+            result = await session.execute(
+                select(Organization).where(Organization.num_code == int(org_code))
+            )
+        org = result.scalars().first()
+        
+        if org:
+            if len(org_code) == 8 and org.code_okpo:
+                raise HTTPException(status_code=400, detail="Этот код уже используется как ОКПО.")
+            return org.id
+        
+        # Создание новой
+        new_org = Organization(
+            code=org_code if len(org_code) == 4 else None,
+            name=f"Организация с кодом {org_code}",
+            code_okpo=False,
+            num_code=int(org_code) if len(org_code) == 8 else None,
+            num_code_okpo=None
+        )
+        session.add(new_org)
+        await session.flush()
+        return new_org.id
 
 async def get_or_create_class_id(session: AsyncSession, class_code: str, is_kd: bool = True) -> int:
     """
@@ -88,7 +123,7 @@ async def get_or_create_class_id(session: AsyncSession, class_code: str, is_kd: 
         raise HTTPException(status_code=400, detail=f"Код класса {'КД' if is_kd else 'ТД'} должен состоять только из цифр.")
     
     model = ClassCodeKD if is_kd else ClassCodeTD
-    result = await session.execute(  # Await
+    result = await session.execute(
         select(model).where(model.code == class_code)
     )
     class_obj = result.scalars().first()
@@ -102,5 +137,80 @@ async def get_or_create_class_id(session: AsyncSession, class_code: str, is_kd: 
         description=f"Класс {'КД' if is_kd else 'ТД'} {class_code}"  # Заглушка
     )
     session.add(new_class)
-    await session.flush()  # Await
+    await session.flush() 
     return new_class.id
+
+async def get_next_prni(session: AsyncSession, org_id: int, kd_class_code_id: int) -> int:
+    """
+    Генерирует следующий доступный ПРНИ для DD, заполняя пробелы в последовательности.
+    Находит минимальное положительное целое число, отсутствующее в существующих prni.
+    """
+    # Загружаем все существующие prni как множество
+    result = await session.execute(
+        select(DesignDocument.prni).where(
+            DesignDocument.org_id == org_id,
+            DesignDocument.kd_class_code_id == kd_class_code_id
+        )
+    )
+    used_prnis = {row[0] for row in result.fetchall() if row[0] is not None}
+    
+    # Находим минимальный свободный номер
+    next_prni = 1
+    while next_prni in used_prnis:
+        next_prni += 1
+    
+    return next_prni
+
+
+async def get_next_prn(session: AsyncSession, org_id: int, td_class_code_id: int) -> int:
+    """
+    Генерирует следующий доступный PRN для TD, заполняя пробелы в последовательности.
+    Аналогично ПРНИ, но для TechDocument.
+    """
+    # Загружаем все существующие prn как множество
+    result = await session.execute(
+        select(TechDocument.prn).where(
+            TechDocument.org_id == org_id,
+            TechDocument.td_class_code_id == td_class_code_id
+        )
+    )
+    used_prns = {row[0] for row in result.fetchall() if row[0] is not None}
+    
+    # Находим минимальный свободный номер
+    next_prn = 1
+    while next_prn in used_prns:
+        next_prn += 1
+    
+    return next_prn
+
+
+async def check_prni_unique(session: AsyncSession, org_id: int, kd_class_code_id: int, prni: int) -> bool:
+    """
+    Проверяет уникальность ручного ПРНИ для DD.
+    Возвращает False, если номер уже используется.
+    """
+    result = await session.execute(
+        select(DesignDocument).where(
+            DesignDocument.org_id == org_id,
+            DesignDocument.kd_class_code_id == kd_class_code_id,
+            DesignDocument.prni == prni
+        )
+    )
+    existing = result.scalar_one_or_none()
+    return existing is None
+
+
+async def check_prn_unique(session: AsyncSession, org_id: int, td_class_code_id: int, prn: int) -> bool:
+    """
+    Проверяет уникальность ручного PRN для TD.
+    Возвращает False, если номер уже используется.
+    """
+    result = await session.execute(
+        select(TechDocument).where(
+            TechDocument.org_id == org_id,
+            TechDocument.td_class_code_id == td_class_code_id,
+            TechDocument.prn == prn
+        )
+    )
+    existing = result.scalar_one_or_none()
+    return existing is None

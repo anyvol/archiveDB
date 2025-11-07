@@ -37,7 +37,7 @@ def custom_openapi():
             }
         }
     }
-    # Добавляем требование security для всех защищённых путей автоматически необязательно
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

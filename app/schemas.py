@@ -1,3 +1,5 @@
+#app/schemas.py
+
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import enum
@@ -27,9 +29,11 @@ class User(UserBase):
         orm_mode = True
 
 class OrganizationBase(BaseModel):
-    code: str = Field(..., max_length=8)
+    code: Optional[str] = Field(None, max_length=4)  # Буквенный код (4 кириллицы) или None для числового
     name: str
-    department: Optional[str]
+    code_okpo: bool = Field(False, description="Флаг использования ОКПО")
+    num_code: Optional[int] = Field(None, ge=0, le=99999999, description="Общий 8-значный числовой код")
+    num_code_okpo: Optional[int] = Field(None, ge=0, le=99999999, description="8-значный код ОКПО")
 
 class OrganizationCreate(OrganizationBase):
     pass
