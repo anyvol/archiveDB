@@ -5,7 +5,6 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SA
 import enum
 from datetime import datetime
 
-# Современный способ определения базового класса
 Base = declarative_base()
 
 class UserRole(str, enum.Enum):
@@ -25,11 +24,11 @@ class User(Base):
 class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Integer, primary_key=True)
-    code = Column(String(8), nullable=True)  # Буквенный или None для числового
+    code = Column(String(8), nullable=True)
     name = Column(String(255))
     code_okpo = Column(Boolean, default=False)
-    num_code = Column(Integer, nullable=True)  # Общий числовой код
-    num_code_okpo = Column(Integer, nullable=True)  # ОКПО
+    num_code = Column(Integer, nullable=True)
+    num_code_okpo = Column(Integer, nullable=True)
     design_documents = relationship("DesignDocument", back_populates="org")
     tech_documents = relationship("TechDocument", back_populates="org")
 
@@ -53,7 +52,7 @@ class BaseDocument(Base):
     file_path = Column(String, nullable=True)
     type = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    last_update = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    last_update = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = Column(String, nullable=False)
     developed_by = Column(String, nullable=True)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -62,18 +61,17 @@ class BaseDocument(Base):
     doc_name = Column(String, nullable=True)
     checked = Column(Boolean, default=False, nullable=False)
     
-    # Отношения one-to-one с каскадным удалением
     design_document = relationship(
         "DesignDocument", 
         back_populates="base_document", 
         uselist=False,
-        cascade="all, delete-orphan"  # <-- ВАЖНО: для удаления связанных записей
+        cascade="all, delete-orphan"
     )
     tech_document = relationship(
         "TechDocument", 
         back_populates="base_document", 
         uselist=False,
-        cascade="all, delete-orphan"   # <-- ВАЖНО: для удаления связанных записей
+        cascade="all, delete-orphan"
     )
 
 class DesignDocument(Base):
@@ -87,10 +85,9 @@ class DesignDocument(Base):
     
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
-    doc_kind_code = Column(String(3), nullable=True)  # Новое поле: Код вида документа по ГОСТ Р 2.102-2023 (например, "СБ", "СП")
-
-    base_document = relationship("BaseDocument", back_populates="design_document")
+    doc_kind_code = Column(String(3), nullable=True)  # Код вида по ГОСТ Р 2.102-2023 (e.g., "СБ")
     
+    base_document = relationship("BaseDocument", back_populates="design_document")
     kd_class_code = relationship("ClassCodeKD")
     org = relationship("Organization", back_populates="design_documents", foreign_keys=[org_id])
 
@@ -103,7 +100,9 @@ class TechDocument(Base):
     prn = Column(Integer, nullable=False)
     designation = Column(String, unique=True, nullable=False)
     
+    org_code_str = Column(String(8), index=True)
+    class_code_str = Column(String(7), index=True)
+    
     base_document = relationship("BaseDocument", back_populates="tech_document")
-
     td_class_code = relationship("ClassCodeTD")
     org = relationship("Organization", back_populates="tech_documents", foreign_keys=[org_id])

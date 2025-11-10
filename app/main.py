@@ -1,7 +1,7 @@
 # app/main.py
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse  
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -18,14 +18,14 @@ from app.database import engine, get_session, get_or_create_org_id, get_or_creat
 from app.models import Base, Organization, ClassCodeKD, ClassCodeTD, BaseDocument, DesignDocument, TechDocument, User
 from app.routers import router as user_router
 from app import docs  # Предполагаю, что это ваш docs.router
-from app.auth import get_current_user_from_token, authenticate_user, get_password_hash  # Импорты из auth.py (authenticate_user и hash сюда)
+from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.database import get_next_prni, get_next_prn, check_prni_unique, check_prn_unique
 
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,28 +54,21 @@ async def login_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None)
 ):
-    # Если токен существует и валиден — редирект на documents
     if access_token:
         try:
             await get_current_user_from_token(access_token=access_token, db=session)
             return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
         except HTTPException:
-            # Токен неверный — очищаем cookie и показываем форму
             response = RedirectResponse(url="/login")
             response.delete_cookie("access_token")
             return response
     
-    # Получаем query params для сообщений
     error = request.query_params.get("error")
     success = request.query_params.get("success")
     
     return templates.TemplateResponse(
         "login.html",
-        {
-            "request": request,
-            "error": error == "true",
-            "success": success == "true"
-        }
+        {"request": request, "error": error == "true", "success": success == "true"}
     )
 
 @app.post("/login", response_class=RedirectResponse)
@@ -91,33 +84,19 @@ async def handle_login(
         response.set_cookie(
             key="access_token", 
             value=f"Bearer {access_token}", 
-            max_age=3600,  # 1 час
+            max_age=3600,
             httponly=True, 
             samesite="lax"
         )
         return response
     except HTTPException:
         return RedirectResponse(url="/login?error=true", status_code=status.HTTP_303_SEE_OTHER)
-    
+
 @app.get("/logout", response_class=RedirectResponse)
-async def logout(
-    response: Response,
-    access_token: Optional[str] = Cookie(None)
-):
-    """
-    Logout: Удаление cookie access_token и редирект на /login.
-    """
-    # Установка cookie в пустое значение с истечением (удаление)
+async def logout(response: Response):
     response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        key="access_token",
-        value="",  # Пустое значение
-        max_age=0,  # Немедленное истечение
-        httponly=True,  # Защита от JS
-        secure=False,  # True в production с HTTPS
-        samesite="lax"  # Защита от CSRF
-    )
-    logger.info("User logged out")  # Лог выхода
+    response.delete_cookie("access_token")
+    logger.info("User logged out")
     return response
 
 @app.get("/register", response_class=HTMLResponse)
@@ -129,23 +108,20 @@ async def register_page(request: Request):
 async def handle_register(
     login: str = Form(...),
     password: str = Form(...),
-    full_name: str = Form(...),  # Required в шаблоне
+    full_name: str = Form(...),
     position: str = Form(""),
     department: str = Form(""),
-    role: str = Form("user"),  # <-- Добавлено: default "user"
+    role: str = Form("user"),
     session: AsyncSession = Depends(get_session)
 ):
     try:
-        # Валидация role (опционально: только user/admin)
         if role not in ["user", "admin"]:
             raise HTTPException(status_code=400, detail="Неверная роль. Доступны: user, admin.")
         
-        # Проверка на существующий login
         existing_user_result = await session.execute(select(User).where(User.login == login))
         if existing_user_result.scalars().first():
             raise HTTPException(status_code=400, detail="Пользователь с таким логином уже существует.")
         
-        # Хэширование пароля
         hashed_password = get_password_hash(password)
         new_user = User(
             login=login,
@@ -153,17 +129,16 @@ async def handle_register(
             full_name=full_name,
             position=position,
             department=department,
-            role=role  # <-- Используем из формы (user или admin)
+            role=role
         )
         session.add(new_user)
         await session.commit()
         
-        # Успех: Редирект на login
         query_params = {"success": "true"}
         url = f"/login?{urlencode(query_params)}"
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
         
-    except HTTPException as e:
+    except HTTPException:
         query_params = {"error": "true"}
         url = f"/register?{urlencode(query_params)}"
         return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
@@ -179,11 +154,8 @@ async def documents_page(
     
     user = await get_current_user_from_token(access_token=access_token, db=session)
 
-    # Обновленный query: подгружаем design/tech с organization для доступа к code_okpo
     query = select(BaseDocument).options(
-        # Для DesignDocument: joinedload org по foreign key
         joinedload(BaseDocument.design_document).joinedload(DesignDocument.org),
-        # Для TechDocument: joinedload org по foreign key
         joinedload(BaseDocument.tech_document).joinedload(TechDocument.org)
     ).order_by(BaseDocument.created_at.desc())
     
@@ -192,11 +164,7 @@ async def documents_page(
     
     return templates.TemplateResponse(
         "documents.html", 
-        {
-            "request": request, 
-            "documents": documents_from_db,
-            "user": user
-        }
+        {"request": request, "documents": documents_from_db, "user": user}
     )
 
 @app.post("/documents/create", response_class=RedirectResponse)
@@ -210,7 +178,6 @@ async def create_document_record(
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     
-    # Получение данных из формы
     form_data = await request.form()
     doc_type = form_data.get("doc_type")
     designation_method = form_data.get("designation_method")
@@ -224,13 +191,11 @@ async def create_document_record(
     is_okpo_str = form_data.get("is_okpo")
     is_okpo = bool(is_okpo_str == "true")
     org_name = form_data.get("org_name")
-    # Новое поле: Код вида документа по ГОСТ Р 2.102-2023 (только для DD)
     doc_kind_code = form_data.get("doc_kind_code", "")
 
     if not doc_type or doc_type not in ["DD", "TD"]:
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
 
-    # Инициализация base_doc с новыми полями
     base_doc = BaseDocument(
         type=doc_type,
         doc_name=doc_name,
@@ -239,17 +204,14 @@ async def create_document_record(
         uploaded_by=user.id,
         position=user.position,
         department=user.department,
-        checked=False  # По умолчанию "не проверено"
-        # file_name и file_path остаются NULL до загрузки файла
+        checked=False
     )
     session.add(base_doc)
-    await session.flush()  # Получаем ID для связанных документов
+    await session.flush()
 
+    designation = "N/A"  # Default
     if doc_type == "DD":
-        if designation_method != "impersonal":
-            # Для DD с object-oriented: только base_doc, без specific_doc
-            pass
-        else:
+        if designation_method == "impersonal":
             if not all([org_code, class_code]):
                 raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
             
@@ -267,7 +229,6 @@ async def create_document_record(
             else:
                 prni_to_save = await get_next_prni(session, org_id, class_code_id)
             
-            # Формирование обозначения с кодом вида (если указан)
             designation = f"{org_code}.{class_code}.{prni_to_save:03d}"
             if doc_kind_code:
                 designation += doc_kind_code
@@ -280,15 +241,12 @@ async def create_document_record(
                 designation=designation,
                 org_code_str=org_code,
                 class_code_str=class_code,
-                doc_kind_code=doc_kind_code  # Сохранение кода вида
+                doc_kind_code=doc_kind_code
             )
             session.add(specific_doc)
 
     elif doc_type == "TD":
-        if designation_method != "impersonal":
-            # Для TD с object-oriented: только base_doc, без specific_doc
-            pass
-        else:
+        if designation_method == "impersonal":
             if not all([org_code, class_code]):
                 raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
             
@@ -306,7 +264,6 @@ async def create_document_record(
             else:
                 prn_to_save = await get_next_prn(session, org_id, class_code_id)
             
-            # Для TD код вида не добавляется (ГОСТ Р 2.102-2023 не применяется)
             designation = f"{org_code}.{class_code}.{prn_to_save:03d}"
             
             specific_doc = TechDocument(
@@ -319,12 +276,9 @@ async def create_document_record(
                 class_code_str=class_code
             )
             session.add(specific_doc)
-        
-    else:
-        pass
     
     await session.commit()
-    logger.info(f"Document record {base_doc.id} created by user {user.login}")
+    logger.info(f"Document record {base_doc.id} created by user {user.login} (type: {doc_type}, designation: {designation})")
     
     return RedirectResponse(url=f"/documents/{base_doc.id}/upload", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -338,7 +292,6 @@ async def upload_page(
     if not access_token:
         return RedirectResponse(url="/login")
     
-    # Проверка doc_id и получение designation
     result = await session.execute(
         select(BaseDocument).options(
             joinedload(BaseDocument.design_document),
@@ -349,7 +302,6 @@ async def upload_page(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
     
-    # Получение designation
     designation = None
     if doc.design_document:
         designation = doc.design_document.designation
@@ -364,7 +316,7 @@ async def upload_page(
 @app.post("/documents/{doc_id}/upload", response_class=RedirectResponse)
 async def handle_upload(
     doc_id: int,
-    file: Optional[UploadFile] = File(None),  # <-- Опциональный: None если нет file
+    file: Optional[UploadFile] = File(None),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None)
 ):
@@ -374,22 +326,16 @@ async def handle_upload(
     user = await get_current_user_from_token(access_token=access_token, db=session)
     
     result = await session.execute(
-        select(BaseDocument)
-        .options(
-            joinedload(BaseDocument.design_document),
-            joinedload(BaseDocument.tech_document)
-        )
-        .where(BaseDocument.id == doc_id)
+        select(BaseDocument).where(BaseDocument.id == doc_id)
     )
     doc = result.scalars().first()
     
     if not doc or doc.uploaded_by != user.id:
         raise HTTPException(status_code=404, detail="Документ не найден или нет доступа")
     
-    if not file or file.filename is None or file.size == 0:  # <-- Проверка: если file не предоставлен
+    if not file or file.filename is None or file.size == 0:
         raise HTTPException(status_code=400, detail="Файл обязателен для загрузки")
     
-    # Генерация путей и unique file_name (как ранее)
     file_path = os.path.join(UPLOAD_DIR, f"{doc.id}_{file.filename}")
     
     with open(file_path, "wb") as buffer:
@@ -414,13 +360,8 @@ async def download_document(
     if not access_token:
         raise HTTPException(status_code=401, detail="Не авторизован")
     
-    user = await get_current_user_from_token(access_token=access_token, db=session)
-    
     doc = await session.get(BaseDocument, doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Документ не найден")
-    
-    if not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="Файл не найден")
     
     return FileResponse(
@@ -443,44 +384,24 @@ async def delete_document(
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Доступ запрещен (только админ)")
     
-    result = await session.execute(
-        select(BaseDocument)
-        .options(
-            joinedload(BaseDocument.design_document),
-            joinedload(BaseDocument.tech_document)
-        )
-        .where(BaseDocument.id == doc_id)
-    )
-    doc = result.scalars().first()
-    
+    doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден")
     
     if doc.file_path and os.path.exists(doc.file_path):
         os.remove(doc.file_path)
     
-    # Удаление связанных записей (design/tech), если есть
-    if doc.design_document:
-        session.delete(doc.design_document)
-    if doc.tech_document:
-        session.delete(doc.tech_document)
-    
-    # Удаление base_doc
-    session.delete(doc)
+    await session.delete(doc)
     await session.commit()
-    logger.info(f"Document record {doc_id} deleted (including related documents and file if present)")
+    logger.info(f"Document record {doc_id} deleted by admin {user.login}")
     return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/api/check_org", response_model=dict)
 async def check_org_endpoint(
     org_code: str = Form(...),
-    is_okpo_str: str = Form("false"),  # Из чекбокса
+    is_okpo_str: str = Form("false"),
     session: AsyncSession = Depends(get_session)
 ):
-    """
-    AJAX-эндпоинт: Проверяет существование организации.
-    Возвращает {'exists': bool, 'name': str or None}.
-    """
     is_okpo = bool(is_okpo_str == "true")
     result = await check_org_exists(session, org_code, is_okpo)
     return result

@@ -16,7 +16,7 @@
         .delete-form { display: inline; margin-left: 10px; }
         .delete-form button { background-color: #dc3545; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; border-radius: 4px; }
         .delete-form button:hover { background-color: #c82333; }
-        .no-file { color: red; font-weight: bold; } /* Стиль для незагруженного файла */
+        .no-file { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -73,7 +73,7 @@
                     <small>Оставьте пустым для автоматического присвоения. Заполняйте, только если документ уже был зарегистрирован.</small>
                 </div>
                 
-                <!-- Новое поле: Код вида документа по ГОСТ Р 2.102-2023 -->
+                <!-- Код вида документа по ГОСТ Р 2.102-2023 (только для DD) -->
                 <div class="form-group">
                     <label for="doc_kind_code">Код вида документа (по ГОСТ Р 2.102-2023):</label>
                     <select id="doc_kind_code" name="doc_kind_code">
@@ -96,7 +96,7 @@
                 
                 <div class="form-group">
                     <label for="doc_name">Наименование документа:</label>
-                    <input type="text" id="doc_name" name="doc_name" required>
+                    <input type="text" id="doc_name" name="doc_name">
                 </div>
                 <div class="form-group">
                     <label for="developed_by">ФИО разработчика:</label>
@@ -112,9 +112,9 @@
             <thead>
                 <tr>
                     <th>Обозначение</th>
-                    <th>ОКПО</th>
-                    <th>Разработчик</th> 
-                    <th>Наименование документа</th> 
+                    <th>ОКПО</th>  <!-- Новая колонка для code_okpo -->
+                    <th>Разработчик</th>
+                    <th>Наименование документа</th>
                     <th>Наименование файла</th>
                     <th>Тип</th>
                     <th>Зарегистрировал</th>
@@ -164,12 +164,13 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="12" style="text-align: center;">Документы не найдены.</td> 
+                    <td colspan="12" style="text-align: center;">Документы не найдены.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-    </div> 
+    </div>
+
 
     <script>
         const docTypeSelect = document.getElementById('doc_type');
