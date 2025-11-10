@@ -87,11 +87,10 @@ class DesignDocument(Base):
     
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
-    
+    doc_kind_code = Column(String(3), nullable=True)  # Новое поле: Код вида документа по ГОСТ Р 2.102-2023 (например, "СБ", "СП")
 
     base_document = relationship("BaseDocument", back_populates="design_document")
     
-
     kd_class_code = relationship("ClassCodeKD")
     org = relationship("Organization", back_populates="design_documents", foreign_keys=[org_id])
 
@@ -104,7 +103,6 @@ class TechDocument(Base):
     prn = Column(Integer, nullable=False)
     designation = Column(String, unique=True, nullable=False)
     
-
     base_document = relationship("BaseDocument", back_populates="tech_document")
 
     td_class_code = relationship("ClassCodeTD")

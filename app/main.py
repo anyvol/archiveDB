@@ -14,13 +14,12 @@ import shutil
 import os
 import logging
 
-from app.database import engine, get_session, get_or_create_org_id, get_or_create_class_id
+from app.database import engine, get_session, get_or_create_org_id, get_or_create_class_id, check_org_exists
 from app.models import Base, Organization, ClassCodeKD, ClassCodeTD, BaseDocument, DesignDocument, TechDocument, User
 from app.routers import router as user_router
 from app import docs  # Предполагаю, что это ваш docs.router
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash  # Импорты из auth.py (authenticate_user и hash сюда)
 from app.database import get_next_prni, get_next_prn, check_prni_unique, check_prn_unique
-
 
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -222,10 +221,11 @@ async def create_document_record(
     developed_by = form_data.get("developed_by")
     if not developed_by:
         raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
-
-    # Добавлено: Обработка флага ОКПО
     is_okpo_str = form_data.get("is_okpo")
-    is_okpo = bool(is_okpo_str == "true")  # Checkbox отправляет "true" или None
+    is_okpo = bool(is_okpo_str == "true")
+    org_name = form_data.get("org_name")
+    # Новое поле: Код вида документа по ГОСТ Р 2.102-2023 (только для DD)
+    doc_kind_code = form_data.get("doc_kind_code", "")
 
     if not doc_type or doc_type not in ["DD", "TD"]:
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
@@ -245,68 +245,80 @@ async def create_document_record(
     session.add(base_doc)
     await session.flush()  # Получаем ID для связанных документов
 
-    if doc_type == "DD" and designation_method == "impersonal":
-        if not all([org_code, class_code]):
-            raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
-        
-        # Обновлено: Передача is_okpo
-        org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo)
-        class_code_id = await get_or_create_class_id(session, class_code, is_kd=True)
-        
-        prni_to_save = None
-        if reg_number:
-            try:
-                prni_to_save = int(reg_number)
-                if not await check_prni_unique(session, org_id, class_code_id, prni_to_save):
-                    raise HTTPException(status_code=400, detail="Указанный ПРНИ уже используется.")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="ПРНИ должен быть числом.")
+    if doc_type == "DD":
+        if designation_method != "impersonal":
+            # Для DD с object-oriented: только base_doc, без specific_doc
+            pass
         else:
-            prni_to_save = await get_next_prni(session, org_id, class_code_id)
-        
-        designation = f"{org_code}.{class_code}.{prni_to_save:03d}"
-        
-        specific_doc = DesignDocument(
-            id=base_doc.id,
-            org_id=org_id,
-            kd_class_code_id=class_code_id,
-            prni=prni_to_save,
-            designation=designation,
-            org_code_str=org_code,  # Сохраняем строку из формы (для ОКПО – 8 цифр)
-            class_code_str=class_code
-        )
-        session.add(specific_doc)
+            if not all([org_code, class_code]):
+                raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
+            
+            org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name if org_name else None)
+            class_code_id = await get_or_create_class_id(session, class_code, is_kd=True)
+            
+            prni_to_save = None
+            if reg_number:
+                try:
+                    prni_to_save = int(reg_number)
+                    if not await check_prni_unique(session, org_id, class_code_id, prni_to_save):
+                        raise HTTPException(status_code=400, detail="Указанный ПРНИ уже используется.")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="ПРНИ должен быть числом.")
+            else:
+                prni_to_save = await get_next_prni(session, org_id, class_code_id)
+            
+            # Формирование обозначения с кодом вида (если указан)
+            designation = f"{org_code}.{class_code}.{prni_to_save:03d}"
+            if doc_kind_code:
+                designation += doc_kind_code
+            
+            specific_doc = DesignDocument(
+                id=base_doc.id,
+                org_id=org_id,
+                kd_class_code_id=class_code_id,
+                prni=prni_to_save,
+                designation=designation,
+                org_code_str=org_code,
+                class_code_str=class_code,
+                doc_kind_code=doc_kind_code  # Сохранение кода вида
+            )
+            session.add(specific_doc)
 
-    elif doc_type == "TD" and designation_method == "impersonal":
-        if not all([org_code, class_code]):
-            raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
-        
-        org_id = await get_or_create_org_id(session, org_code)
-        class_code_id = await get_or_create_class_id(session, class_code, is_kd=False)
-        
-        prn_to_save = None
-        if reg_number:
-            try:
-                prn_to_save = int(reg_number)
-                if not await check_prn_unique(session, org_id, class_code_id, prn_to_save):
-                    raise HTTPException(status_code=400, detail="Указанный ПРН уже используется.")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="ПРН должен быть числом.")
+    elif doc_type == "TD":
+        if designation_method != "impersonal":
+            # Для TD с object-oriented: только base_doc, без specific_doc
+            pass
         else:
-            prn_to_save = await get_next_prn(session, org_id, class_code_id)
-        
-        designation = f"{org_code}.{class_code}.{prn_to_save:03d}"
-        
-        specific_doc = TechDocument(
-            id=base_doc.id,
-            org_id=org_id,
-            td_class_code_id=class_code_id,
-            prn=prn_to_save,
-            designation=designation,
-            org_code_str=org_code,
-            class_code_str=class_code
-        )
-        session.add(specific_doc)
+            if not all([org_code, class_code]):
+                raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
+            
+            org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name if org_name else None)
+            class_code_id = await get_or_create_class_id(session, class_code, is_kd=False)
+            
+            prn_to_save = None
+            if reg_number:
+                try:
+                    prn_to_save = int(reg_number)
+                    if not await check_prn_unique(session, org_id, class_code_id, prn_to_save):
+                        raise HTTPException(status_code=400, detail="Указанный ПРН уже используется.")
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="ПРН должен быть числом.")
+            else:
+                prn_to_save = await get_next_prn(session, org_id, class_code_id)
+            
+            # Для TD код вида не добавляется (ГОСТ Р 2.102-2023 не применяется)
+            designation = f"{org_code}.{class_code}.{prn_to_save:03d}"
+            
+            specific_doc = TechDocument(
+                id=base_doc.id,
+                org_id=org_id,
+                td_class_code_id=class_code_id,
+                prn=prn_to_save,
+                designation=designation,
+                org_code_str=org_code,
+                class_code_str=class_code
+            )
+            session.add(specific_doc)
         
     else:
         pass
@@ -318,29 +330,24 @@ async def create_document_record(
 
 @app.get("/documents/{doc_id}/upload", response_class=HTMLResponse)
 async def upload_page(
-    request: Request, 
-    doc_id: int, 
+    doc_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None)
 ):
     if not access_token:
         return RedirectResponse(url="/login")
     
-    user = await get_current_user_from_token(access_token=access_token, db=session)
-    
-    # Загрузка с joinedload (как ранее)
+    # Проверка doc_id и получение designation
     result = await session.execute(
-        select(BaseDocument)
-        .options(
+        select(BaseDocument).options(
             joinedload(BaseDocument.design_document),
             joinedload(BaseDocument.tech_document)
-        )
-        .where(BaseDocument.id == doc_id)
+        ).where(BaseDocument.id == doc_id)
     )
-    doc = result.scalars().first()
-    
-    if not doc or doc.uploaded_by != user.id:
-        raise HTTPException(status_code=404, detail="Документ не найден или нет доступа")
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
     
     # Получение designation
     designation = None
@@ -351,12 +358,7 @@ async def upload_page(
     
     return templates.TemplateResponse(
         "upload.html", 
-        {
-            "request": request, 
-            "doc_id": doc_id, 
-            "designation": designation or "N/A",
-            "file_name": doc.file_name or None  # Для показа в шаблоне, если уже загружен
-        }
+        {"request": request, "doc_id": doc_id, "designation": designation}
     )
 
 @app.post("/documents/{doc_id}/upload", response_class=RedirectResponse)
@@ -468,3 +470,17 @@ async def delete_document(
     await session.commit()
     logger.info(f"Document record {doc_id} deleted (including related documents and file if present)")
     return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/api/check_org", response_model=dict)
+async def check_org_endpoint(
+    org_code: str = Form(...),
+    is_okpo_str: str = Form("false"),  # Из чекбокса
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    AJAX-эндпоинт: Проверяет существование организации.
+    Возвращает {'exists': bool, 'name': str or None}.
+    """
+    is_okpo = bool(is_okpo_str == "true")
+    result = await check_org_exists(session, org_code, is_okpo)
+    return result

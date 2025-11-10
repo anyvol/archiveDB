@@ -1,4 +1,3 @@
-# app/database.py
 """
 Async SQLAlchemy setup: engine, sessionmaker, сессии и helpers для справочников.
 Используется для async операций с PostgreSQL (asyncpg).
@@ -6,21 +5,25 @@ Async SQLAlchemy setup: engine, sessionmaker, сессии и helpers для с�
 import os
 import re
 from dotenv import load_dotenv
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngine
 from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException, status
 
+
 from app.models import Organization, ClassCodeKD, ClassCodeTD, DesignDocument, TechDocument 
+
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set in .env")
 
+
 engine: AsyncEngine = create_async_engine(DATABASE_URL, echo=True)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
@@ -30,16 +33,33 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
 
-async def get_or_create_org_id(session: AsyncSession, org_code: str, is_okpo: bool = False) -> int:
+
+async def get_or_create_org_id(
+    session: AsyncSession, 
+    org_code: str, 
+    is_okpo: bool = False, 
+    org_name: Optional[str] = None
+) -> int:
     """
     Находит ID организации по коду или создаёт новую запись.
     Поддержка ОКПО: если is_okpo=True, валидация и хранение как 8-значный ОКПО.
+    Если org_name предоставлено и не пустое – использует его для новой организации (с валидацией).
+    Если org_name None/пустое для новой – использует заглушку.
     """
     if not org_code:
         raise HTTPException(status_code=400, detail="Код организации обязателен.")
     
+    # Валидация org_name, если используется (только для новых, но проверим заранее)
+    if org_name:
+        org_name_stripped = org_name.strip()
+        if not org_name_stripped:
+            org_name = None  # Игнорируем пустое
+        elif len(org_name_stripped) > 255:
+            raise HTTPException(status_code=400, detail="Название организации не может превышать 255 символов.")
+        else:
+            org_name = org_name_stripped
+    
     if is_okpo:
-        # Валидация ОКПО: 8 цифр
         if len(org_code) != 8:
             raise HTTPException(status_code=400, detail="Код ОКПО должен иметь длину 8 цифр.")
         if not re.match(r'^\d{8}$', org_code):
@@ -57,9 +77,10 @@ async def get_or_create_org_id(session: AsyncSession, org_code: str, is_okpo: bo
             return org.id
         
         # Создание новой
+        new_name = org_name or f"Организация с ОКПО {org_code}"
         new_org = Organization(
             code=None,
-            name=f"Организация с ОКПО {org_code}",
+            name=new_name,  # User-provided или заглушка
             code_okpo=True,
             num_code=None,
             num_code_okpo=int(org_code)
@@ -98,9 +119,10 @@ async def get_or_create_org_id(session: AsyncSession, org_code: str, is_okpo: bo
             return org.id
         
         # Создание новой
+        new_name = org_name or f"Организация с кодом {org_code}"
         new_org = Organization(
             code=org_code if len(org_code) == 4 else None,
-            name=f"Организация с кодом {org_code}",
+            name=new_name,  # User-provided или заглушка
             code_okpo=False,
             num_code=int(org_code) if len(org_code) == 8 else None,
             num_code_okpo=None
@@ -108,6 +130,7 @@ async def get_or_create_org_id(session: AsyncSession, org_code: str, is_okpo: bo
         session.add(new_org)
         await session.flush()
         return new_org.id
+
 
 async def get_or_create_class_id(session: AsyncSession, class_code: str, is_kd: bool = True) -> int:
     """
@@ -140,6 +163,45 @@ async def get_or_create_class_id(session: AsyncSession, class_code: str, is_kd: 
     await session.flush() 
     return new_class.id
 
+
+async def check_org_exists(session: AsyncSession, org_code: str, is_okpo: bool = False) -> dict:
+    """
+    Проверяет существование организации по коду (учитывая is_okpo).
+    Возвращает {'exists': True, 'name': str} если найдена, иначе {'exists': False}.
+    """
+    # Валидация (как в get_or_create_org_id, но без создания)
+    if not org_code:
+        return {'exists': False}
+    
+    if is_okpo:
+        if len(org_code) != 8 or not re.match(r'^\d{8}$', org_code):
+            return {'exists': False}
+        result = await session.execute(
+            select(Organization).where(Organization.num_code_okpo == int(org_code))
+        )
+        org = result.scalars().first()
+        if org:
+            return {'exists': True, 'name': org.name}
+        return {'exists': False}
+    else:
+        if len(org_code) == 4:
+            if not re.match(r'^[А-Я]{4}$', org_code):
+                return {'exists': False}
+            result = await session.execute(
+                select(Organization).where(Organization.code == org_code)
+            )
+        else:  # 8 цифр
+            if len(org_code) != 8 or not re.match(r'^\d{8}$', org_code):
+                return {'exists': False}
+            result = await session.execute(
+                select(Organization).where(Organization.num_code == int(org_code))
+            )
+        org = result.scalars().first()
+        if org:
+            return {'exists': True, 'name': org.name}
+        return {'exists': False}
+
+
 async def get_next_prni(session: AsyncSession, org_id: int, kd_class_code_id: int) -> int:
     """
     Генерирует следующий доступный ПРНИ для DD, заполняя пробелы в последовательности.
@@ -160,6 +222,7 @@ async def get_next_prni(session: AsyncSession, org_id: int, kd_class_code_id: in
         next_prni += 1
     
     return next_prni
+
 
 
 async def get_next_prn(session: AsyncSession, org_id: int, td_class_code_id: int) -> int:
@@ -184,6 +247,7 @@ async def get_next_prn(session: AsyncSession, org_id: int, td_class_code_id: int
     return next_prn
 
 
+
 async def check_prni_unique(session: AsyncSession, org_id: int, kd_class_code_id: int, prni: int) -> bool:
     """
     Проверяет уникальность ручного ПРНИ для DD.
@@ -198,6 +262,7 @@ async def check_prni_unique(session: AsyncSession, org_id: int, kd_class_code_id
     )
     existing = result.scalar_one_or_none()
     return existing is None
+
 
 
 async def check_prn_unique(session: AsyncSession, org_id: int, td_class_code_id: int, prn: int) -> bool:

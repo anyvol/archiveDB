@@ -22,17 +22,15 @@
 <body>
     <div class="header">
         <h1>Архив документов</h1>
-        <a href="/logout">Выйти</a> <!-- Logout с удалением cookie -->
+        <a href="/logout">Выйти</a>
     </div>
 
     <div class="container">
-        <!-- Форма добавления документа (без изменений) -->
         <h2>Добавить новый документ</h2>
         <form action="/documents/create" method="post" id="create-doc-form" class="form-container">
             
-            <!-- 1. Выбор типа документа -->
             <div class="form-group">
-                <label for="doc_type">1. Тип документа:</label>
+                <label for="doc_type">Тип документа:</label>
                 <select id="doc_type" name="doc_type" required>
                     <option value="" disabled selected>Выберите тип</option>
                     <option value="DD">Конструкторский документ (КД)</option>
@@ -40,27 +38,30 @@
                 </select>
             </div>
 
-            <!-- 2. Выбор способа обозначения (только для КД) -->
             <div id="designation-method-group" class="form-group" style="display: none;">
-                <label for="designation_method">2. Способ обозначения:</label>
+                <label for="designation_method">Способ обозначения:</label>
                 <select id="designation_method" name="designation_method">
                     <option value="impersonal">Обезличенный способ</option>
                     <option value="object-oriented">Объектно-ориентированный способ</option>
                 </select>
             </div>
 
-            <!-- 3. Поля для КД (Обезличенный способ) -->
             <div id="impersonal-fields" style="display: none;">
                 <div class="form-group">
                     <label for="org_code">Код организации-разработчика (4 буквы или 8 цифр):</label>
                     <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}" title="4 заглавные русские буквы или 8 цифр">
                 </div>
-                <!-- Новый чекбокс для ОКПО -->
+
                 <div class="form-group">
                     <label>
                         <input type="checkbox" id="is_okpo" name="is_okpo" value="true"> Код по ОК 007-93 (ОКПО)
                     </label>
                     <small>Отметьте, если вводите 8-значный код ОКПО (по умолчанию – стандартный код организации).</small>
+                </div>
+                <div class="form-group" id="org-name-group" style="display: none;">
+                    <label for="org_name">Название организации (обязательно):</label>
+                    <input type="text" id="org_name" name="org_name" placeholder="Введите полное название организации">
+                    <small id="org-name-hint">Если организация существует, название показано для справки. Для новой – введите обязательно.</small>
                 </div>
                 <div class="form-group">
                     <label for="class_code">Код классификационной характеристики (6 цифр):</label>
@@ -71,9 +72,31 @@
                     <input type="text" id="reg_number" name="reg_number" pattern="\d{3,4}">
                     <small>Оставьте пустым для автоматического присвоения. Заполняйте, только если документ уже был зарегистрирован.</small>
                 </div>
+                
+                <!-- Новое поле: Код вида документа по ГОСТ Р 2.102-2023 -->
+                <div class="form-group">
+                    <label for="doc_kind_code">Код вида документа (по ГОСТ Р 2.102-2023):</label>
+                    <select id="doc_kind_code" name="doc_kind_code">
+                        <option value="" selected>Без кода (например, чертеж детали)</option>
+                        <option value="СБ">Сборочный чертеж (СБ)</option>
+                        <option value="СП">Спецификация (СП)</option>
+                        <option value="ГЧ">Габаритный чертеж (ГЧ)</option>
+                        <option value="И">Инструкция (И)</option>
+                        <option value="Е1">Схема деления структурная (Е1)</option>
+                        <option value="Э2">Схема электрическая функциональная (Э2)</option>
+                        <option value="ВП">Ведомость покупных изделий (ВП)</option>
+                        <option value="ВС">Ведомость спецификаций (ВС)</option>
+                        <option value="ТУ">Технические условия (ТУ)</option>
+                        <option value="РР">Расчет (РР)</option>
+                        <option value="ПМ">Программа и методика испытаний (ПМ)</option>
+                        <option value="ЧО">Чертеж общего вида (ЧО)</option>
+                    </select>
+                    <small>Код добавляется к обозначению справа без разделителей. По умолчанию пустой для чертежа детали.</small>
+                </div>
+                
                 <div class="form-group">
                     <label for="doc_name">Наименование документа:</label>
-                    <input type="text" id="doc_name" name="doc_name">
+                    <input type="text" id="doc_name" name="doc_name" required>
                 </div>
                 <div class="form-group">
                     <label for="developed_by">ФИО разработчика:</label>
@@ -89,7 +112,6 @@
             <thead>
                 <tr>
                     <th>Обозначение</th>
-                    <!-- Добавлено: Новый столбец ОКПО -->
                     <th>ОКПО</th>
                     <th>Разработчик</th> 
                     <th>Наименование документа</th> 
@@ -108,7 +130,6 @@
                     <td>
                         {% if doc.design_document %}{{ doc.design_document.designation or 'N/A' }}{% elif doc.tech_document %}{{ doc.tech_document.designation or 'N/A' }}{% else %}N/A{% endif %}
                     </td>
-                    <!-- Добавлено: Столбец ОКПО -->
                     <td>
                         {% if doc.design_document and doc.design_document.org %}
                             {{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}
@@ -143,12 +164,12 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="12" style="text-align: center;">Документы не найдены.</td> <!-- Обновлено: colspan=12 (было 11) -->
+                    <td colspan="12" style="text-align: center;">Документы не найдены.</td> 
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-    </div> <!-- Закрытие container -->
+    </div> 
 
     <script>
         const docTypeSelect = document.getElementById('doc_type');
@@ -156,6 +177,10 @@
         const impersonalFields = document.getElementById('impersonal-fields');
         const isOkpoCheckbox = document.getElementById('is_okpo');
         const orgCodeInput = document.getElementById('org_code');
+        const orgNameGroup = document.getElementById('org-name-group');
+        const orgNameInput = document.getElementById('org_name');
+        const orgNameHint = document.getElementById('org-name-hint');
+        const form = document.getElementById('create-doc-form');
 
         docTypeSelect.addEventListener('change', function() {
             if (this.value === 'DD') {
@@ -176,7 +201,6 @@
             }
         });
 
-        // Динамическая валидация для ОКПО
         isOkpoCheckbox.addEventListener('change', function() {
             if (this.checked) {
                 orgCodeInput.pattern = '\\d{8}';
@@ -184,6 +208,62 @@
             } else {
                 orgCodeInput.pattern = '[А-Я]{4}|[0-9]{8}';
                 orgCodeInput.title = '4 заглавные русские буквы или 8 цифр';
+            }
+            // Сброс при смене (перепроверить при blur)
+            orgNameGroup.style.display = 'none';
+            orgNameInput.value = '';
+        });
+        orgCodeInput.addEventListener('blur', async function() {
+            const orgCode = this.value.trim();
+            if (!orgCode) {
+                orgNameGroup.style.display = 'none';
+                return;
+            }
+
+            // AJAX-проверка
+            const formData = new FormData();
+            formData.append('org_code', orgCode);
+            formData.append('is_okpo', isOkpoCheckbox.checked ? 'true' : 'false');
+
+            try {
+                const response = await fetch('/api/check_org', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.exists) {
+                    // Существует: Filled readonly, hint для справки
+                    orgNameInput.value = data.name;
+                    orgNameInput.readOnly = true;
+                    orgNameInput.required = false;
+                    orgNameHint.textContent = `Существующая организация: "${data.name}". Не меняйте.`;
+                    orgNameGroup.style.display = 'block';
+                } else {
+                    // Не существует: Empty editable, required, hint для ввода
+                    orgNameInput.value = '';
+                    orgNameInput.readOnly = false;
+                    orgNameInput.required = true;
+                    orgNameHint.textContent = 'Организация не найдена. Введите полное название для создания новой записи.';
+                    orgNameGroup.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Ошибка проверки организации:', error);
+                orgNameGroup.style.display = 'none';
+                orgNameHint.textContent = 'Ошибка проверки. Попробуйте позже.';
+                alert('Ошибка проверки. Попробуйте позже.');
+            }
+        });
+
+        
+        isOkpoCheckbox.addEventListener('change', function() {
+            orgNameGroup.style.display = 'none';
+        });
+
+        form.addEventListener('submit', function(e) {
+            if (orgNameGroup.style.display === 'block' && orgNameInput.required && !orgNameInput.value.trim()) {
+                e.preventDefault();
+                alert('Укажите название новой организации.');
             }
         });
     </script>

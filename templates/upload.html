@@ -3,48 +3,220 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Загрузка файла</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка файла для документа</title>
     <style>
-        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
-        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { margin: 0; }
-        .header a { color: white; text-decoration: none; }
-        .container { padding: 2rem; max-width: 600px; }
-        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        body { 
+            font-family: sans-serif; 
+            margin: 0; 
+            background-color: #f4f4f9; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            padding: 1rem; 
+            box-sizing: border-box; 
+        }
+        .header { 
+            background-color: #007bff; 
+            color: white; 
+            padding: 1rem; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            width: 100%; 
+            max-width: 100%; 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            z-index: 1000; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+            box-sizing: border-box; 
+        }
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .header a { color: white; text-decoration: none; padding: 0.5rem; }
+        .header a:hover { text-decoration: underline; }
+        /* Responsive header: Не выходит за экран на мобильных */
+        @media (max-width: 600px) {
+            .header { 
+                flex-direction: column; 
+                text-align: center; 
+                padding: 0.75rem; 
+            }
+            .header h1 { margin-bottom: 0.5rem; }
+            .header a { font-size: 0.9rem; }
+        }
+        .container { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            max-width: 500px; 
+            width: 100%; /* 90% на мобильных */
+            margin-top: 80px; /* Отступ от fixed header */
+            box-sizing: border-box; 
+        }
+        @media (max-width: 600px) {
+            .container { width: 90%; padding: 1.5rem; }
+        }
         .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; margin-bottom: 0.5rem; }
-        .form-group input[type="file"] { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-        button, a.button { display: inline-block; padding: 0.75rem 1.5rem; margin: 0.5rem; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
-        button[type="submit"] { background-color: #28a745; color: white; }
-        button[type="submit"]:hover { background-color: #218838; }
-        a.button { background-color: #6c757d; color: white; }
-        a.button:hover { background-color: #5a6268; }
-        .info { margin-bottom: 1rem; padding: 1rem; background: #e7f3ff; border-radius: 4px; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        .form-group input[type="file"] { 
+            display: none; /* Hidden, т.к. drop-zone handles */
+        }
+        .drop-zone { 
+            border: 2px dashed #ccc; 
+            padding: 2rem; 
+            text-align: center; 
+            margin: 1rem 0; 
+            border-radius: 8px; 
+            transition: all 0.3s ease; 
+            background-color: #fafafa; 
+            cursor: pointer; 
+        }
+        .drop-zone:hover { 
+            border-color: #007bff; 
+            background-color: #f0f8ff; 
+        }
+        .drop-zone.dragover { 
+            border-color: #28a745; 
+            background-color: #d4edda; 
+        }
+        .drop-zone.ready { 
+            border-color: #28a745; 
+            background-color: #d4edda; 
+        }
+        .drop-zone p { margin: 0 0 1rem 0; color: #6c757d; }
+        .drop-zone .file-info { 
+            color: #007bff; 
+            font-weight: bold; 
+            margin-top: 0.5rem; 
+        }
+        .back-link { 
+            color: #007bff; 
+            text-decoration: none; 
+            display: inline-block; 
+            margin-top: 1rem; 
+        }
+        .back-link:hover { text-decoration: underline; }
+        .error { color: red; margin-top: 0.5rem; padding: 0.5rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Загрузка файла</h1>
-        <a href="/documents">К документам</a>
+        <a href="/documents">К списку документов</a>
     </div>
 
     <div class="container">
-        <div class="form-container">
-            <div class="info">
-                <strong>Документ:</strong> {{ designation }} (ID: {{ doc_id }})<br>
-                {% if file_name %}Файл уже загружен: {{ file_name }}. Для перезагрузки выберите новый файл.{% endif %}
+        <h2>Загрузите файл для документа: {{ designation or 'новый документ' }}</h2>
+        <p>Поддерживаемые форматы: PDF, DOC, DOCX, изображения (PNG, JPG) и другие. Перетащите файл в зону или кликните для выбора.</p>
+        
+        <form action="/documents/{{ doc_id }}/upload" method="post" enctype="multipart/form-data" id="upload-form">
+            <div class="form-group">
+                <label for="file">Перетащите файл в зону ниже или кликните:</label>
+                <input type="file" id="file" name="file" required> <!-- Hidden input -->
             </div>
             
-            <form action="/documents/{{ doc_id }}/upload" method="post" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label for="file">Выберите файл для загрузки:</label>
-                    <input type="file" id="file" name="file" required>
-                </div>
-                
-                <button type="submit">Загрузить файл</button>
-                <a href="/documents" class="button">Загрузить позже</a> <!-- Отмена/позже -->
-            </form>
-        </div>
+            <div class="drop-zone" id="drop-zone">
+                <p id="drop-text">Перетащите файл сюда или кликните для выбора</p>
+                <p id="drop-hint" style="display: none;">Отпустите файл для загрузки</p>
+                <div id="file-info" class="file-info" style="display: none;"></div>
+            </div>
+        </form>
+        
+        <a href="/documents" class="back-link">Вернуться к списку без загрузки</a>
+        
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
     </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file');
+        const dropText = document.getElementById('drop-text');
+        const dropHint = document.getElementById('drop-hint');
+        const fileInfo = document.getElementById('file-info');
+        const form = document.getElementById('upload-form');
+
+        // Drag-and-drop handlers
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('dragover');
+                dropHint.style.display = 'block';
+                dropText.style.display = 'none';
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('dragover');
+                dropHint.style.display = 'none';
+                dropText.style.display = 'block';
+            }, false);
+        });
+
+        // Click on drop-zone to trigger file input
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Handle drop
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                fileInput.files = files;  // Set to input
+                handleFileSelection(files[0]);  // Process and submit
+            }
+        }
+
+        // Handle file input change (from click)
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelection(file) {
+            if (file) {
+                // Validate size (10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('Файл слишком большой (максимум 10 МБ).');
+                    return;
+                }
+                
+                const fileName = file.name;
+                const fileSize = (file.size / 1024).toFixed(2);  // KB
+                fileInfo.textContent = `${fileName} (${fileSize} KB) выбран. Загружаем...`;
+                fileInfo.style.display = 'block';
+                dropZone.classList.add('ready');
+                dropText.style.display = 'none';
+                
+                // // Auto-submit after brief delay
+                // setTimeout(() => {
+                //     if (confirm(`Загрузить файл "${fileName}" для документа "${document.querySelector('h2').textContent}"?`)) {
+                //         form.submit();
+                //     } else {
+                //         // Reset if cancelled
+                //         fileInput.value = '';
+                //         fileInfo.style.display = 'none';
+                //         dropZone.classList.remove('ready');
+                //         dropText.style.display = 'block';
+                //     }
+                // }, 500);  // 0.5s delay for UX
+            }
+        }
+    </script>
 </body>
 </html>
