@@ -20,6 +20,7 @@ class User(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
+    email = Column(String(100), nullable=True) 
 
 class Organization(Base):
     __tablename__ = "organizations"
