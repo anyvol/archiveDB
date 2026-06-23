@@ -7,9 +7,25 @@ from datetime import datetime
 
 Base = declarative_base()
 
+
 class UserRole(str, enum.Enum):
     admin = "admin"
     user = "user"
+    reviewer = "reviewer"
+
+
+class DocumentStatus(str, enum.Enum):
+    pending_review = "pending_review"
+    verified = "verified"
+    requires_correction = "requires_correction"
+
+
+DOCUMENT_STATUS_LABELS = {
+    DocumentStatus.pending_review: "На проверке",
+    DocumentStatus.verified: "Проверено",
+    DocumentStatus.requires_correction: "Требуется исправление",
+}
+
 
 class User(Base):
     __tablename__ = "users"
@@ -20,7 +36,8 @@ class User(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
-    email = Column(String(100), nullable=True) 
+    email = Column(String(100), nullable=True)
+
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -33,11 +50,13 @@ class Organization(Base):
     design_documents = relationship("DesignDocument", back_populates="org")
     tech_documents = relationship("TechDocument", back_populates="org")
 
+
 class ClassCodeKD(Base):
     __tablename__ = "class_codes_kd"
     id = Column(Integer, primary_key=True)
     code = Column(String(6), unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
+
 
 class ClassCodeTD(Base):
     __tablename__ = "class_codes_td"
@@ -45,9 +64,10 @@ class ClassCodeTD(Base):
     code = Column(String(7), unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
 
+
 class BaseDocument(Base):
     __tablename__ = "documents"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     file_name = Column(String, unique=True, nullable=True)
     file_path = Column(String, nullable=True)
@@ -60,20 +80,25 @@ class BaseDocument(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
-    checked = Column(Boolean, default=False, nullable=False)
-    
+    status = Column(
+        SAEnum(DocumentStatus),
+        default=DocumentStatus.pending_review,
+        nullable=False,
+    )
+
     design_document = relationship(
-        "DesignDocument", 
-        back_populates="base_document", 
+        "DesignDocument",
+        back_populates="base_document",
         uselist=False,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     tech_document = relationship(
-        "TechDocument", 
-        back_populates="base_document", 
+        "TechDocument",
+        back_populates="base_document",
         uselist=False,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
+
 
 class DesignDocument(Base):
     __tablename__ = "design_documents"
@@ -83,14 +108,15 @@ class DesignDocument(Base):
     kd_class_code_id = Column(Integer, ForeignKey("class_codes_kd.id"), nullable=False)
     prni = Column(Integer, nullable=False)
     designation = Column(String, unique=True, nullable=False)
-    
+
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
-    doc_kind_code = Column(String(3), nullable=True)  # Код вида по ГОСТ Р 2.102-2023 (e.g., "СБ")
-    
+    doc_kind_code = Column(String(3), nullable=True)
+
     base_document = relationship("BaseDocument", back_populates="design_document")
     kd_class_code = relationship("ClassCodeKD")
     org = relationship("Organization", back_populates="design_documents", foreign_keys=[org_id])
+
 
 class TechDocument(Base):
     __tablename__ = "tech_documents"
@@ -100,10 +126,10 @@ class TechDocument(Base):
     td_class_code_id = Column(Integer, ForeignKey("class_codes_td.id"), nullable=False)
     prn = Column(Integer, nullable=False)
     designation = Column(String, unique=True, nullable=False)
-    
+
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(7), index=True)
-    
+
     base_document = relationship("BaseDocument", back_populates="tech_document")
     td_class_code = relationship("ClassCodeTD")
     org = relationship("Organization", back_populates="tech_documents", foreign_keys=[org_id])

@@ -21,7 +21,10 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set in .env")
 
 
-engine: AsyncEngine = create_async_engine(DATABASE_URL, echo=True)
+engine: AsyncEngine = create_async_engine(
+    DATABASE_URL,
+    echo=os.getenv("SQL_ECHO", "false").lower() == "true",
+)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

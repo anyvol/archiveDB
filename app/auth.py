@@ -21,7 +21,9 @@ from app.models import User
 load_dotenv()
 
 # JWT настройки (с fallback, если .env не задан)
-SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-this-32-chars-min!")  # Генерируйте: openssl rand -hex 32
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY must be set in .env")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 

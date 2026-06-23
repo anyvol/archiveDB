@@ -1,21 +1,20 @@
 # app/routers.py
 
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import APIRouter, Depends, HTTPException, status, Security, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import sessionmaker
 from typing import List, Optional
+
 from app.database import get_session
-from app.models import UserRole, User # ORM-модель для запросов к БД
-from app.schemas import UserCreate, Token
-from app.schemas import User as UserSchema # Pydantic-модель для response_model
-from app.utils import hash_password, verify_password
-from app.auth import create_access_token, get_current_user
-from app.dependencies import oauth2_scheme, get_current_admin_user
-from app.services import authenticate_user
+from app.models import UserRole, User
+from app.schemas import UserCreate, Token, UserAdminUpdate
+from app.schemas import User as UserSchema
+from app.auth import create_access_token, get_current_user, get_password_hash, authenticate_user
+from app.dependencies import get_current_admin_user
 
 router = APIRouter()
+
 
 @router.post("/register", response_model=Token)
 async def register(
@@ -24,65 +23,61 @@ async def register(
     full_name: Optional[str] = Form(None, description="Полное имя"),
     position: Optional[str] = Form(None, description="Должность"),
     department: Optional[str] = Form(None, description="Отдел"),
-    role: str = Form("user", description="Роль (user или admin)"),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
 ):
-    # Проверяем, существует ли пользователь (без изменений)
-    result = await session.execute(
-        select(User).where(User.login == login)
-    )
-    existing_user = result.scalars().first()
-    if existing_user:
+    result = await session.execute(select(User).where(User.login == login))
+    if result.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Login already registered")
 
-    # Создаём пользователя (без изменений, только источники данных)
     user = User(
         login=login,
-        password_hash=hash_password(password),
+        password_hash=get_password_hash(password),
         full_name=full_name,
         position=position,
         department=department,
-        role=UserRole(role)
+        role=UserRole.user,
     )
     session.add(user)
     await session.commit()
-    
+
     access_token = create_access_token({"sub": user.login})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @router.post("/login", response_model=Token)
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), 
-    session: AsyncSession = Depends(get_session)
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_session),
 ):
-    """API-эндпоинт для входа (возвращает JSON)"""
-    token_data = await authenticate_user(
-        session=session, 
-        username=form_data.username, 
-        password=form_data.password
+    return await authenticate_user(
+        session=session,
+        username=form_data.username,
+        password=form_data.password,
     )
-    return token_data
 
-@router.get("/me", response_model=UserSchema, dependencies=[Security(oauth2_scheme)])
+
+@router.get("/me", response_model=UserSchema)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
+
 
 @router.get("/", response_model=List[UserSchema])
 async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1),
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
 ):
     result = await session.execute(select(User).offset(skip).limit(limit))
-    users = result.scalars().all()
-    return users
+    return result.scalars().all()
+
 
 @router.put("/{user_id}", response_model=UserSchema)
 async def update_user(
     user_id: int,
-    user_update: UserCreate,
+    user_update: UserAdminUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),  # проверка прав админа
+    current_user: User = Depends(get_current_admin_user),
 ):
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
@@ -93,21 +88,23 @@ async def update_user(
     user.full_name = user_update.full_name
     user.position = user_update.position
     user.department = user_update.department
-    user.role = UserRole(user_update.role)
+    user.role = user_update.role
 
     await session.commit()
     await session.refresh(user)
     return user
 
+
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,
-    session: AsyncSession = Depends(get_current_admin_user),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
 ):
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     await session.delete(user)
     await session.commit()

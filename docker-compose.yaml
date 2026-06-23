@@ -8,22 +8,23 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    healthcheck:  # <-- Обязательно добавьте
+    healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s  # Даёт 30 сек на инициализацию
+      start_period: 30s
 
   api:
     build: .
     restart: always
     depends_on:
       db:
-        condition: service_healthy  # <-- Это заставит api ждать, пока db не станет healthy
+        condition: service_healthy
     env_file: .env
     volumes:
       - .:/app
+      - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files
     ports:
       - "8000:8000"
     working_dir: /app

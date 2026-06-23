@@ -1,19 +1,25 @@
-#app/schemas.py
+# app/schemas.py
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
 import enum
+
+from app.models import DocumentStatus
+
 
 class UserRole(str, enum.Enum):
     admin = "admin"
     user = "user"
+    reviewer = "reviewer"
+
 
 class UserBase(BaseModel):
     login: str
-    full_name: Optional[str]
-    position: Optional[str]
-    department: Optional[str]
+    full_name: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
     role: UserRole = UserRole.user
+
 
 class UserCreate(BaseModel):
     login: str
@@ -21,69 +27,89 @@ class UserCreate(BaseModel):
     full_name: str | None = None
     position: str | None = None
     department: str | None = None
-    role: str = "user"
+
+
+class UserAdminUpdate(BaseModel):
+    login: str
+    full_name: str | None = None
+    position: str | None = None
+    department: str | None = None
+    role: UserRole = UserRole.user
+
 
 class User(UserBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationBase(BaseModel):
-    code: Optional[str] = Field(None, max_length=4)  # Буквенный код (4 кириллицы) или None для числового
+    code: Optional[str] = Field(None, max_length=4)
     name: str
     code_okpo: bool = Field(False, description="Флаг использования ОКПО")
-    num_code: Optional[int] = Field(None, ge=0, le=99999999, description="Общий 8-значный числовой код")
-    num_code_okpo: Optional[int] = Field(None, ge=0, le=99999999, description="8-значный код ОКПО")
+    num_code: Optional[int] = Field(None, ge=0, le=99999999)
+    num_code_okpo: Optional[int] = Field(None, ge=0, le=99999999)
+
 
 class OrganizationCreate(OrganizationBase):
     pass
 
+
 class Organization(OrganizationBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ClassCodeKDBase(BaseModel):
     code: str = Field(..., max_length=6)
-    description: Optional[str]
+    description: Optional[str] = None
+
 
 class ClassCodeKDCreate(ClassCodeKDBase):
     pass
 
+
 class ClassCodeKD(ClassCodeKDBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ClassCodeTDBase(BaseModel):
     code: str = Field(..., max_length=7)
-    description: Optional[str]
+    description: Optional[str] = None
+
 
 class ClassCodeTDCreate(ClassCodeTDBase):
     pass
 
+
 class ClassCodeTD(ClassCodeTDBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class BaseDocumentBase(BaseModel):
-    file_name: str
-    file_path: str
-    created_by: Optional[str]
+    file_name: Optional[str] = None
+    file_path: Optional[str] = None
+    created_by: Optional[str] = None
     uploaded_by: int
-    position: Optional[str]
-    department: Optional[str]
-    type: str  # 'DD' or 'TD'
+    position: Optional[str] = None
+    department: Optional[str] = None
+    type: str
+    doc_name: Optional[str] = None
+    developed_by: Optional[str] = None
+    status: DocumentStatus = DocumentStatus.pending_review
+
 
 class BaseDocumentCreate(BaseDocumentBase):
     pass
 
+
 class BaseDocument(BaseDocumentBase):
     id: int
-    created_at: Optional[str]
-    class Config:
-        orm_mode = True
+    created_at: Optional[str] = None
+    last_update: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
 
 class DesignDocumentBase(BaseModel):
     org_id: int
@@ -91,13 +117,15 @@ class DesignDocumentBase(BaseModel):
     prni: int
     designation: str
 
+
 class DesignDocumentCreate(DesignDocumentBase):
     base_document_id: int
 
+
 class DesignDocument(DesignDocumentBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class TechDocumentBase(BaseModel):
     org_id: int
@@ -105,14 +133,20 @@ class TechDocumentBase(BaseModel):
     prn: int
     designation: str
 
+
 class TechDocumentCreate(TechDocumentBase):
     base_document_id: int
 
+
 class TechDocument(TechDocumentBase):
     id: int
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class DocumentStatusUpdate(BaseModel):
+    status: DocumentStatus
