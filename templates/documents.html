@@ -10,25 +10,43 @@
         .header h1 { margin: 0; }
         .header a { color: white; text-decoration: none; }
         .container { padding: 2rem; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 2rem; }
-        th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #ddd; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; font-size: 0.9rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
         th { background-color: #f8f9fa; }
-        .delete-form { display: inline; margin-left: 10px; }
-        .delete-form button { background-color: #dc3545; color: white; border: none; padding: 0.5rem 1rem; cursor: pointer; border-radius: 4px; }
-        .delete-form button:hover { background-color: #c82333; }
+        th a { color: #007bff; text-decoration: none; }
+        .filters { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
+        .filters label { display: block; font-size: 0.8rem; margin-bottom: 0.25rem; }
+        .filters input, .filters select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+        .filters-actions { grid-column: 1 / -1; display: flex; gap: 0.5rem; }
+        .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .no-file { color: red; font-weight: bold; }
+        .status-pending { color: #856404; }
+        .status-verified { color: #155724; }
+        .status-correction { color: #721c24; }
+        .actions-cell form { display: inline; margin: 0 2px; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Архив документов</h1>
-        <a href="/logout">Выйти</a>
+        <a href="/logout">Выйти ({{ user.full_name or user.login }})</a>
     </div>
 
     <div class="container">
+        {% if can_create %}
         <h2>Добавить новый документ</h2>
         <form action="/documents/create" method="post" id="create-doc-form" class="form-container">
-            
             <div class="form-group">
                 <label for="doc_type">Тип документа:</label>
                 <select id="doc_type" name="doc_type" required>
@@ -38,62 +56,38 @@
                 </select>
             </div>
 
-            <div id="designation-method-group" class="form-group" style="display: none;">
-                <label for="designation_method">Способ обозначения:</label>
-                <select id="designation_method" name="designation_method">
-                    <option value="impersonal">Обезличенный способ</option>
-                    <option value="object-oriented">Объектно-ориентированный способ</option>
-                </select>
-            </div>
-
-            <div id="impersonal-fields" style="display: none;">
+            <div id="doc-fields" style="display: none;">
                 <div class="form-group">
                     <label for="org_code">Код организации-разработчика (4 буквы или 8 цифр):</label>
-                    <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}" title="4 заглавные русские буквы или 8 цифр">
+                    <input type="text" id="org_code" name="org_code" pattern="[А-Я]{4}|[0-9]{8}">
                 </div>
-
                 <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="is_okpo" name="is_okpo" value="true"> Код по ОК 007-93 (ОКПО)
-                    </label>
-                    <small>Отметьте, если вводите 8-значный код ОКПО (по умолчанию – стандартный код организации).</small>
+                    <label><input type="checkbox" id="is_okpo" name="is_okpo" value="true"> Код по ОКПО</label>
                 </div>
                 <div class="form-group" id="org-name-group" style="display: none;">
-                    <label for="org_name">Название организации (обязательно):</label>
-                    <input type="text" id="org_name" name="org_name" placeholder="Введите полное название организации">
-                    <small id="org-name-hint">Если организация существует, название показано для справки. Для новой – введите обязательно.</small>
+                    <label for="org_name">Название организации:</label>
+                    <input type="text" id="org_name" name="org_name">
+                    <small id="org-name-hint"></small>
                 </div>
                 <div class="form-group">
-                    <label for="class_code">Код классификационной характеристики (6 цифр):</label>
-                    <input type="text" id="class_code" name="class_code" pattern="\d{6}" title="6 цифр">
+                    <label for="class_code" id="class_code_label">Код классификационной характеристики:</label>
+                    <input type="text" id="class_code" name="class_code">
                 </div>
                 <div class="form-group">
-                    <label for="reg_number">Порядковый регистрационный номер (ПРНИ):</label>
+                    <label for="reg_number" id="reg_number_label">Порядковый регистрационный номер (ПРНИ):</label>
                     <input type="text" id="reg_number" name="reg_number" pattern="\d{3,4}">
-                    <small>Оставьте пустым для автоматического присвоения. Заполняйте, только если документ уже был зарегистрирован.</small>
+                    <small>Оставьте пустым для автоматического присвоения.</small>
                 </div>
-                
-                <!-- Код вида документа по ГОСТ Р 2.102-2023 (только для DD) -->
-                <div class="form-group">
-                    <label for="doc_kind_code">Код вида документа (по ГОСТ Р 2.102-2023):</label>
+                <div class="form-group" id="doc-kind-group">
+                    <label for="doc_kind_code">Код вида документа (ГОСТ Р 2.102-2023):</label>
                     <select id="doc_kind_code" name="doc_kind_code">
-                        <option value="" selected>Без кода (например, чертеж детали)</option>
+                        <option value="" selected>Без кода</option>
                         <option value="СБ">Сборочный чертеж (СБ)</option>
                         <option value="СП">Спецификация (СП)</option>
                         <option value="ГЧ">Габаритный чертеж (ГЧ)</option>
-                        <option value="И">Инструкция (И)</option>
-                        <option value="Е1">Схема деления структурная (Е1)</option>
-                        <option value="Э2">Схема электрическая функциональная (Э2)</option>
-                        <option value="ВП">Ведомость покупных изделий (ВП)</option>
-                        <option value="ВС">Ведомость спецификаций (ВС)</option>
                         <option value="ТУ">Технические условия (ТУ)</option>
-                        <option value="РР">Расчет (РР)</option>
-                        <option value="ПМ">Программа и методика испытаний (ПМ)</option>
-                        <option value="ЧО">Чертеж общего вида (ЧО)</option>
                     </select>
-                    <small>Код добавляется к обозначению справа без разделителей. По умолчанию пустой для чертежа детали.</small>
                 </div>
-                
                 <div class="form-group">
                     <label for="doc_name">Наименование документа:</label>
                     <input type="text" id="doc_name" name="doc_name">
@@ -103,177 +97,193 @@
                     <input type="text" id="developed_by" name="developed_by" required>
                 </div>
             </div>
-            
-            <button type="submit">Создать запись и перейти к загрузке</button>
+            <button type="submit" class="btn btn-primary">Создать запись и перейти к загрузке</button>
         </form>
+        {% endif %}
 
         <h2>Список документов</h2>
+        <form method="get" action="/documents" class="filters">
+            <div><label>Обозначение</label><input name="designation" value="{{ filters.designation or '' }}"></div>
+            <div><label>ОКПО</label>
+                <select name="okpo">
+                    <option value="">Все</option>
+                    <option value="yes" {% if filters.okpo == 'yes' %}selected{% endif %}>Да</option>
+                    <option value="no" {% if filters.okpo == 'no' %}selected{% endif %}>Нет</option>
+                </select>
+            </div>
+            <div><label>Разработчик</label><input name="developed_by" value="{{ filters.developed_by or '' }}"></div>
+            <div><label>Наименование</label><input name="doc_name" value="{{ filters.doc_name or '' }}"></div>
+            <div><label>Имя файла</label><input name="file_name" value="{{ filters.file_name or '' }}"></div>
+            <div><label>Тип</label>
+                <select name="doc_type">
+                    <option value="">Все</option>
+                    <option value="DD" {% if filters.doc_type == 'DD' %}selected{% endif %}>КД</option>
+                    <option value="TD" {% if filters.doc_type == 'TD' %}selected{% endif %}>ТД</option>
+                </select>
+            </div>
+            <div><label>Зарегистрировал</label><input name="created_by" value="{{ filters.created_by or '' }}"></div>
+            <div><label>Статус</label>
+                <select name="status">
+                    <option value="">Все</option>
+                    {% for st in DocumentStatus %}
+                    <option value="{{ st.value }}" {% if filters.status == st.value %}selected{% endif %}>{{ DOCUMENT_STATUS_LABELS[st] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div><label>Дата рег. от</label><input name="created_from" placeholder="YYYY-MM-DD" value="{{ filters.created_from or '' }}"></div>
+            <div><label>Дата рег. до</label><input name="created_to" placeholder="YYYY-MM-DD" value="{{ filters.created_to or '' }}"></div>
+            <div><label>Обновлено от</label><input name="updated_from" placeholder="YYYY-MM-DD" value="{{ filters.updated_from or '' }}"></div>
+            <div><label>Обновлено до</label><input name="updated_to" placeholder="YYYY-MM-DD" value="{{ filters.updated_to or '' }}"></div>
+            <input type="hidden" name="sort" value="{{ filters.sort }}">
+            <input type="hidden" name="order" value="{{ filters.order }}">
+            <div class="filters-actions">
+                <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                <a href="/documents" class="btn btn-secondary">Сбросить</a>
+            </div>
+        </form>
+
         <table>
             <thead>
                 <tr>
-                    <th>Обозначение</th>
-                    <th>ОКПО</th>  <!-- Новая колонка для code_okpo -->
-                    <th>Разработчик</th>
-                    <th>Наименование документа</th>
-                    <th>Наименование файла</th>
-                    <th>Тип</th>
-                    <th>Зарегистрировал</th>
-                    <th>Дата регистрации</th>
-                    <th>Последнее обновление</th>
-                    <th>Проверено</th>
+                    {% macro sort_link(col, label) -%}
+                    <th><a href="/documents?{% for k,v in filters.items() if v and k not in ['sort','order'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                    {%- endmacro %}
+                    {{ sort_link('designation', 'Обозначение') }}
+                    {{ sort_link('okpo', 'ОКПО') }}
+                    {{ sort_link('developed_by', 'Разработчик') }}
+                    {{ sort_link('doc_name', 'Наименование') }}
+                    {{ sort_link('file_name', 'Файл') }}
+                    {{ sort_link('type', 'Тип') }}
+                    {{ sort_link('created_by', 'Зарегистрировал') }}
+                    {{ sort_link('created_at', 'Дата рег.') }}
+                    {{ sort_link('last_update', 'Обновлено') }}
+                    {{ sort_link('status', 'Статус') }}
                     <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
                 {% for doc in documents %}
                 <tr>
-                    <td>
-                        {% if doc.design_document %}{{ doc.design_document.designation or 'N/A' }}{% elif doc.tech_document %}{{ doc.tech_document.designation or 'N/A' }}{% else %}N/A{% endif %}
-                    </td>
-                    <td>
-                        {% if doc.design_document and doc.design_document.org %}
-                            {{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}
-                        {% elif doc.tech_document and doc.tech_document.org %}
-                            {{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}
-                        {% else %}
-                            Нет
-                        {% endif %}
-                    </td>
-                    <td>{{ doc.developed_by or 'N/A' }}</td>
-                    <td>{{ doc.doc_name or 'N/A' }}</td>
-                    <td {% if not doc.file_name %}class="no-file"{% endif %}>
-                        {{ doc.file_name or 'Файл не загружен!' }}
-                    </td>
+                    <td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>
+                    <td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>
+                    <td>{{ doc.developed_by or '—' }}</td>
+                    <td>{{ doc.doc_name or '—' }}</td>
+                    <td {% if not doc.file_name %}class="no-file"{% endif %}>{{ doc.file_name or 'Файл не загружен' }}</td>
                     <td>{{ doc.type }}</td>
-                    <td>{{ doc.created_by or 'N/A' }}</td>
-                    <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else 'N/A' }}</td>
-                    <td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else 'N/A' }}</td>
-                    <td>{{ 'Да' if doc.checked else 'Нет' }}</td>
-                    <td>
+                    <td>{{ doc.created_by or '—' }}</td>
+                    <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>
+                    <td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>
+                    <td class="status-{{ doc.status.value }}">{{ DOCUMENT_STATUS_LABELS[doc.status] }}</td>
+                    <td class="actions-cell">
                         {% if doc.file_name %}
-                            <a href="/documents/{{ doc.id }}/download">Скачать</a>
-                        {% else %}
-                            <a href="/documents/{{ doc.id }}/upload">Загрузить файл</a>
+                        <a href="/documents/{{ doc.id }}/download" class="btn btn-sm btn-primary">Скачать</a>
+                        {% elif can_upload_file(user, doc) %}
+                        <a href="/documents/{{ doc.id }}/upload" class="btn btn-sm btn-success">Загрузить</a>
                         {% endif %}
-                        {% if user and user.role == 'admin' %}
-                            <form method="post" action="/documents/{{ doc.id }}/delete" class="delete-form">
-                                <button type="submit" onclick="return confirm('Удалить запись документа (ID: {{ doc.id }})? Это удалит всю запись, включая файл, если он загружен.')">Удалить</button>
-                            </form>
+                        {% if can_upload_file(user, doc) and doc.file_name %}
+                        <a href="/documents/{{ doc.id }}/upload" class="btn btn-sm btn-warning">Заменить файл</a>
+                        {% endif %}
+                        {% if can_edit_document_metadata(user, doc) %}
+                        <a href="/documents/{{ doc.id }}/edit" class="btn btn-sm btn-secondary">Изменить</a>
+                        {% endif %}
+                        {% if can_set_document_status(user) %}
+                        <form method="post" action="/documents/{{ doc.id }}/status" style="display:inline;">
+                            <input type="hidden" name="new_status" value="verified">
+                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Отметить как проверенный?')">Проверено</button>
+                        </form>
+                        <form method="post" action="/documents/{{ doc.id }}/status" style="display:inline;">
+                            <input type="hidden" name="new_status" value="requires_correction">
+                            <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Отметить «Требуется исправление»?')">Исправить</button>
+                        </form>
+                        {% endif %}
+                        {% if can_delete_document(user) %}
+                        <form method="post" action="/documents/{{ doc.id }}/delete" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Удалить документ #{{ doc.id }}?')">Удалить</button>
+                        </form>
                         {% endif %}
                     </td>
                 </tr>
                 {% else %}
-                <tr>
-                    <td colspan="12" style="text-align: center;">Документы не найдены.</td>
-                </tr>
+                <tr><td colspan="11" style="text-align:center;">Документы не найдены.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-
     <script>
         const docTypeSelect = document.getElementById('doc_type');
-        const designationMethodGroup = document.getElementById('designation-method-group');
-        const impersonalFields = document.getElementById('impersonal-fields');
+        const docFields = document.getElementById('doc-fields');
+        const classCodeInput = document.getElementById('class_code');
+        const classCodeLabel = document.getElementById('class_code_label');
+        const regNumberLabel = document.getElementById('reg_number_label');
+        const docKindGroup = document.getElementById('doc-kind-group');
         const isOkpoCheckbox = document.getElementById('is_okpo');
         const orgCodeInput = document.getElementById('org_code');
         const orgNameGroup = document.getElementById('org-name-group');
         const orgNameInput = document.getElementById('org_name');
         const orgNameHint = document.getElementById('org-name-hint');
-        const form = document.getElementById('create-doc-form');
 
-        docTypeSelect.addEventListener('change', function() {
-            if (this.value === 'DD') {
-                designationMethodGroup.style.display = 'block';
-                impersonalFields.style.display = 'block'; 
-            } else {
-                designationMethodGroup.style.display = 'none';
-                impersonalFields.style.display = 'none';
-            }
-        });
-
-        const designationMethodSelect = document.getElementById('designation_method');
-        designationMethodSelect.addEventListener('change', function() {
-            if (this.value === 'impersonal') {
-                impersonalFields.style.display = 'block';
-            } else {
-                impersonalFields.style.display = 'none';
-            }
-        });
-
-        isOkpoCheckbox.addEventListener('change', function() {
-            if (this.checked) {
-                orgCodeInput.pattern = '\\d{8}';
-                orgCodeInput.title = '8 цифр для ОКПО';
-            } else {
-                orgCodeInput.pattern = '[А-Я]{4}|[0-9]{8}';
-                orgCodeInput.title = '4 заглавные русские буквы или 8 цифр';
-            }
-            // Сброс при смене (перепроверить при blur)
-            orgNameGroup.style.display = 'none';
-            orgNameInput.value = '';
-        });
-        orgCodeInput.addEventListener('blur', async function() {
-            const orgCode = this.value.trim();
-            if (!orgCode) {
-                orgNameGroup.style.display = 'none';
+        function updateDocTypeFields() {
+            const type = docTypeSelect.value;
+            if (!type) {
+                docFields.style.display = 'none';
                 return;
             }
+            docFields.style.display = 'block';
+            if (type === 'DD') {
+                classCodeLabel.textContent = 'Код классификационной характеристики (6 цифр):';
+                classCodeInput.pattern = '\\d{6}';
+                classCodeInput.title = '6 цифр';
+                regNumberLabel.textContent = 'Порядковый регистрационный номер (ПРНИ):';
+                docKindGroup.style.display = 'block';
+            } else {
+                classCodeLabel.textContent = 'Код классификационной характеристики (7 цифр):';
+                classCodeInput.pattern = '\\d{7}';
+                classCodeInput.title = '7 цифр';
+                regNumberLabel.textContent = 'Порядковый регистрационный номер (ПРН):';
+                docKindGroup.style.display = 'none';
+            }
+        }
 
-            // AJAX-проверка
-            const formData = new FormData();
-            formData.append('org_code', orgCode);
-            formData.append('is_okpo', isOkpoCheckbox.checked ? 'true' : 'false');
+        if (docTypeSelect) {
+            docTypeSelect.addEventListener('change', updateDocTypeFields);
+        }
 
-            try {
-                const response = await fetch('/api/check_org', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-
-                if (data.exists) {
-                    // Существует: Filled readonly, hint для справки
-                    orgNameInput.value = data.name;
-                    orgNameInput.readOnly = true;
-                    orgNameInput.required = false;
-                    orgNameHint.textContent = `Существующая организация: "${data.name}". Не меняйте.`;
-                    orgNameGroup.style.display = 'block';
-                } else {
-                    // Не существует: Empty editable, required, hint для ввода
-                    orgNameInput.value = '';
-                    orgNameInput.readOnly = false;
-                    orgNameInput.required = true;
-                    orgNameHint.textContent = 'Организация не найдена. Введите полное название для создания новой записи.';
-                    orgNameGroup.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Ошибка проверки организации:', error);
+        if (isOkpoCheckbox) {
+            isOkpoCheckbox.addEventListener('change', function() {
+                orgCodeInput.pattern = this.checked ? '\\d{8}' : '[А-Я]{4}|[0-9]{8}';
                 orgNameGroup.style.display = 'none';
-                orgNameHint.textContent = 'Ошибка проверки. Попробуйте позже.';
-                alert('Ошибка проверки. Попробуйте позже.');
-            }
-        });
+                orgNameInput.value = '';
+            });
+        }
 
-        
-        isOkpoCheckbox.addEventListener('change', function() {
-            orgNameGroup.style.display = 'none';
-        });
-
-        form.addEventListener('submit', function(e) {
-            if (orgNameGroup.style.display === 'block' && orgNameInput.required && !orgNameInput.value.trim()) {
-                e.preventDefault();
-                alert('Укажите название новой организации.');
-            }
-        });
+        if (orgCodeInput) {
+            orgCodeInput.addEventListener('blur', async function() {
+                const orgCode = this.value.trim();
+                if (!orgCode) { orgNameGroup.style.display = 'none'; return; }
+                const formData = new FormData();
+                formData.append('org_code', orgCode);
+                formData.append('is_okpo_str', isOkpoCheckbox.checked ? 'true' : 'false');
+                try {
+                    const response = await fetch('/api/check_org', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    if (data.exists) {
+                        orgNameInput.value = data.name;
+                        orgNameInput.readOnly = true;
+                        orgNameInput.required = false;
+                        orgNameHint.textContent = 'Существующая организация.';
+                    } else {
+                        orgNameInput.value = '';
+                        orgNameInput.readOnly = false;
+                        orgNameInput.required = true;
+                        orgNameHint.textContent = 'Введите название новой организации.';
+                    }
+                    orgNameGroup.style.display = 'block';
+                } catch (e) {
+                    alert('Ошибка проверки организации.');
+                }
+            });
+        }
     </script>
-    <style>
-        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; margin-bottom: 0.5rem; }
-        .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-        small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
-    </style>
 </body>
 </html>
