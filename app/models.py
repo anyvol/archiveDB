@@ -26,6 +26,12 @@ DOCUMENT_STATUS_LABELS = {
     DocumentStatus.requires_correction: "Требуется исправление",
 }
 
+DEPARTMENTS = [
+    "Конструкторский отдел",
+    "Технологический отдел",
+    "Отдел НИОКР",
+]
+
 
 class User(Base):
     __tablename__ = "users"
