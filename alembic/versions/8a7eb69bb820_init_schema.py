@@ -9,20 +9,26 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-
+from sqlalchemy.dialects import postgresql
 
 revision: str = "8a7eb69bb820"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-document_status = sa.Enum(
+# create_type=False: types are created explicitly in upgrade(); avoid duplicate CREATE TYPE on create_table.
+user_role = postgresql.ENUM(
+    "admin", "user", "reviewer",
+    name="userrole",
+    create_type=False,
+)
+document_status = postgresql.ENUM(
     "pending_review",
     "verified",
     "requires_correction",
     name="documentstatus",
+    create_type=False,
 )
-user_role = sa.Enum("admin", "user", "reviewer", name="userrole")
 
 
 def upgrade() -> None:

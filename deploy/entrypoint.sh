@@ -1,15 +1,23 @@
 #!/bin/sh
 set -e
 
+export PYTHONIOENCODING=utf-8
+export LANG=C.UTF-8
+
+echo "=== Archive API startup ==="
+
 echo "Waiting for database..."
 until python -c "
-import os, sys
 from sqlalchemy import create_engine, text
-url = os.environ['DATABASE_URL'].replace('+asyncpg', '+psycopg2')
+from app.migration_config import resolve_alembic_url
+
+url = resolve_alembic_url()
+print(f'Database reachable at: {url.split(\"@\")[-1]}')
 engine = create_engine(url, pool_pre_ping=True)
 with engine.connect() as conn:
     conn.execute(text('SELECT 1'))
-" 2>/dev/null; do
+engine.dispose()
+"; do
     echo "Database not ready, retrying in 2s..."
     sleep 2
 done

@@ -12,6 +12,8 @@ from typing import Optional
 import os
 import logging
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.database import (
     engine,
     get_session,
@@ -79,10 +81,26 @@ app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
 
 
-async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
+async def _get_authenticated_user(
+    access_token: Optional[str],
+    session: AsyncSession,
+) -> User:
     if not access_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован")
     return await get_current_user_from_token(access_token=access_token, db=session)
+
+
+def _redirect_to_login() -> RedirectResponse:
+    response = RedirectResponse(url=app_path("/login"), status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie("access_token", path=cookie_path())
+    return response
+
+
+async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
+    try:
+        return await _get_authenticated_user(access_token, session)
+    except HTTPException:
+        raise
 
 
 def _filter_params(request: Request) -> dict:
@@ -160,6 +178,12 @@ async def handle_login(
         return response
     except HTTPException:
         return RedirectResponse(url=app_path("/login?error=true"), status_code=status.HTTP_303_SEE_OTHER)
+    except SQLAlchemyError:
+        logger.exception("Database error during login for username: %s", username)
+        return RedirectResponse(url=app_path("/login?error=true"), status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        logger.exception("Unexpected error during login for username: %s", username)
+        return RedirectResponse(url=app_path("/login?error=true"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout", response_class=RedirectResponse)
@@ -205,6 +229,14 @@ async def handle_register(
         return RedirectResponse(url=app_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
     except HTTPException:
         return RedirectResponse(url=app_path("/register?error=true"), status_code=status.HTTP_303_SEE_OTHER)
+    except SQLAlchemyError:
+        await session.rollback()
+        logger.exception("Database error during registration for login: %s", login)
+        return RedirectResponse(url=app_path("/register?error=true"), status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        await session.rollback()
+        logger.exception("Unexpected error during registration for login: %s", login)
+        return RedirectResponse(url=app_path("/register?error=true"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents", response_class=HTMLResponse)
@@ -213,10 +245,11 @@ async def documents_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=app_path("/login"))
+    try:
+        user = await _get_authenticated_user(access_token, session)
+    except HTTPException:
+        return _redirect_to_login()
 
-    user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
     documents_from_db = await fetch_documents(session, **filters)
 

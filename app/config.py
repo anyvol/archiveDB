@@ -22,6 +22,8 @@ AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
 
 def app_path(path: str) -> str:
     """Build outward-facing path with APP_BASE_PATH prefix."""
+    if not path or path == "/":
+        return APP_BASE_PATH or "/"
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{APP_BASE_PATH}{path}" if APP_BASE_PATH else path
