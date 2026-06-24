@@ -33,6 +33,33 @@ def list_db_tables(database_url: str | None = None) -> list[str]:
         engine.dispose()
 
 
+def repair_orphaned_enums(database_url: str | None = None) -> bool:
+    """Drop leftover PostgreSQL enum types when schema tables were never created."""
+    from sqlalchemy import create_engine, inspect, text
+
+    url = resolve_alembic_url(database_url)
+    engine = create_engine(url, pool_pre_ping=True)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        if any(name in tables for name in REQUIRED_TABLES):
+            return False
+
+        dropped = False
+        with engine.begin() as conn:
+            for enum_name in ("userrole", "documentstatus"):
+                result = conn.execute(
+                    text("SELECT 1 FROM pg_type WHERE typname = :name"),
+                    {"name": enum_name},
+                )
+                if result.first():
+                    conn.execute(text(f'DROP TYPE IF EXISTS "{enum_name}" CASCADE'))
+                    print(f"Dropped orphaned enum type: {enum_name}")
+                    dropped = True
+        return dropped
+    finally:
+        engine.dispose()
+
+
 def repair_stale_migration_state(database_url: str | None = None) -> bool:
     """
     Clear alembic_version when core tables are missing.

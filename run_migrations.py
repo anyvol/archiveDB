@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from app.migration_config import (
     list_db_tables,
+    repair_orphaned_enums,
     repair_stale_migration_state,
     resolve_alembic_url,
     verify_schema,
@@ -27,6 +28,8 @@ def _config() -> Config:
 
 def _upgrade(cfg: Config, revision: str) -> None:
     print(f"DB tables before upgrade: {list_db_tables() or ['(none)']}")
+    if repair_orphaned_enums():
+        print("Removed orphaned enum types from a previous failed migration.")
     if repair_stale_migration_state():
         print("Re-applying migrations after clearing stale alembic_version.")
     command.upgrade(cfg, revision)
