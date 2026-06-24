@@ -209,7 +209,8 @@ Users access the new service at `http://<host>/reports/`.
 
 | Problem | Check |
 |---------|-------|
-| **API container Restarting (1)** | Run `docker compose logs api --tail=80`. Usually migrations failed or schema incomplete. Fix: comment out `ALEMBIC_DATABASE_URL` in `.env`, then `docker compose exec api python run_migrations.py repair` and `docker compose exec api python run_migrations.py upgrade head`, then `docker compose up -d --build api`. |
+| **API Restarting**, log: `DB tables after upgrade: ['(none)']` | Alembic env.py was not executing migrations (fixed in latest branch). Pull latest, rebuild, or run `docker compose run --rm --entrypoint python api run_migrations.py upgrade head` once. |
+| **API container Restarting (1)** | Run `docker compose logs api --tail=80`. Usually migrations failed or schema incomplete. Fix: comment out `ALEMBIC_DATABASE_URL` in `.env`, then `docker compose run --rm --entrypoint python api run_migrations.py upgrade head`, then `docker compose up -d --build api`. |
 | **500 on login/register**, log: `relation "users" does not exist` | Migrations not applied. Run: `docker compose exec api python run_migrations.py upgrade head`. In `.env`, comment out `ALEMBIC_DATABASE_URL=...@localhost:5433` for Docker production. |
 | 404 on `/documents` | Use `/archive/documents` in production |
 | Login loop | Cookie path — ensure `APP_BASE_PATH=/archive` matches Nginx |

@@ -11,9 +11,10 @@ from app.models import Base
 import sys
 from pathlib import Path
 
-# Добавляем путь к проекту
-project_root = Path(__file__).parent.resolve()
-sys.path.append(str(project_root))
+# Добавляем путь к проекту (/app), а не каталог alembic/
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Загружаем модели (импорт один раз)
 from app.models import Base
@@ -94,5 +95,7 @@ def main():
     else:
         run_migrations_online()
 
-if __name__ == "__main__":
-    main()
+
+# Alembic imports env.py as a module — __name__ is not "__main__".
+# Migration must run at import time (standard Alembic env.py pattern).
+main()
