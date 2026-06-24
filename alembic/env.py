@@ -1,59 +1,72 @@
-import os
-from logging.config import fileConfig
 import logging
-
-from sqlalchemy import pool
-from sqlalchemy import create_engine  # Синхронный engine
-
-from alembic import context
-from app.models import Base
-
+import os
 import sys
+from logging.config import fileConfig
 from pathlib import Path
 
-# Добавляем путь к проекту
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, pool
+
+from alembic import context
+
 project_root = Path(__file__).parent.resolve()
 sys.path.append(str(project_root))
 
-# Загружаем модели (импорт один раз)
-from app.models import Base
+from app.models import Base  # noqa: E402
 
-# Загружаем .env
-from dotenv import load_dotenv
 load_dotenv()
 
-# Инициализируем config
 config = context.config
-
-# Настройка URL БД
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL не задана")
-
-# URL для Alembic (синхронный драйвер для всех операций)
-alembic_url = os.getenv("ALEMBIC_DATABASE_URL", DATABASE_URL.replace("+asyncpg", ""))
-if "+asyncpg" in alembic_url:
-    raise RuntimeError("ALEMBIC_DATABASE_URL должен использовать синхронный драйвер (psycopg2), без +asyncpg")
-
-config.set_main_option("sqlalchemy.url", alembic_url)
-
 logger = logging.getLogger(__name__)
-logger.info(f"ALEMBIC URL (sync): {alembic_url}")
-logger.info(f"DATABASE_URL (original): {DATABASE_URL}")
 
-# Конфигурация логирования
+
+def _sync_database_url(url: str) -> str:
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+
+def _resolve_alembic_url() -> str:
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL не задана")
+
+    sync_from_app = _sync_database_url(database_url)
+    alembic_env = os.getenv("ALEMBIC_DATABASE_URL", "").strip()
+
+    if not alembic_env:
+        return sync_from_app
+
+    if "+asyncpg" in alembic_env:
+        raise RuntimeError(
+            "ALEMBIC_DATABASE_URL должен использовать синхронный драйвер (psycopg2), без +asyncpg"
+        )
+
+    # docker compose exec api: DATABASE_URL -> @db:5432, host-only ALEMBIC URL breaks migrations
+    if "@db:" in database_url and "@localhost" in alembic_env:
+        logger.warning(
+            "ALEMBIC_DATABASE_URL указывает на localhost, но приложение использует @db: — "
+            "для миграций внутри контейнера api берётся DATABASE_URL"
+        )
+        return sync_from_app
+
+    return alembic_env
+
+
+alembic_url = _resolve_alembic_url()
+logger.info("ALEMBIC URL (sync): %s", alembic_url.split("@")[-1] if "@" in alembic_url else alembic_url)
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Проверка, что модели импортированы
-print(f"✅ Загружены таблицы: {list(Base.metadata.tables.keys())}")
 target_metadata = Base.metadata
 
-def run_migrations_offline():
-    """Запуск миграций в оффлайн-режиме (синхронный)."""
-    url = config.get_main_option("sqlalchemy.url")
+
+def run_migrations_offline() -> None:
     context.configure(
-        url=url,
+        url=alembic_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -62,25 +75,23 @@ def run_migrations_offline():
     with context.begin_transaction():
         context.run_migrations()
 
-def do_run_migrations(connection):
-    """Функция для выполнения миграций внутри синхронного контекста."""
+
+def do_run_migrations(connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        compare_type=True,  # Сравнение типов колонок
-        render_as_batch=False,  # Включить для SQLite
+        compare_type=True,
+        render_as_batch=False,
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
-def run_migrations_online():
-    """Запуск миграций в онлайн-режиме (синхронный для теста)."""
-    # Создаём синхронный движок
+
+def run_migrations_online() -> None:
     connectable = create_engine(
-        alembic_url,  # Используем синхронный URL
+        alembic_url,
         poolclass=pool.NullPool,
-        echo=True,  # Включить для отладки SQL
     )
 
     with connectable.connect() as connection:
@@ -88,12 +99,8 @@ def run_migrations_online():
 
     connectable.dispose()
 
-def main():
-    """Основная функция запуска миграций."""
-    if context.is_offline_mode():
-        run_migrations_offline()
-    else:
-        run_migrations_online()
 
-if __name__ == "__main__":
-    main()
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
