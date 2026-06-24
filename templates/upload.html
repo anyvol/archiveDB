@@ -25,7 +25,7 @@
 <body>
     <div class="header">
         <h1>Загрузка файла</h1>
-        <a href="/documents">К списку документов</a>
+        <a href="{{ base_path }}/documents">К списку документов</a>
     </div>
 
     <div class="container">
@@ -39,7 +39,7 @@
         </div>
         {% else %}
         <p>После загрузки документ получит статус «На проверке».</p>
-        <form action="/documents/{{ doc_id }}/upload" method="post" enctype="multipart/form-data" id="upload-form">
+        <form action="{{ base_path }}/documents/{{ doc_id }}/upload" method="post" enctype="multipart/form-data" id="upload-form">
             <input type="file" id="file" name="file" required>
             <div class="drop-zone" id="drop-zone">
                 <p id="drop-text">Перетащите файл сюда или кликните для выбора</p>

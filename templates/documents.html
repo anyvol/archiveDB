@@ -40,13 +40,13 @@
 <body>
     <div class="header">
         <h1>Архив документов</h1>
-        <a href="/logout">Выйти ({{ user.full_name or user.login }})</a>
+        <a href="{{ base_path }}/logout">Выйти ({{ user.full_name or user.login }})</a>
     </div>
 
     <div class="container">
         {% if can_create %}
         <h2>Добавить новый документ</h2>
-        <form action="/documents/create" method="post" id="create-doc-form" class="form-container">
+        <form action="{{ base_path }}/documents/create" method="post" id="create-doc-form" class="form-container">
             <div class="form-group">
                 <label for="doc_type">Тип документа:</label>
                 <select id="doc_type" name="doc_type" required>
@@ -102,7 +102,7 @@
         {% endif %}
 
         <h2>Список документов</h2>
-        <form method="get" action="/documents" class="filters">
+        <form method="get" action="{{ base_path }}/documents" class="filters">
             <div><label>Обозначение</label><input name="designation" value="{{ filters.designation or '' }}"></div>
             <div><label>ОКПО</label>
                 <select name="okpo">
@@ -138,7 +138,7 @@
             <input type="hidden" name="order" value="{{ filters.order }}">
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
-                <a href="/documents" class="btn btn-secondary">Сбросить</a>
+                <a href="{{ base_path }}/documents" class="btn btn-secondary">Сбросить</a>
             </div>
         </form>
 
@@ -146,7 +146,7 @@
             <thead>
                 <tr>
                     {% macro sort_link(col, label) -%}
-                    <th><a href="/documents?{% for k,v in filters.items() if v and k not in ['sort','order'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                    <th><a href="{{ base_path }}/documents?{% for k,v in filters.items() if v and k not in ['sort','order'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
                     {%- endmacro %}
                     {{ sort_link('designation', 'Обозначение') }}
                     {{ sort_link('okpo', 'ОКПО') }}
@@ -176,28 +176,28 @@
                     <td class="status-{{ doc.status.value }}">{{ DOCUMENT_STATUS_LABELS[doc.status] }}</td>
                     <td class="actions-cell">
                         {% if doc.file_name %}
-                        <a href="/documents/{{ doc.id }}/download" class="btn btn-sm btn-primary">Скачать</a>
+                        <a href="{{ base_path }}/documents/{{ doc.id }}/download" class="btn btn-sm btn-primary">Скачать</a>
                         {% elif can_upload_file(user, doc) %}
-                        <a href="/documents/{{ doc.id }}/upload" class="btn btn-sm btn-success">Загрузить</a>
+                        <a href="{{ base_path }}/documents/{{ doc.id }}/upload" class="btn btn-sm btn-success">Загрузить</a>
                         {% endif %}
                         {% if can_upload_file(user, doc) and doc.file_name %}
-                        <a href="/documents/{{ doc.id }}/upload" class="btn btn-sm btn-warning">Заменить файл</a>
+                        <a href="{{ base_path }}/documents/{{ doc.id }}/upload" class="btn btn-sm btn-warning">Заменить файл</a>
                         {% endif %}
                         {% if can_edit_document_metadata(user, doc) %}
-                        <a href="/documents/{{ doc.id }}/edit" class="btn btn-sm btn-secondary">Изменить</a>
+                        <a href="{{ base_path }}/documents/{{ doc.id }}/edit" class="btn btn-sm btn-secondary">Изменить</a>
                         {% endif %}
                         {% if can_set_document_status(user) %}
-                        <form method="post" action="/documents/{{ doc.id }}/status" style="display:inline;">
+                        <form method="post" action="{{ base_path }}/documents/{{ doc.id }}/status" style="display:inline;">
                             <input type="hidden" name="new_status" value="verified">
                             <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Отметить как проверенный?')">Проверено</button>
                         </form>
-                        <form method="post" action="/documents/{{ doc.id }}/status" style="display:inline;">
+                        <form method="post" action="{{ base_path }}/documents/{{ doc.id }}/status" style="display:inline;">
                             <input type="hidden" name="new_status" value="requires_correction">
                             <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Отметить «Требуется исправление»?')">Исправить</button>
                         </form>
                         {% endif %}
                         {% if can_delete_document(user) %}
-                        <form method="post" action="/documents/{{ doc.id }}/delete" style="display:inline;">
+                        <form method="post" action="{{ base_path }}/documents/{{ doc.id }}/delete" style="display:inline;">
                             <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Удалить документ #{{ doc.id }}?')">Удалить</button>
                         </form>
                         {% endif %}
@@ -265,7 +265,7 @@
                 formData.append('org_code', orgCode);
                 formData.append('is_okpo_str', isOkpoCheckbox.checked ? 'true' : 'false');
                 try {
-                    const response = await fetch('/api/check_org', { method: 'POST', body: formData });
+                    const response = await fetch('{{ base_path }}/api/check_org', { method: 'POST', body: formData });
                     const data = await response.json();
                     if (data.exists) {
                         orgNameInput.value = data.name;

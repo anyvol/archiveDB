@@ -1,2 +1,12 @@
 uploaded_files/*
 !uploaded_files/.gitkeep
+
+data/uploads/*
+!data/uploads/.gitkeep
+data/backups/*
+!data/backups/.gitkeep
+
+.env
+
+__pycache__/
+*.py[cod]

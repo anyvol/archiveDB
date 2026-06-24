@@ -11,9 +11,10 @@ from app.models import Base
 import sys
 from pathlib import Path
 
-# Добавляем путь к проекту
-project_root = Path(__file__).parent.resolve()
-sys.path.append(str(project_root))
+# Добавляем путь к проекту (/app), а не каталог alembic/
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Загружаем модели (импорт один раз)
 from app.models import Base
@@ -30,10 +31,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL не задана")
 
-# URL для Alembic (синхронный драйвер для всех операций)
-alembic_url = os.getenv("ALEMBIC_DATABASE_URL", DATABASE_URL.replace("+asyncpg", ""))
-if "+asyncpg" in alembic_url:
-    raise RuntimeError("ALEMBIC_DATABASE_URL должен использовать синхронный драйвер (psycopg2), без +asyncpg")
+from app.migration_config import resolve_alembic_url
+
+alembic_url = resolve_alembic_url(DATABASE_URL)
 
 config.set_main_option("sqlalchemy.url", alembic_url)
 
@@ -45,8 +45,8 @@ logger.info(f"DATABASE_URL (original): {DATABASE_URL}")
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Проверка, что модели импортированы
-print(f"✅ Загружены таблицы: {list(Base.metadata.tables.keys())}")
+# SQLAlchemy model metadata (not necessarily present in PostgreSQL yet)
+print(f"SQLAlchemy models: {list(Base.metadata.tables.keys())}")
 target_metadata = Base.metadata
 
 def run_migrations_offline():
@@ -95,5 +95,7 @@ def main():
     else:
         run_migrations_online()
 
-if __name__ == "__main__":
-    main()
+
+# Alembic imports env.py as a module — __name__ is not "__main__".
+# Migration must run at import time (standard Alembic env.py pattern).
+main()

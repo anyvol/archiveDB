@@ -1,18 +1,16 @@
-# Базовый образ
 FROM python:3.11-slim
 
-# Устанавливаем рабочую директорию
+ENV PYTHONIOENCODING=utf-8 \
+    LANG=C.UTF-8
+
 WORKDIR /app
 
-# Копируем requirements.txt отдельно для оптимизации кэширования
 COPY requirements.txt .
-
-# Устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем все файлы проекта
 COPY . .
+RUN chmod +x deploy/entrypoint.sh
 
-# Команда запуска
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000
 
+ENTRYPOINT ["deploy/entrypoint.sh"]

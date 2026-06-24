@@ -35,7 +35,11 @@ class User(Base):
     full_name = Column(String, nullable=True)
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
-    role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
+    role = Column(
+        SAEnum(UserRole, name="userrole", create_type=False),
+        default=UserRole.user,
+        nullable=False,
+    )
     email = Column(String(100), nullable=True)
 
 
@@ -81,7 +85,7 @@ class BaseDocument(Base):
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
     status = Column(
-        SAEnum(DocumentStatus),
+        SAEnum(DocumentStatus, name="documentstatus", create_type=False),
         default=DocumentStatus.pending_review,
         nullable=False,
     )

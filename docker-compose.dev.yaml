@@ -1,0 +1,21 @@
+# Local development overrides. Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
+
+services:
+  db:
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+
+  api:
+    environment:
+      AUTO_CREATE_TABLES: "true"
+      APP_BASE_PATH: ""
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  proxy:
+    profiles:
+      - with-proxy

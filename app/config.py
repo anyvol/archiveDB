@@ -15,4 +15,22 @@ ALLOWED_EXTENSIONS = {
     if ext.strip()
 }
 
+# URL prefix when served behind reverse proxy (e.g. /archive). Empty for direct dev access.
+APP_BASE_PATH = os.getenv("APP_BASE_PATH", "/archive").rstrip("/")
+AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "false").lower() == "true"
+
+
+def app_path(path: str) -> str:
+    """Build outward-facing path with APP_BASE_PATH prefix."""
+    if not path or path == "/":
+        return APP_BASE_PATH or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{APP_BASE_PATH}{path}" if APP_BASE_PATH else path
+
+
+def cookie_path() -> str:
+    return APP_BASE_PATH or "/"
+
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
