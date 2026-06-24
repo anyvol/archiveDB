@@ -28,7 +28,7 @@
                 </div>
                 {% endif %}
                 
-                <form method="post" action="/login">
+                <form method="post" action="{{ url_path('/login') }}">
                     <div class="mb-3">
                         <label for="username" class="form-label">Логин</label>
                         <input type="text" class="form-control" id="username" name="username" required>
@@ -38,7 +38,7 @@
                         <input type="password" class="form-control" id="password" name="password" required>
                     </div>
                     <button type="submit" class="btn btn-primary">Войти</button>
-                    <a href="/register" class="btn btn-link">Регистрация</a>
+                    <a href="{{ url_path('/register') }}" class="btn btn-link">Регистрация</a>
                 </form>
             </div>
         </div>

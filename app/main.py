@@ -39,7 +39,7 @@ from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists
-from app.config import UPLOAD_DIR
+from app.config import UPLOAD_DIR, ROOT_PATH, url_path
 from app.permissions import (
     can_create_document,
     can_edit_document_metadata,
@@ -64,10 +64,11 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["DOCUMENT_STATUS_LABELS"] = DOCUMENT_STATUS_LABELS
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
+templates.env.globals["url_path"] = url_path
 templates.env.globals["DocumentStatus"] = DocumentStatus
 templates.env.globals["UserRole"] = UserRole
 templates.env.globals["can_upload_file"] = can_upload_file
@@ -77,6 +78,8 @@ templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
+
+_COOKIE_PATH = ROOT_PATH or "/"
 
 
 async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
@@ -107,7 +110,7 @@ def _filter_params(request: Request) -> dict:
 
 @app.get("/", response_class=RedirectResponse)
 async def root():
-    return RedirectResponse(url="/documents")
+    return RedirectResponse(url=url_path("/documents"))
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -119,10 +122,10 @@ async def login_page(
     if access_token:
         try:
             await get_current_user_from_token(access_token=access_token, db=session)
-            return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+            return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
         except HTTPException:
-            response = RedirectResponse(url="/login")
-            response.delete_cookie("access_token")
+            response = RedirectResponse(url=url_path("/login"))
+            response.delete_cookie("access_token", path=_COOKIE_PATH)
             return response
 
     return templates.TemplateResponse(
@@ -143,23 +146,24 @@ async def handle_login(
 ):
     try:
         token_data = await authenticate_user(session, username, password)
-        response = RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+        response = RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
         response.set_cookie(
             key="access_token",
             value=f"Bearer {token_data['access_token']}",
             max_age=3600,
             httponly=True,
             samesite="lax",
+            path=_COOKIE_PATH,
         )
         return response
     except HTTPException:
-        return RedirectResponse(url="/login?error=true", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=url_path("/login?error=true"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/logout", response_class=RedirectResponse)
 async def logout():
-    response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie("access_token")
+    response = RedirectResponse(url=url_path("/login"), status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie("access_token", path=_COOKIE_PATH)
     return response
 
 
@@ -185,10 +189,10 @@ async def handle_register(
     session: AsyncSession = Depends(get_session),
 ):
     if password != password_confirm:
-        return RedirectResponse(url="/register?error=mismatch", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=url_path("/register?error=mismatch"), status_code=status.HTTP_303_SEE_OTHER)
 
     if department not in DEPARTMENTS:
-        return RedirectResponse(url="/register?error=department", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=url_path("/register?error=department"), status_code=status.HTTP_303_SEE_OTHER)
 
     try:
         existing = await session.execute(select(User).where(User.login == login))
@@ -206,9 +210,9 @@ async def handle_register(
             )
         )
         await session.commit()
-        return RedirectResponse(url="/login?success=true", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
     except HTTPException:
-        return RedirectResponse(url="/register?error=exists", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url=url_path("/register?error=exists"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents", response_class=HTMLResponse)
@@ -218,7 +222,7 @@ async def documents_page(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
@@ -243,7 +247,7 @@ async def create_document_record(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     if not can_create_document(user):
@@ -330,7 +334,7 @@ async def create_document_record(
         )
 
     await session.commit()
-    return RedirectResponse(url=f"/documents/{base_doc.id}/upload", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path(f"/documents/{base_doc.id}/upload"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents/{doc_id}/upload", response_class=HTMLResponse)
@@ -341,7 +345,7 @@ async def upload_page(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     result = await session.execute(
@@ -381,7 +385,7 @@ async def handle_upload(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     doc = await session.get(BaseDocument, doc_id)
@@ -393,14 +397,14 @@ async def handle_upload(
     try:
         file_path, unique_file_name = await save_upload_file(doc_id, file, doc.file_path)
     except HTTPException:
-        return RedirectResponse(url=f"/documents/{doc_id}/upload?error=invalid", status_code=303)
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
 
     doc.file_path = file_path
     doc.file_name = unique_file_name
     doc.status = DocumentStatus.pending_review
     await session.commit()
 
-    return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents/{doc_id}/download")
@@ -425,7 +429,7 @@ async def edit_document_page(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     doc = await session.get(BaseDocument, doc_id)
@@ -446,7 +450,7 @@ async def edit_document(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     doc = await session.get(BaseDocument, doc_id)
@@ -457,7 +461,7 @@ async def edit_document(
     doc.doc_name = doc_name or None
     doc.developed_by = developed_by
     await session.commit()
-    return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/documents/{doc_id}/status", response_class=RedirectResponse)
@@ -468,7 +472,7 @@ async def set_document_status(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     require_status_change_permission(user)
@@ -487,7 +491,7 @@ async def set_document_status(
 
     doc.status = status_enum
     await session.commit()
-    return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
@@ -497,7 +501,7 @@ async def delete_document(
     access_token: Optional[str] = Cookie(None),
 ):
     if not access_token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     require_delete_permission(user)
@@ -509,7 +513,7 @@ async def delete_document(
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
     await session.commit()
-    return RedirectResponse(url="/documents", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/api/check_org", response_model=dict)
