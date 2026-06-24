@@ -22,28 +22,42 @@ REQUIRED_TABLES = ("users", "documents", "organizations")
 HEAD_REVISION = "8a7eb69bb820"
 
 
+def list_db_tables(database_url: str | None = None) -> list[str]:
+    from sqlalchemy import create_engine, inspect
+
+    url = resolve_alembic_url(database_url)
+    engine = create_engine(url, pool_pre_ping=True)
+    try:
+        return sorted(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+
 def repair_stale_migration_state(database_url: str | None = None) -> bool:
     """
-    Clear alembic_version when it claims a revision is applied but core tables are missing.
-    Returns True if a repair was performed.
+    Clear alembic_version when core tables are missing.
+    Alembic otherwise skips upgrade while the DB remains empty.
+    Returns True if alembic_version was cleared.
     """
     from sqlalchemy import create_engine, inspect, text
 
     url = resolve_alembic_url(database_url)
     engine = create_engine(url, pool_pre_ping=True)
     try:
-        inspector = inspect(engine)
-        tables = set(inspector.get_table_names())
-        if "alembic_version" not in tables:
+        tables = set(inspect(engine).get_table_names())
+        missing = [name for name in REQUIRED_TABLES if name not in tables]
+        if not missing:
             return False
-        if all(name in tables for name in REQUIRED_TABLES):
+        if "alembic_version" not in tables:
             return False
 
         with engine.begin() as conn:
             version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            if version != HEAD_REVISION:
-                return False
             conn.execute(text("DELETE FROM alembic_version"))
+        print(
+            "Cleared alembic_version "
+            f"(was {version!r}) because table(s) missing: {', '.join(missing)}"
+        )
         return True
     finally:
         engine.dispose()
@@ -63,7 +77,9 @@ def verify_schema(database_url: str | None = None) -> None:
     missing = [name for name in REQUIRED_TABLES if name not in tables]
     if missing:
         joined = ", ".join(missing)
+        existing = ", ".join(sorted(tables)) or "(none)"
         raise RuntimeError(
             f"Database schema is incomplete; missing table(s): {joined}. "
-            "Run: docker compose exec api python run_migrations.py upgrade head"
+            f"Existing DB tables: {existing}. "
+            "Run: docker compose run --rm --entrypoint python api run_migrations.py upgrade head"
         )

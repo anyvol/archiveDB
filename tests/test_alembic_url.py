@@ -65,7 +65,7 @@ def test_repair_stale_migration_state_clears_version_when_tables_missing(monkeyp
 
     class FakeResult:
         def scalar(self):
-            return "8a7eb69bb820"
+            return "some-other-revision"
 
     class FakeConn:
         def execute(self, stmt):
@@ -92,6 +92,21 @@ def test_repair_stale_migration_state_clears_version_when_tables_missing(monkeyp
     monkeypatch.setattr("sqlalchemy.inspect", lambda engine: FakeInspector())
 
     assert repair_stale_migration_state("postgresql+psycopg2://u:p@db:5432/archivedb") is True
+
+
+def test_repair_stale_migration_state_noop_without_alembic_version(monkeypatch):
+    class FakeInspector:
+        def get_table_names(self):
+            return []
+
+    class FakeEngine:
+        def dispose(self):
+            return None
+
+    monkeypatch.setattr("sqlalchemy.create_engine", lambda *args, **kwargs: FakeEngine())
+    monkeypatch.setattr("sqlalchemy.inspect", lambda engine: FakeInspector())
+
+    assert repair_stale_migration_state("postgresql+psycopg2://u:p@db:5432/archivedb") is False
 
 
 def test_repair_stale_migration_state_noop_when_schema_complete(monkeypatch):

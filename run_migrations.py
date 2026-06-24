@@ -7,7 +7,12 @@ from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
 
-from app.migration_config import repair_stale_migration_state, resolve_alembic_url, verify_schema
+from app.migration_config import (
+    list_db_tables,
+    repair_stale_migration_state,
+    resolve_alembic_url,
+    verify_schema,
+)
 
 load_dotenv()
 
@@ -20,6 +25,14 @@ def _config() -> Config:
     return cfg
 
 
+def _upgrade(cfg: Config, revision: str) -> None:
+    print(f"DB tables before upgrade: {list_db_tables() or ['(none)']}")
+    if repair_stale_migration_state():
+        print("Re-applying migrations after clearing stale alembic_version.")
+    command.upgrade(cfg, revision)
+    print(f"DB tables after upgrade: {list_db_tables() or ['(none)']}")
+
+
 def main() -> None:
     args = sys.argv[1:]
     cfg = _config()
@@ -28,10 +41,16 @@ def main() -> None:
         revision = args[1] if len(args) > 1 else "head"
         print(f"Applying migrations up to: {revision}")
         print(f"Database URL host: {resolve_alembic_url().split('@')[-1]}")
-        if repair_stale_migration_state():
-            print("Repaired stale alembic_version (tables were missing). Re-applying migrations.")
-        command.upgrade(cfg, revision)
-        verify_schema()
+        _upgrade(cfg, revision)
+        try:
+            verify_schema()
+        except RuntimeError:
+            if repair_stale_migration_state():
+                print("Schema still incomplete; retrying upgrade once more.")
+                _upgrade(cfg, revision)
+                verify_schema()
+            else:
+                raise
         print("Migrations applied and schema verified.")
         return
 

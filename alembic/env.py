@@ -44,8 +44,8 @@ logger.info(f"DATABASE_URL (original): {DATABASE_URL}")
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Проверка, что модели импортированы
-print(f"Loaded tables: {list(Base.metadata.tables.keys())}")
+# SQLAlchemy model metadata (not necessarily present in PostgreSQL yet)
+print(f"SQLAlchemy models: {list(Base.metadata.tables.keys())}")
 target_metadata = Base.metadata
 
 def run_migrations_offline():
