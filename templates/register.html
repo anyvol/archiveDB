@@ -16,7 +16,7 @@
     </style>
 </head>
 <body>
-    <form action="/register" method="post">
+    <form action="{{ base_path }}/register" method="post">
         <h2>Регистрация</h2>
         {% if error %}
         <div class="alert">Пользователь с таким логином уже существует или произошла ошибка.</div>
@@ -33,7 +33,7 @@
         <label for="department">Отдел:</label>
         <input type="text" id="department" name="department">
         <button type="submit">Зарегистрироваться</button>
-        <div class="link"><a href="/login">Уже есть аккаунт? Войти</a></div>
+        <div class="link"><a href="{{ base_path }}/login">Уже есть аккаунт? Войти</a></div>
     </form>
 </body>
 </html>
