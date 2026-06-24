@@ -39,6 +39,30 @@ class UserAdminUpdate(BaseModel):
 
 class User(UserBase):
     id: int
+    preferred_org_code: Optional[str] = None
+    preferred_org_okpo: bool = False
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
+    preferred_org_code: Optional[str] = None
+    preferred_org_okpo: bool = False
+
+
+class ProjectBase(BaseModel):
+    name: str = Field(..., max_length=255)
+
+
+class ProjectCreate(ProjectBase):
+    pass
+
+
+class Project(ProjectBase):
+    id: int
+    slug: str
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -97,6 +121,7 @@ class BaseDocumentBase(BaseModel):
     type: str
     doc_name: Optional[str] = None
     developed_by: Optional[str] = None
+    project_id: int
     status: DocumentStatus = DocumentStatus.pending_review
 
 

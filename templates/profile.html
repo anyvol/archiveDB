@@ -1,0 +1,115 @@
+<!-- templates/profile.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Личный кабинет</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .container { padding: 2rem; max-width: 640px; margin: 0 auto; }
+        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        .form-container h2 { margin-top: 0; font-size: 1.1rem; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .alert-success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Личный кабинет</h1>
+        <nav>
+            <a href="{{ url_path('/documents') }}">Архив документов</a>
+            <a href="{{ url_path('/logout') }}">Выйти ({{ user.full_name or user.login }})</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        {% if success %}
+        <div class="alert-success">Профиль успешно сохранён.</div>
+        {% endif %}
+
+        <form action="{{ url_path('/profile') }}" method="post" class="form-container">
+            <h2>Профиль</h2>
+            <div class="form-group">
+                <label for="full_name">ФИО:</label>
+                <input type="text" id="full_name" name="full_name" value="{{ user.full_name or '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="position">Должность:</label>
+                <input type="text" id="position" name="position" value="{{ user.position or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="department">Отдел:</label>
+                <select id="department" name="department" required>
+                    {% for dept in DEPARTMENTS %}
+                    <option value="{{ dept }}" {% if user.department == dept %}selected{% endif %}>{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <h2>Моя компания</h2>
+            <p><small>Если организация найдена в базе, её код будет подставляться автоматически при создании документа.</small></p>
+            <div class="form-group">
+                <label for="preferred_org_code">Код организации (4 буквы или 8 цифр):</label>
+                <input type="text" id="preferred_org_code" name="preferred_org_code" value="{{ user.preferred_org_code or '' }}" maxlength="8">
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" id="preferred_org_okpo" name="preferred_org_okpo" value="true" {% if user.preferred_org_okpo %}checked{% endif %}> Код по ОКПО</label>
+            </div>
+            <div class="form-group" id="org-name-group" {% if not org_display_name %}style="display:none;"{% endif %}>
+                <label>Название организации:</label>
+                <input type="text" id="org_display_name" value="{{ org_display_name }}" readonly style="background:#f8f9fa;">
+                <small id="org-name-hint"></small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </form>
+    </div>
+
+    <script>
+        const isOkpoCheckbox = document.getElementById('preferred_org_okpo');
+        const orgCodeInput = document.getElementById('preferred_org_code');
+        const orgNameGroup = document.getElementById('org-name-group');
+        const orgDisplayName = document.getElementById('org_display_name');
+        const orgNameHint = document.getElementById('org-name-hint');
+
+        if (isOkpoCheckbox) {
+            isOkpoCheckbox.addEventListener('change', function() {
+                orgCodeInput.pattern = this.checked ? '\\d{8}' : '[А-Я]{4}|[0-9]{8}';
+            });
+            orgCodeInput.pattern = isOkpoCheckbox.checked ? '\\d{8}' : '[А-Я]{4}|[0-9]{8}';
+        }
+
+        if (orgCodeInput) {
+            orgCodeInput.addEventListener('blur', async function() {
+                const orgCode = this.value.trim();
+                if (!orgCode) { orgNameGroup.style.display = 'none'; return; }
+                const formData = new FormData();
+                formData.append('org_code', orgCode);
+                formData.append('is_okpo_str', isOkpoCheckbox.checked ? 'true' : 'false');
+                try {
+                    const response = await fetch('{{ url_path('/api/check_org') }}', { method: 'POST', body: formData });
+                    const data = await response.json();
+                    if (data.exists) {
+                        orgDisplayName.value = data.name;
+                        orgNameHint.textContent = 'Организация найдена в базе.';
+                    } else {
+                        orgDisplayName.value = '';
+                        orgNameHint.textContent = 'Организация не найдена. Код сохранится в профиле для подстановки.';
+                    }
+                    orgNameGroup.style.display = 'block';
+                } catch (e) {
+                    alert('Ошибка проверки организации.');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

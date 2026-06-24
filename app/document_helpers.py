@@ -21,7 +21,12 @@ def validate_upload_file(file: UploadFile) -> None:
         )
 
 
-async def save_upload_file(doc_id: int, file: UploadFile, old_path: Optional[str] = None) -> tuple[str, str]:
+async def save_upload_file(
+    doc_id: int,
+    file: UploadFile,
+    project_slug: str,
+    old_path: Optional[str] = None,
+) -> tuple[str, str]:
     validate_upload_file(file)
 
     contents = await file.read()
@@ -36,7 +41,9 @@ async def save_upload_file(doc_id: int, file: UploadFile, old_path: Optional[str
         os.remove(old_path)
 
     safe_name = os.path.basename(file.filename)
-    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{safe_name}")
+    project_dir = os.path.join(UPLOAD_DIR, project_slug)
+    os.makedirs(project_dir, exist_ok=True)
+    file_path = os.path.join(project_dir, f"{doc_id}_{safe_name}")
 
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
