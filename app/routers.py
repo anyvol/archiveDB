@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 from typing import List, Optional
 
 from app.database import get_session
-from app.models import UserRole, User
+from app.models import UserRole, User, DEPARTMENTS
 from app.schemas import UserCreate, Token, UserAdminUpdate
 from app.schemas import User as UserSchema
 from app.auth import create_access_token, get_current_user, get_password_hash, authenticate_user
@@ -20,11 +20,18 @@ router = APIRouter()
 async def register(
     login: str = Form(..., description="Логин пользователя"),
     password: str = Form(..., description="Пароль пользователя"),
+    password_confirm: str = Form(..., description="Подтверждение пароля"),
     full_name: Optional[str] = Form(None, description="Полное имя"),
     position: Optional[str] = Form(None, description="Должность"),
     department: Optional[str] = Form(None, description="Отдел"),
     session: AsyncSession = Depends(get_session),
 ):
+    if password != password_confirm:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пароли не совпадают")
+
+    if department not in DEPARTMENTS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимый отдел")
+
     result = await session.execute(select(User).where(User.login == login))
     if result.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Login already registered")

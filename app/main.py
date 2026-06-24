@@ -32,6 +32,7 @@ from app.models import (
     UserRole,
     DocumentStatus,
     DOCUMENT_STATUS_LABELS,
+    DEPARTMENTS,
 )
 from app.routers import router as user_router
 from app import docs
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["DOCUMENT_STATUS_LABELS"] = DOCUMENT_STATUS_LABELS
+templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 templates.env.globals["DocumentStatus"] = DocumentStatus
 templates.env.globals["UserRole"] = UserRole
 templates.env.globals["can_upload_file"] = can_upload_file
@@ -165,7 +167,10 @@ async def logout():
 async def register_page(request: Request):
     return templates.TemplateResponse(
         "register.html",
-        {"request": request, "error": request.query_params.get("error") == "true"},
+        {
+            "request": request,
+            "error": request.query_params.get("error"),
+        },
     )
 
 
@@ -173,11 +178,18 @@ async def register_page(request: Request):
 async def handle_register(
     login: str = Form(...),
     password: str = Form(...),
+    password_confirm: str = Form(...),
     full_name: str = Form(...),
     position: str = Form(""),
-    department: str = Form(""),
+    department: str = Form(...),
     session: AsyncSession = Depends(get_session),
 ):
+    if password != password_confirm:
+        return RedirectResponse(url="/register?error=mismatch", status_code=status.HTTP_303_SEE_OTHER)
+
+    if department not in DEPARTMENTS:
+        return RedirectResponse(url="/register?error=department", status_code=status.HTTP_303_SEE_OTHER)
+
     try:
         existing = await session.execute(select(User).where(User.login == login))
         if existing.scalars().first():
@@ -196,7 +208,7 @@ async def handle_register(
         await session.commit()
         return RedirectResponse(url="/login?success=true", status_code=status.HTTP_303_SEE_OTHER)
     except HTTPException:
-        return RedirectResponse(url="/register?error=true", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/register?error=exists", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents", response_class=HTMLResponse)
