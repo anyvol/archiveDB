@@ -17,10 +17,10 @@
 <body>
     <div class="header">
         <h1>Редактирование документа #{{ doc.id }}</h1>
-        <a href="/documents">К списку</a>
+        <a href="{{ url_path('/documents') }}">К списку</a>
     </div>
     <div class="container">
-        <form action="/documents/{{ doc.id }}/edit" method="post">
+        <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post">
             <label for="doc_name">Наименование документа:</label>
             <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">
             <label for="developed_by">ФИО разработчика:</label>
