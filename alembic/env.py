@@ -30,10 +30,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL не задана")
 
-# URL для Alembic (синхронный драйвер для всех операций)
-alembic_url = os.getenv("ALEMBIC_DATABASE_URL", DATABASE_URL.replace("+asyncpg", ""))
-if "+asyncpg" in alembic_url:
-    raise RuntimeError("ALEMBIC_DATABASE_URL должен использовать синхронный драйвер (psycopg2), без +asyncpg")
+from app.migration_config import resolve_alembic_url
+
+alembic_url = resolve_alembic_url(DATABASE_URL)
 
 config.set_main_option("sqlalchemy.url", alembic_url)
 
