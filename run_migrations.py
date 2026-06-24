@@ -7,7 +7,7 @@ from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
 
-from app.migration_config import resolve_alembic_url, verify_schema
+from app.migration_config import repair_stale_migration_state, resolve_alembic_url, verify_schema
 
 load_dotenv()
 
@@ -28,9 +28,18 @@ def main() -> None:
         revision = args[1] if len(args) > 1 else "head"
         print(f"Applying migrations up to: {revision}")
         print(f"Database URL host: {resolve_alembic_url().split('@')[-1]}")
+        if repair_stale_migration_state():
+            print("Repaired stale alembic_version (tables were missing). Re-applying migrations.")
         command.upgrade(cfg, revision)
         verify_schema()
         print("Migrations applied and schema verified.")
+        return
+
+    if args[0] == "repair":
+        if repair_stale_migration_state():
+            print("Stale alembic_version cleared.")
+        else:
+            print("No repair needed.")
         return
 
     if args[0] == "verify":

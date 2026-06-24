@@ -19,6 +19,34 @@ def resolve_alembic_url(database_url: str | None = None, alembic_database_url: s
 
 
 REQUIRED_TABLES = ("users", "documents", "organizations")
+HEAD_REVISION = "8a7eb69bb820"
+
+
+def repair_stale_migration_state(database_url: str | None = None) -> bool:
+    """
+    Clear alembic_version when it claims a revision is applied but core tables are missing.
+    Returns True if a repair was performed.
+    """
+    from sqlalchemy import create_engine, inspect, text
+
+    url = resolve_alembic_url(database_url)
+    engine = create_engine(url, pool_pre_ping=True)
+    try:
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+        if "alembic_version" not in tables:
+            return False
+        if all(name in tables for name in REQUIRED_TABLES):
+            return False
+
+        with engine.begin() as conn:
+            version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            if version != HEAD_REVISION:
+                return False
+            conn.execute(text("DELETE FROM alembic_version"))
+        return True
+    finally:
+        engine.dispose()
 
 
 def verify_schema(database_url: str | None = None) -> None:

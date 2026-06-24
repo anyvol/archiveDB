@@ -1,26 +1,29 @@
 #!/bin/sh
 set -e
 
+export PYTHONIOENCODING=utf-8
+export LANG=C.UTF-8
+
+echo "=== Archive API startup ==="
+
 echo "Waiting for database..."
 until python -c "
-import os
 from sqlalchemy import create_engine, text
 from app.migration_config import resolve_alembic_url
 
-engine = create_engine(resolve_alembic_url(), pool_pre_ping=True)
+url = resolve_alembic_url()
+print(f'Database reachable at: {url.split(\"@\")[-1]}')
+engine = create_engine(url, pool_pre_ping=True)
 with engine.connect() as conn:
     conn.execute(text('SELECT 1'))
 engine.dispose()
-" 2>/dev/null; do
+"; do
     echo "Database not ready, retrying in 2s..."
     sleep 2
 done
 
 echo "Running migrations..."
 python run_migrations.py upgrade head
-
-echo "Verifying database schema..."
-python -c "from app.migration_config import verify_schema; verify_schema(); print('Schema OK')"
 
 WORKERS="${UVICORN_WORKERS:-2}"
 echo "Starting uvicorn with ${WORKERS} worker(s)..."

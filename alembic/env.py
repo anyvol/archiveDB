@@ -45,7 +45,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Проверка, что модели импортированы
-print(f"✅ Загружены таблицы: {list(Base.metadata.tables.keys())}")
+print(f"Loaded tables: {list(Base.metadata.tables.keys())}")
 target_metadata = Base.metadata
 
 def run_migrations_offline():
