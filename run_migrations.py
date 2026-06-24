@@ -1,6 +1,46 @@
+"""Run Alembic migrations against the application database."""
+
+import sys
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 from dotenv import load_dotenv
-from alembic.config import main as alembic_main
+
+from app.migration_config import resolve_alembic_url, verify_schema
 
 load_dotenv()
 
-alembic_main()
+
+def _config() -> Config:
+    ini_path = Path(__file__).resolve().parent / "alembic.ini"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("script_location", str(Path(__file__).resolve().parent / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", resolve_alembic_url())
+    return cfg
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    cfg = _config()
+
+    if not args or args[0] == "upgrade":
+        revision = args[1] if len(args) > 1 else "head"
+        print(f"Applying migrations up to: {revision}")
+        print(f"Database URL host: {resolve_alembic_url().split('@')[-1]}")
+        command.upgrade(cfg, revision)
+        verify_schema()
+        print("Migrations applied and schema verified.")
+        return
+
+    if args[0] == "verify":
+        verify_schema()
+        print("Schema verified.")
+        return
+
+    command.upgrade(cfg, "head")
+    verify_schema()
+
+
+if __name__ == "__main__":
+    main()
