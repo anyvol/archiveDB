@@ -9,7 +9,7 @@ from typing import List, Optional
 import os
 
 from app.database import get_session
-from app.models import BaseDocument, DesignDocument, TechDocument, User, DocumentStatus
+from app.models import BaseDocument, DesignDocument, TechDocument, User, DocumentStatus, Project
 from app.schemas import (
     BaseDocument as BaseDocumentSchema,
     DesignDocument as DesignDocumentSchema,
@@ -23,6 +23,7 @@ from app.dependencies import get_current_admin_user, get_current_reviewer_or_adm
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.permissions import require_upload_permission
 from app.document_queries import fetch_documents
+from app.project_helpers import get_legacy_project
 
 router = APIRouter()
 
@@ -52,12 +53,14 @@ async def create_design_document(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    legacy = await get_legacy_project(session)
     base_doc = BaseDocument(
         created_by=current_user.login,
         uploaded_by=current_user.id,
         position=current_user.position,
         department=current_user.department,
         type="DD",
+        project_id=legacy.id,
         status=DocumentStatus.pending_review,
     )
     session.add(base_doc)
@@ -88,12 +91,14 @@ async def create_tech_document(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
+    legacy = await get_legacy_project(session)
     base_doc = BaseDocument(
         created_by=current_user.login,
         uploaded_by=current_user.id,
         position=current_user.position,
         department=current_user.department,
         type="TD",
+        project_id=legacy.id,
         status=DocumentStatus.pending_review,
     )
     session.add(base_doc)
@@ -235,7 +240,9 @@ async def upload_file(
         raise HTTPException(status_code=404, detail="Document not found")
 
     require_upload_permission(current_user, doc)
-    file_path, file_name = await save_upload_file(doc_id, file, doc.file_path)
+    await session.refresh(doc, ["project"])
+    project_slug = doc.project.slug if doc.project else "_legacy"
+    file_path, file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
     doc.file_path = file_path
     doc.file_name = file_name
     doc.status = DocumentStatus.pending_review

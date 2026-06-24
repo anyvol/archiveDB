@@ -33,12 +33,14 @@ from app.models import (
     DocumentStatus,
     DOCUMENT_STATUS_LABELS,
     DEPARTMENTS,
+    Project,
 )
 from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.project_helpers import get_or_create_project
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path
 from app.permissions import (
     can_create_document,
@@ -93,6 +95,8 @@ def _filter_params(request: Request) -> dict:
     return {
         "designation": qp.get("designation") or None,
         "okpo": qp.get("okpo") or None,
+        "org_name": qp.get("org_name") or None,
+        "project_id": qp.get("project_id") or None,
         "developed_by": qp.get("developed_by") or None,
         "doc_name": qp.get("doc_name") or None,
         "file_name": qp.get("file_name") or None,
@@ -227,6 +231,8 @@ async def documents_page(
     user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
     documents_from_db = await fetch_documents(session, **filters)
+    projects_result = await session.execute(select(Project).order_by(Project.name))
+    projects = projects_result.scalars().all()
 
     return templates.TemplateResponse(
         "documents.html",
@@ -235,7 +241,11 @@ async def documents_page(
             "documents": documents_from_db,
             "user": user,
             "filters": filters,
+            "projects": projects,
             "can_create": can_create_document(user),
+            "preferred_org_code": user.preferred_org_code or "",
+            "preferred_org_okpo": user.preferred_org_okpo,
+            "default_developed_by": user.full_name or "",
         },
     )
 
@@ -263,13 +273,18 @@ async def create_document_record(
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = form_data.get("doc_kind_code", "")
+    project_name = form_data.get("project_name", "").strip()
 
     if not developed_by:
         raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
+    if not project_name:
+        raise HTTPException(status_code=400, detail="Необходимо указать проект.")
     if doc_type not in ("DD", "TD"):
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
     if not all([org_code, class_code]):
         raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
+
+    project = await get_or_create_project(session, project_name)
 
     base_doc = BaseDocument(
         type=doc_type,
@@ -279,6 +294,7 @@ async def create_document_record(
         uploaded_by=user.id,
         position=user.position,
         department=user.department,
+        project_id=project.id,
         status=DocumentStatus.pending_review,
     )
     session.add(base_doc)
@@ -350,7 +366,11 @@ async def upload_page(
     user = await get_current_user_from_token(access_token=access_token, db=session)
     result = await session.execute(
         select(BaseDocument)
-        .options(joinedload(BaseDocument.design_document), joinedload(BaseDocument.tech_document))
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+            joinedload(BaseDocument.project),
+        )
         .where(BaseDocument.id == doc_id)
     )
     doc = result.scalar_one_or_none()
@@ -393,9 +413,11 @@ async def handle_upload(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     require_upload_permission(user, doc)
+    await session.refresh(doc, ["project"])
+    project_slug = doc.project.slug if doc.project else "_legacy"
 
     try:
-        file_path, unique_file_name = await save_upload_file(doc_id, file, doc.file_path)
+        file_path, unique_file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
 
@@ -526,3 +548,57 @@ async def check_org_endpoint(
     await _require_user(access_token, session)
     is_okpo = is_okpo_str == "true"
     return await check_org_exists(session, org_code, is_okpo)
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    org_display_name = ""
+    if user.preferred_org_code:
+        org_info = await check_org_exists(session, user.preferred_org_code, user.preferred_org_okpo)
+        if org_info.get("exists"):
+            org_display_name = org_info.get("name", "")
+
+    return templates.TemplateResponse(
+        "profile.html",
+        {
+            "request": request,
+            "user": user,
+            "org_display_name": org_display_name,
+            "success": request.query_params.get("success") == "true",
+        },
+    )
+
+
+@app.post("/profile", response_class=RedirectResponse)
+async def handle_profile(
+    full_name: str = Form(...),
+    position: str = Form(""),
+    department: str = Form(...),
+    preferred_org_code: str = Form(""),
+    preferred_org_okpo: Optional[str] = Form(None),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if department not in DEPARTMENTS:
+        raise HTTPException(status_code=400, detail="Недопустимый отдел.")
+
+    user.full_name = full_name
+    user.position = position or None
+    user.department = department
+    user.preferred_org_code = preferred_org_code.strip() or None
+    user.preferred_org_okpo = preferred_org_okpo == "true"
+
+    await session.commit()
+    return RedirectResponse(url=url_path("/profile?success=true"), status_code=status.HTTP_303_SEE_OTHER)

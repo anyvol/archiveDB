@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from app.database import get_session
 from app.models import UserRole, User, DEPARTMENTS
-from app.schemas import UserCreate, Token, UserAdminUpdate
+from app.schemas import UserCreate, Token, UserAdminUpdate, UserProfileUpdate
 from app.schemas import User as UserSchema
 from app.auth import create_access_token, get_current_user, get_password_hash, authenticate_user
 from app.dependencies import get_current_admin_user
@@ -65,6 +65,30 @@ async def login(
 
 @router.get("/me", response_model=UserSchema)
 async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me/profile", response_model=UserSchema)
+async def update_my_profile(
+    profile: UserProfileUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    if profile.department is not None and profile.department not in DEPARTMENTS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимый отдел")
+
+    if profile.full_name is not None:
+        current_user.full_name = profile.full_name
+    if profile.position is not None:
+        current_user.position = profile.position
+    if profile.department is not None:
+        current_user.department = profile.department
+    if profile.preferred_org_code is not None:
+        current_user.preferred_org_code = profile.preferred_org_code or None
+    current_user.preferred_org_okpo = profile.preferred_org_okpo
+
+    await session.commit()
+    await session.refresh(current_user)
     return current_user
 
 

@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from app.models import BaseDocument, DesignDocument, DocumentStatus, Organization, TechDocument
+from app.models import BaseDocument, DesignDocument, DocumentStatus, Organization, Project, TechDocument
 
 SORTABLE_COLUMNS = {
     "designation": "designation",
     "okpo": "okpo",
+    "org_name": "org_name",
+    "project": "project",
     "developed_by": BaseDocument.developed_by,
     "doc_name": BaseDocument.doc_name,
     "file_name": BaseDocument.file_name,
@@ -39,6 +41,8 @@ def build_documents_query(
     *,
     designation: Optional[str] = None,
     okpo: Optional[str] = None,
+    org_name: Optional[str] = None,
+    project_id: Optional[int] = None,
     developed_by: Optional[str] = None,
     doc_name: Optional[str] = None,
     file_name: Optional[str] = None,
@@ -53,6 +57,7 @@ def build_documents_query(
     order: str = "desc",
 ):
     query = select(BaseDocument).options(
+        joinedload(BaseDocument.project),
         joinedload(BaseDocument.design_document).joinedload(DesignDocument.org),
         joinedload(BaseDocument.tech_document).joinedload(TechDocument.org),
     )
@@ -78,6 +83,26 @@ def build_documents_query(
                 ),
             )
         )
+
+    if org_name:
+        pattern = f"%{org_name.strip()}%"
+        query = query.where(
+            or_(
+                BaseDocument.design_document.has(
+                    DesignDocument.org.has(Organization.name.ilike(pattern))
+                ),
+                BaseDocument.tech_document.has(
+                    TechDocument.org.has(Organization.name.ilike(pattern))
+                ),
+            )
+        )
+
+    if project_id is not None:
+        try:
+            pid = int(project_id)
+            query = query.where(BaseDocument.project_id == pid)
+        except (TypeError, ValueError):
+            pass
 
     if developed_by:
         query = query.where(BaseDocument.developed_by.ilike(f"%{developed_by.strip()}%"))
@@ -112,9 +137,7 @@ def build_documents_query(
         query = query.where(BaseDocument.last_update <= updated_to_dt)
 
     sort_key = SORTABLE_COLUMNS.get(sort, BaseDocument.created_at)
-    if sort_key == "designation":
-        sort_col = BaseDocument.created_at
-    elif sort_key == "okpo":
+    if sort_key in ("designation", "okpo", "org_name", "project"):
         sort_col = BaseDocument.created_at
     else:
         sort_col = sort_key
@@ -123,6 +146,14 @@ def build_documents_query(
     query = query.order_by(direction(sort_col))
 
     return query
+
+
+def _org_name(doc: BaseDocument) -> str:
+    if doc.design_document and doc.design_document.org:
+        return doc.design_document.org.name or ""
+    if doc.tech_document and doc.tech_document.org:
+        return doc.tech_document.org.name or ""
+    return ""
 
 
 async def fetch_documents(session: AsyncSession, **filters):
@@ -154,5 +185,13 @@ async def fetch_documents(session: AsyncSession, **filters):
             return org.code_okpo if org else False
 
         documents = sorted(documents, key=okpo_key, reverse=reverse)
+    elif sort == "org_name":
+        documents = sorted(documents, key=_org_name, reverse=reverse)
+    elif sort == "project":
+        documents = sorted(
+            documents,
+            key=lambda d: d.project.name if d.project else "",
+            reverse=reverse,
+        )
 
     return documents

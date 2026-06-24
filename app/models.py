@@ -43,6 +43,16 @@ class User(Base):
     department = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
     email = Column(String(100), nullable=True)
+    preferred_org_code = Column(String(8), nullable=True)
+    preferred_org_okpo = Column(Boolean, default=False, nullable=False)
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    slug = Column(String(255), unique=True, nullable=False)
+    documents = relationship("BaseDocument", back_populates="project")
 
 
 class Organization(Base):
@@ -86,12 +96,14 @@ class BaseDocument(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     status = Column(
         SAEnum(DocumentStatus),
         default=DocumentStatus.pending_review,
         nullable=False,
     )
 
+    project = relationship("Project", back_populates="documents")
     design_document = relationship(
         "DesignDocument",
         back_populates="base_document",

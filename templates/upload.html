@@ -30,6 +30,9 @@
 
     <div class="container">
         <h2>Документ: {{ designation or ('#' ~ doc_id) }}</h2>
+        {% if doc.project %}
+        <p>Проект: <strong>{{ doc.project.name }}</strong></p>
+        {% endif %}
         <p>Статус: <strong>{{ DOCUMENT_STATUS_LABELS[doc.status] }}</strong></p>
 
         {% if not can_upload %}
