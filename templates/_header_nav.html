@@ -1,0 +1,7 @@
+<nav>
+    <a href="{{ url_path('/profile') }}">Личный кабинет</a>
+    <a href="{{ url_path('/notifications') }}" id="notifications-link">
+        Уведомления{% if unread_count %} ({{ unread_count }}){% endif %}
+    </a>
+    <a href="{{ url_path('/logout') }}">Выйти ({{ user.full_name or user.login }})</a>
+</nav>

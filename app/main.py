@@ -41,7 +41,7 @@ from app.auth import get_current_user_from_token, authenticate_user, get_passwor
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_or_create_project
-from app.config import UPLOAD_DIR, ROOT_PATH, url_path
+from app.config import UPLOAD_DIR, ROOT_PATH, url_path, SERVICE_VERSION
 from app.permissions import (
     can_create_document,
     can_edit_document_metadata,
@@ -52,6 +52,17 @@ from app.permissions import (
     require_edit_metadata_permission,
     require_status_change_permission,
     require_upload_permission,
+)
+from app.user_helpers import build_full_name, split_full_name
+from app.column_preferences import DOCUMENT_COLUMNS, get_visible_columns, DEFAULT_VISIBLE_COLUMNS
+from app.notifications import (
+    count_unread,
+    mark_all_read,
+    get_notifications_for_user,
+    poll_new_notifications,
+    notify_upload,
+    notify_status_change,
+    notify_document_edit,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -77,11 +88,21 @@ templates.env.globals["can_upload_file"] = can_upload_file
 templates.env.globals["can_set_document_status"] = can_set_document_status
 templates.env.globals["can_delete_document"] = can_delete_document
 templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
+templates.env.globals["service_version"] = SERVICE_VERSION
+templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
+templates.env.globals["get_visible_columns"] = get_visible_columns
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
 
 _COOKIE_PATH = ROOT_PATH or "/"
+
+
+async def _page_context(session: AsyncSession, user: User) -> dict:
+    return {
+        "user": user,
+        "unread_count": await count_unread(session, user.id),
+    }
 
 
 async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
@@ -138,6 +159,7 @@ async def login_page(
             "request": request,
             "error": request.query_params.get("error") == "true",
             "success": request.query_params.get("success") == "true",
+            "service_version": SERVICE_VERSION,
         },
     )
 
@@ -187,7 +209,9 @@ async def handle_register(
     login: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
-    full_name: str = Form(...),
+    last_name: str = Form(...),
+    first_name: str = Form(...),
+    patronymic: str = Form(""),
     position: str = Form(""),
     department: str = Form(...),
     session: AsyncSession = Depends(get_session),
@@ -197,6 +221,10 @@ async def handle_register(
 
     if department not in DEPARTMENTS:
         return RedirectResponse(url=url_path("/register?error=department"), status_code=status.HTTP_303_SEE_OTHER)
+
+    full_name = build_full_name(last_name, first_name, patronymic)
+    if not full_name:
+        return RedirectResponse(url=url_path("/register?error=name"), status_code=status.HTTP_303_SEE_OTHER)
 
     try:
         existing = await session.execute(select(User).where(User.login == login))
@@ -233,19 +261,22 @@ async def documents_page(
     documents_from_db = await fetch_documents(session, **filters)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
+    ctx = await _page_context(session, user)
 
     return templates.TemplateResponse(
         "documents.html",
         {
             "request": request,
             "documents": documents_from_db,
-            "user": user,
             "filters": filters,
             "projects": projects,
             "can_create": can_create_document(user),
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
             "default_developed_by": user.full_name or "",
+            "visible_columns": get_visible_columns(user),
+            "service_version": SERVICE_VERSION,
+            **ctx,
         },
     )
 
@@ -408,7 +439,15 @@ async def handle_upload(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    doc = await session.get(BaseDocument, doc_id)
+    result = await session.execute(
+        select(BaseDocument)
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+        )
+        .where(BaseDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
@@ -424,6 +463,7 @@ async def handle_upload(
     doc.file_path = file_path
     doc.file_name = unique_file_name
     doc.status = DocumentStatus.pending_review
+    await notify_upload(session, doc, user)
     await session.commit()
 
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
@@ -458,9 +498,16 @@ async def edit_document_page(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
     if not can_edit_document_metadata(user, doc):
-        raise HTTPException(status_code=403, detail="Редактирование доступно только администратору.")
+        raise HTTPException(
+            status_code=403,
+            detail="Редактирование недоступно. Новое изменение можно сделать только после проверки или отправки на исправление.",
+        )
 
-    return templates.TemplateResponse("edit_document.html", {"request": request, "doc": doc, "user": user})
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "edit_document.html",
+        {"request": request, "doc": doc, "service_version": SERVICE_VERSION, **ctx},
+    )
 
 
 @app.post("/documents/{doc_id}/edit", response_class=RedirectResponse)
@@ -482,6 +529,8 @@ async def edit_document(
     require_edit_metadata_permission(user, doc)
     doc.doc_name = doc_name or None
     doc.developed_by = developed_by
+    doc.status = DocumentStatus.pending_review
+    await notify_document_edit(session, doc, user)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -490,6 +539,7 @@ async def edit_document(
 async def set_document_status(
     doc_id: int,
     new_status: str = Form(...),
+    comment: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -507,11 +557,15 @@ async def set_document_status(
     if status_enum not in (DocumentStatus.verified, DocumentStatus.requires_correction):
         raise HTTPException(status_code=400, detail="Можно установить только «Проверено» или «Требуется исправление».")
 
+    if status_enum == DocumentStatus.requires_correction and not comment.strip():
+        raise HTTPException(status_code=400, detail="Для статуса «Требуется исправление» необходим комментарий.")
+
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     doc.status = status_enum
+    await notify_status_change(session, doc, user, status_enum, comment.strip() or None)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -566,20 +620,31 @@ async def profile_page(
         if org_info.get("exists"):
             org_display_name = org_info.get("name", "")
 
+    last_name, first_name, patronymic = split_full_name(user.full_name)
+    ctx = await _page_context(session, user)
+
     return templates.TemplateResponse(
         "profile.html",
         {
             "request": request,
-            "user": user,
             "org_display_name": org_display_name,
             "success": request.query_params.get("success") == "true",
+            "last_name": last_name,
+            "first_name": first_name,
+            "patronymic": patronymic,
+            "visible_columns": get_visible_columns(user),
+            "service_version": SERVICE_VERSION,
+            **ctx,
         },
     )
 
 
 @app.post("/profile", response_class=RedirectResponse)
 async def handle_profile(
-    full_name: str = Form(...),
+    request: Request,
+    last_name: str = Form(...),
+    first_name: str = Form(...),
+    patronymic: str = Form(""),
     position: str = Form(""),
     department: str = Form(...),
     preferred_org_code: str = Form(""),
@@ -594,11 +659,63 @@ async def handle_profile(
     if department not in DEPARTMENTS:
         raise HTTPException(status_code=400, detail="Недопустимый отдел.")
 
+    full_name = build_full_name(last_name, first_name, patronymic)
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Необходимо указать фамилию и имя.")
+
+    form_data = await request.form()
+    selected_columns = [
+        key for key, _ in DOCUMENT_COLUMNS if form_data.get(f"col_{key}") == "true"
+    ]
+    if not selected_columns:
+        selected_columns = list(DEFAULT_VISIBLE_COLUMNS)
+
     user.full_name = full_name
     user.position = position or None
     user.department = department
     user.preferred_org_code = preferred_org_code.strip() or None
     user.preferred_org_okpo = preferred_org_okpo == "true"
+    user.visible_columns = selected_columns
 
     await session.commit()
     return RedirectResponse(url=url_path("/profile?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+async def notifications_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    await mark_all_read(session, user.id)
+    await session.commit()
+    notifications = await get_notifications_for_user(session, user)
+    ctx = await _page_context(session, user)
+
+    return templates.TemplateResponse(
+        "notifications.html",
+        {
+            "request": request,
+            "notifications": notifications,
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.get("/api/notifications/poll")
+async def poll_notifications_api(
+    after: int = 0,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    notifications = await poll_new_notifications(session, user, after_id=after)
+    unread = await count_unread(session, user.id)
+    return {"notifications": notifications, "unread_count": unread}

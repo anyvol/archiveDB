@@ -34,7 +34,13 @@ def can_delete_document(user: User) -> bool:
 
 
 def can_edit_document_metadata(user: User, doc: BaseDocument) -> bool:
-    return is_admin(user)
+    if doc.status == DocumentStatus.pending_review:
+        return False
+    if is_admin(user):
+        return True
+    if is_owner(user, doc):
+        return doc.status in (DocumentStatus.verified, DocumentStatus.requires_correction)
+    return False
 
 
 def can_upload_file(user: User, doc: BaseDocument) -> bool:

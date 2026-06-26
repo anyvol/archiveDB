@@ -21,6 +21,7 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.notifications import notify_upload, notify_status_change
 from app.permissions import require_upload_permission
 from app.document_queries import fetch_documents
 from app.project_helpers import get_legacy_project
@@ -203,11 +204,17 @@ async def update_document_status(
     if payload.status not in (DocumentStatus.verified, DocumentStatus.requires_correction):
         raise HTTPException(status_code=400, detail="Invalid status for review action")
 
+    if payload.status == DocumentStatus.requires_correction and not (payload.comment or "").strip():
+        raise HTTPException(status_code=400, detail="Comment is required for requires_correction status")
+
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc.status = payload.status
+    await notify_status_change(
+        session, doc, current_user, payload.status, (payload.comment or "").strip() or None
+    )
     await session.commit()
     await session.refresh(doc)
     return doc
@@ -246,6 +253,8 @@ async def upload_file(
     doc.file_path = file_path
     doc.file_name = file_name
     doc.status = DocumentStatus.pending_review
+    await session.refresh(doc, ["design_document", "tech_document"])
+    await notify_upload(session, doc, current_user)
     await session.commit()
     return {"filename": file_name}
 

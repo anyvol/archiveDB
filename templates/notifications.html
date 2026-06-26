@@ -1,0 +1,44 @@
+<!-- templates/notifications.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Уведомления</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .container { padding: 2rem; max-width: 800px; margin: 0 auto; }
+        .notification-list { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .notification-item { padding: 1rem 1.25rem; border-bottom: 1px solid #eee; }
+        .notification-item:last-child { border-bottom: none; }
+        .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
+        .empty { padding: 2rem; text-align: center; color: #6c757d; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Уведомления <span class="version-tag">v{{ service_version }}</span></h1>
+        {% include "_header_nav.html" %}
+    </div>
+
+    <div class="container">
+        <div class="notification-list">
+            {% for n in notifications %}
+            <div class="notification-item">
+                <div>{{ n.message }}</div>
+                <div class="notification-time">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+            </div>
+            {% else %}
+            <div class="empty">Нет уведомлений</div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        sessionStorage.setItem('last_notification_id', '{{ (notifications|map(attribute="id")|list|max) if notifications else 0 }}');
+        sessionStorage.setItem('notifications_initialized', '1');
+    </script>
+</body>
+</html>

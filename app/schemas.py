@@ -41,6 +41,7 @@ class User(UserBase):
     id: int
     preferred_org_code: Optional[str] = None
     preferred_org_okpo: bool = False
+    visible_columns: Optional[list[str]] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -50,6 +51,7 @@ class UserProfileUpdate(BaseModel):
     department: Optional[str] = None
     preferred_org_code: Optional[str] = None
     preferred_org_okpo: bool = False
+    visible_columns: Optional[list[str]] = None
 
 
 class ProjectBase(BaseModel):
@@ -175,3 +177,4 @@ class Token(BaseModel):
 
 class DocumentStatusUpdate(BaseModel):
     status: DocumentStatus
+    comment: Optional[str] = None
