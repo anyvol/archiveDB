@@ -32,6 +32,7 @@ from app.models import (
     UserRole,
     DocumentStatus,
     DOCUMENT_STATUS_LABELS,
+    DOCUMENT_TYPE_LABELS,
     DEPARTMENTS,
     Project,
 )
@@ -80,6 +81,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["DOCUMENT_STATUS_LABELS"] = DOCUMENT_STATUS_LABELS
+templates.env.globals["DOCUMENT_TYPE_LABELS"] = DOCUMENT_TYPE_LABELS
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 templates.env.globals["url_path"] = url_path
 templates.env.globals["DocumentStatus"] = DocumentStatus
@@ -204,47 +206,91 @@ async def register_page(request: Request):
     )
 
 
-@app.post("/register", response_class=RedirectResponse)
+def _register_form_context(
+    request: Request,
+    error: str | None = None,
+    login: str = "",
+    last_name: str = "",
+    first_name: str = "",
+    patronymic: str = "",
+    email: str = "",
+    position: str = "",
+    department: str = "",
+) -> dict:
+    return {
+        "request": request,
+        "error": error,
+        "form_login": login,
+        "form_last_name": last_name,
+        "form_first_name": first_name,
+        "form_patronymic": patronymic,
+        "form_email": email,
+        "form_position": position,
+        "form_department": department,
+    }
+
+
+@app.post("/register", response_class=HTMLResponse)
 async def handle_register(
+    request: Request,
     login: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
     last_name: str = Form(...),
     first_name: str = Form(...),
     patronymic: str = Form(""),
+    email: str = Form(""),
     position: str = Form(""),
     department: str = Form(...),
     session: AsyncSession = Depends(get_session),
 ):
+    form_ctx = _register_form_context(
+        request,
+        login=login,
+        last_name=last_name,
+        first_name=first_name,
+        patronymic=patronymic,
+        email=email,
+        position=position,
+        department=department,
+    )
+
     if password != password_confirm:
-        return RedirectResponse(url=url_path("/register?error=mismatch"), status_code=status.HTTP_303_SEE_OTHER)
+        form_ctx["error"] = "mismatch"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
     if department not in DEPARTMENTS:
-        return RedirectResponse(url=url_path("/register?error=department"), status_code=status.HTTP_303_SEE_OTHER)
+        form_ctx["error"] = "department"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
     full_name = build_full_name(last_name, first_name, patronymic)
     if not full_name:
-        return RedirectResponse(url=url_path("/register?error=name"), status_code=status.HTTP_303_SEE_OTHER)
+        form_ctx["error"] = "name"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
     try:
         existing = await session.execute(select(User).where(User.login == login))
         if existing.scalars().first():
-            raise HTTPException(status_code=400, detail="Пользователь уже существует.")
+            form_ctx["error"] = "exists"
+            return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
         session.add(
             User(
                 login=login,
                 password_hash=get_password_hash(password),
                 full_name=full_name,
-                position=position,
+                position=position or None,
                 department=department,
+                email=email.strip() or None,
                 role=UserRole.user,
             )
         )
         await session.commit()
         return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
-    except HTTPException:
-        return RedirectResponse(url=url_path("/register?error=exists"), status_code=status.HTTP_303_SEE_OTHER)
+    except Exception:
+        logger.exception("Registration failed for login=%s", login)
+        form_ctx["error"] = "server"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=500)
 
 
 @app.get("/documents", response_class=HTMLResponse)
@@ -634,6 +680,7 @@ async def profile_page(
             "patronymic": patronymic,
             "visible_columns": get_visible_columns(user),
             "service_version": SERVICE_VERSION,
+            "nav_context": "profile",
             **ctx,
         },
     )
@@ -645,6 +692,7 @@ async def handle_profile(
     last_name: str = Form(...),
     first_name: str = Form(...),
     patronymic: str = Form(""),
+    email: str = Form(""),
     position: str = Form(""),
     department: str = Form(...),
     preferred_org_code: str = Form(""),
@@ -673,6 +721,7 @@ async def handle_profile(
     user.full_name = full_name
     user.position = position or None
     user.department = department
+    user.email = email.strip() or None
     user.preferred_org_code = preferred_org_code.strip() or None
     user.preferred_org_okpo = preferred_org_okpo == "true"
     user.visible_columns = selected_columns

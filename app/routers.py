@@ -27,6 +27,7 @@ async def register(
     last_name: Optional[str] = Form(None, description="Фамилия"),
     first_name: Optional[str] = Form(None, description="Имя"),
     patronymic: Optional[str] = Form(None, description="Отчество"),
+    email: Optional[str] = Form(None, description="Email"),
     position: Optional[str] = Form(None, description="Должность"),
     department: Optional[str] = Form(None, description="Отдел"),
     session: AsyncSession = Depends(get_session),
@@ -52,6 +53,7 @@ async def register(
         full_name=resolved_name,
         position=position,
         department=department,
+        email=(email or "").strip() or None,
         role=UserRole.user,
     )
     session.add(user)
@@ -91,6 +93,8 @@ async def update_my_profile(
         current_user.full_name = profile.full_name
     if profile.position is not None:
         current_user.position = profile.position
+    if profile.email is not None:
+        current_user.email = profile.email or None
     if profile.department is not None:
         current_user.department = profile.department
     if profile.preferred_org_code is not None:

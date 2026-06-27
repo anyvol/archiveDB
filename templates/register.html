@@ -16,8 +16,9 @@
     </style>
 </head>
 <body>
-    <form action="{{ url_path('/register') }}" method="post">
+    <form action="{{ url_path('/register') }}" method="post" id="register-form">
         <h2>Регистрация</h2>
+        <div id="client-error" class="alert" style="display:none;"></div>
         {% if error == 'exists' %}
         <div class="alert">Пользователь с таким логином уже существует.</div>
         {% elif error == 'mismatch' %}
@@ -26,33 +27,52 @@
         <div class="alert">Выберите отдел из списка.</div>
         {% elif error == 'name' %}
         <div class="alert">Укажите фамилию и имя.</div>
+        {% elif error == 'server' %}
+        <div class="alert">Произошла ошибка при регистрации. Попробуйте позже.</div>
         {% elif error %}
         <div class="alert">Произошла ошибка при регистрации.</div>
         {% endif %}
         <p class="hint">Новые пользователи регистрируются с ролью «Пользователь». Роли администратора и проверяющего назначаются вручную в базе данных.</p>
         <label for="login">Логин:</label>
-        <input type="text" id="login" name="login" required minlength="3" maxlength="50">
+        <input type="text" id="login" name="login" required minlength="3" maxlength="50" value="{{ form_login or '' }}">
         <label for="password">Пароль (мин. 8 символов):</label>
         <input type="password" id="password" name="password" required minlength="8">
         <label for="password_confirm">Подтверждение пароля:</label>
         <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
         <label for="last_name">Фамилия:</label>
-        <input type="text" id="last_name" name="last_name" required>
+        <input type="text" id="last_name" name="last_name" required value="{{ form_last_name or '' }}">
         <label for="first_name">Имя:</label>
-        <input type="text" id="first_name" name="first_name" required>
+        <input type="text" id="first_name" name="first_name" required value="{{ form_first_name or '' }}">
         <label for="patronymic">Отчество (при наличии):</label>
-        <input type="text" id="patronymic" name="patronymic">
+        <input type="text" id="patronymic" name="patronymic" value="{{ form_patronymic or '' }}">
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" value="{{ form_email or '' }}" maxlength="100">
         <label for="position">Должность:</label>
-        <input type="text" id="position" name="position">
+        <input type="text" id="position" name="position" value="{{ form_position or '' }}">
         <label for="department">Отдел:</label>
         <select id="department" name="department" required>
             <option value="">— выберите отдел —</option>
             {% for dept in DEPARTMENTS %}
-            <option value="{{ dept }}">{{ dept }}</option>
+            <option value="{{ dept }}" {% if form_department == dept %}selected{% endif %}>{{ dept }}</option>
             {% endfor %}
         </select>
         <button type="submit">Зарегистрироваться</button>
         <div class="link"><a href="{{ url_path('/login') }}">Уже есть аккаунт? Войти</a></div>
     </form>
+    <script>
+        const form = document.getElementById('register-form');
+        const clientError = document.getElementById('client-error');
+        const password = document.getElementById('password');
+        const passwordConfirm = document.getElementById('password_confirm');
+
+        form.addEventListener('submit', function(e) {
+            if (password.value !== passwordConfirm.value) {
+                e.preventDefault();
+                clientError.textContent = 'Пароли не совпадают.';
+                clientError.style.display = 'block';
+                passwordConfirm.focus();
+            }
+        });
+    </script>
 </body>
 </html>

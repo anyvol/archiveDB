@@ -32,6 +32,11 @@ DOCUMENT_STATUS_LABELS = {
     DocumentStatus.requires_correction: "Требуется исправление",
 }
 
+DOCUMENT_TYPE_LABELS = {
+    "DD": "КД",
+    "TD": "ТД",
+}
+
 DEPARTMENTS = [
     "Конструкторский отдел",
     "Технологический отдел",

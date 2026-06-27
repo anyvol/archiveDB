@@ -37,7 +37,26 @@
         .designation-row .form-group label { font-size: 0.8rem; white-space: nowrap; }
         .field-org input { width: 8ch; min-width: 8ch; max-width: 8ch; }
         .field-class input { width: 9ch; min-width: 9ch; max-width: 9ch; }
-        .field-reg input { width: 4ch; min-width: 4ch; max-width: 4ch; }
+        .field-reg input { width: 6ch; min-width: 6ch; max-width: 6ch; }
+        .field-reg { position: relative; }
+        .field-reg .reg-tooltip {
+            display: none;
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 0.35rem);
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            font-size: 0.75rem;
+            line-height: 1.3;
+            padding: 0.45rem 0.6rem;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .field-reg:hover .reg-tooltip,
+        .field-reg:focus-within .reg-tooltip { display: block; }
         .field-kind select { width: 4.5ch; min-width: 4.5ch; padding: 0.5rem 0.25rem; }
         .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; }
         .field-okpo label { margin: 0; font-size: 0.8rem; white-space: nowrap; cursor: pointer; }
@@ -97,8 +116,8 @@
                     </div>
                     <div class="form-group field-reg">
                         <label for="reg_number" id="reg_number_label">Порядковый №</label>
+                        <span class="reg-tooltip">Для автоматического присвоения порядкового номера оставьте поле пустым</span>
                         <input type="text" id="reg_number" name="reg_number" maxlength="4" pattern="\d{0,4}" autocomplete="off">
-                        <small>Для автоматического присвоения порядкового номера оставьте поле пустым.</small>
                     </div>
                     <div class="form-group field-kind" id="doc-kind-group">
                         <label for="doc_kind_code">Код вида</label>
@@ -218,7 +237,7 @@
                     {% if 'developed_by' in visible_columns %}<td>{{ doc.developed_by or '—' }}</td>{% endif %}
                     {% if 'doc_name' in visible_columns %}<td>{{ doc.doc_name or '—' }}</td>{% endif %}
                     {% if 'file_name' in visible_columns %}<td {% if not doc.file_name %}class="no-file"{% endif %}>{{ doc.file_name or 'Файл не загружен' }}</td>{% endif %}
-                    {% if 'type' in visible_columns %}<td>{{ doc.type }}</td>{% endif %}
+                    {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
                     {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
                     {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
                     {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
