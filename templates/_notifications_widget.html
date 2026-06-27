@@ -1,0 +1,79 @@
+<style>
+    #toast-container {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 360px;
+    }
+    .toast-notification {
+        background: #333;
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        font-size: 0.9rem;
+        animation: toast-in 0.3s ease;
+        cursor: pointer;
+    }
+    .toast-notification:hover { background: #444; }
+    @keyframes toast-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+<div id="toast-container"></div>
+<script>
+(function() {
+    const pollUrl = '{{ url_path("/api/notifications/poll") }}';
+    const notificationsUrl = '{{ url_path("/notifications") }}';
+    const linkEl = document.getElementById('notifications-link');
+    const toastContainer = document.getElementById('toast-container');
+    const storageKey = 'last_notification_id';
+    const initKey = 'notifications_initialized';
+    let lastId = parseInt(sessionStorage.getItem(storageKey) || '0', 10);
+
+    function updateCounter(count) {
+        if (!linkEl) return;
+        linkEl.textContent = count > 0 ? `Уведомления (${count})` : 'Уведомления';
+    }
+
+    function showToast(message) {
+        if (!toastContainer) return;
+        const el = document.createElement('div');
+        el.className = 'toast-notification';
+        el.textContent = message;
+        el.addEventListener('click', () => { window.location.href = notificationsUrl; });
+        toastContainer.appendChild(el);
+        setTimeout(() => el.remove(), 8000);
+    }
+
+    async function poll() {
+        try {
+            const resp = await fetch(`${pollUrl}?after=${lastId}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.unread_count !== undefined) {
+                updateCounter(data.unread_count);
+            }
+            const isFirst = !sessionStorage.getItem(initKey);
+            if (data.notifications && data.notifications.length) {
+                data.notifications.forEach(n => {
+                    if (!isFirst) showToast(n.message);
+                    if (n.id > lastId) lastId = n.id;
+                });
+                sessionStorage.setItem(storageKey, String(lastId));
+            }
+            if (isFirst) {
+                sessionStorage.setItem(initKey, '1');
+            }
+        } catch (e) { /* ignore poll errors */ }
+    }
+
+    poll();
+    setInterval(poll, 15000);
+})();
+</script>

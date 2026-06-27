@@ -27,6 +27,7 @@ class UserCreate(BaseModel):
     full_name: str | None = None
     position: str | None = None
     department: str | None = None
+    email: str | None = None
 
 
 class UserAdminUpdate(BaseModel):
@@ -39,8 +40,10 @@ class UserAdminUpdate(BaseModel):
 
 class User(UserBase):
     id: int
+    email: Optional[str] = None
     preferred_org_code: Optional[str] = None
     preferred_org_okpo: bool = False
+    visible_columns: Optional[list[str]] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -48,8 +51,10 @@ class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     position: Optional[str] = None
     department: Optional[str] = None
+    email: Optional[str] = None
     preferred_org_code: Optional[str] = None
     preferred_org_okpo: bool = False
+    visible_columns: Optional[list[str]] = None
 
 
 class ProjectBase(BaseModel):
@@ -175,3 +180,4 @@ class Token(BaseModel):
 
 class DocumentStatusUpdate(BaseModel):
     status: DocumentStatus
+    comment: Optional[str] = None

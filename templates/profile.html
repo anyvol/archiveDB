@@ -9,25 +9,27 @@
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
         .container { padding: 2rem; max-width: 640px; margin: 0 auto; }
         .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .form-container h2 { margin-top: 0; font-size: 1.1rem; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .columns-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        .columns-grid label { font-weight: normal; cursor: pointer; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
         .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .form-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
         .alert-success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Личный кабинет</h1>
-        <nav>
-            <a href="{{ url_path('/documents') }}">Архив документов</a>
-            <a href="{{ url_path('/logout') }}">Выйти ({{ user.full_name or user.login }})</a>
-        </nav>
+        <h1>Личный кабинет <span class="version-tag">v{{ service_version }}</span></h1>
+        {% include "_header_nav.html" %}
     </div>
 
     <div class="container">
@@ -35,11 +37,23 @@
         <div class="alert-success">Профиль успешно сохранён.</div>
         {% endif %}
 
-        <form action="{{ url_path('/profile') }}" method="post" class="form-container">
+        <form action="{{ url_path('/profile') }}" method="post" class="form-container" id="profile-form">
             <h2>Профиль</h2>
             <div class="form-group">
-                <label for="full_name">ФИО:</label>
-                <input type="text" id="full_name" name="full_name" value="{{ user.full_name or '' }}" required>
+                <label for="last_name">Фамилия:</label>
+                <input type="text" id="last_name" name="last_name" value="{{ last_name }}" required>
+            </div>
+            <div class="form-group">
+                <label for="first_name">Имя:</label>
+                <input type="text" id="first_name" name="first_name" value="{{ first_name }}" required>
+            </div>
+            <div class="form-group">
+                <label for="patronymic">Отчество (при наличии):</label>
+                <input type="text" id="patronymic" name="patronymic" value="{{ patronymic }}">
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" value="{{ user.email or '' }}" maxlength="100">
             </div>
             <div class="form-group">
                 <label for="position">Должность:</label>
@@ -69,9 +83,22 @@
                 <small id="org-name-hint"></small>
             </div>
 
-            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <h2>Отображение колонок в списке документов</h2>
+            <p><small>Выберите колонки, которые будут показаны в таблице документов.</small></p>
+            <div class="columns-grid">
+                {% for key, label in DOCUMENT_COLUMNS %}
+                <label><input type="checkbox" name="col_{{ key }}" value="true" {% if key in visible_columns %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <button type="button" class="btn btn-secondary" id="back-btn">Вернуться</button>
+            </div>
         </form>
     </div>
+
+    {% include "_notifications_widget.html" %}
 
     <script>
         const isOkpoCheckbox = document.getElementById('preferred_org_okpo');
@@ -79,6 +106,40 @@
         const orgNameGroup = document.getElementById('org-name-group');
         const orgDisplayName = document.getElementById('org_display_name');
         const orgNameHint = document.getElementById('org-name-hint');
+        const profileForm = document.getElementById('profile-form');
+        const backBtn = document.getElementById('back-btn');
+        const documentsUrl = '{{ url_path('/documents') }}';
+
+        function getFormSnapshot() {
+            const data = new FormData(profileForm);
+            const cols = [];
+            profileForm.querySelectorAll('input[name^="col_"]').forEach(cb => {
+                cols.push(cb.name + '=' + (cb.checked ? 'true' : 'false'));
+            });
+            cols.sort();
+            return JSON.stringify({
+                last_name: data.get('last_name'),
+                first_name: data.get('first_name'),
+                patronymic: data.get('patronymic'),
+                email: data.get('email'),
+                position: data.get('position'),
+                department: data.get('department'),
+                preferred_org_code: data.get('preferred_org_code'),
+                preferred_org_okpo: data.get('preferred_org_okpo') === 'true',
+                columns: cols.join('|'),
+            });
+        }
+
+        const initialSnapshot = getFormSnapshot();
+
+        backBtn.addEventListener('click', function() {
+            if (getFormSnapshot() !== initialSnapshot) {
+                if (!confirm('Внесены изменения. Вернуться без сохранения?')) {
+                    return;
+                }
+            }
+            window.location.href = documentsUrl;
+        });
 
         if (isOkpoCheckbox) {
             isOkpoCheckbox.addEventListener('change', function() {

@@ -14,11 +14,12 @@
         .drop-zone.ready { border-color: #28a745; background: #d4edda; }
         .drop-zone.dragover { border-color: #007bff; background: #f0f8ff; }
         input[type="file"] { display: none; }
-        .btn { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; }
+        .btn { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.9rem; }
         .btn:disabled { background: #6c757d; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
         .error, .info { padding: 0.75rem; border-radius: 4px; margin-top: 1rem; }
         .error { background: #f8d7da; color: #721c24; }
-        .info { background: #d1ecf1; color: #0c5460; }
         .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
     </style>
 </head>
@@ -33,7 +34,8 @@
         {% if doc.project %}
         <p>Проект: <strong>{{ doc.project.name }}</strong></p>
         {% endif %}
-        <p>Статус: <strong>{{ DOCUMENT_STATUS_LABELS[doc.status] }}</strong></p>
+        {% set display_status = get_document_display_status(doc) %}
+        <p>Статус: <strong>{{ display_status[0] }}</strong></p>
 
         {% if not can_upload %}
         <div class="warning">
@@ -48,7 +50,15 @@
                 <p id="drop-text">Перетащите файл сюда или кликните для выбора</p>
                 <div id="file-info" style="display:none; font-weight:bold; color:#007bff;"></div>
             </div>
-            <button type="submit" class="btn" id="submit-btn" disabled>Загрузить файл</button>
+            <div class="actions">
+                <button type="submit" class="btn" id="submit-btn" disabled>Загрузить файл</button>
+            </div>
+        </form>
+        {% endif %}
+
+        {% if not doc.file_name %}
+        <form action="{{ url_path('/documents/' ~ doc_id ~ '/skip-upload') }}" method="post" class="actions">
+            <button type="submit" class="btn btn-secondary">Продолжить без загрузки</button>
         </form>
         {% endif %}
 

@@ -1,7 +1,7 @@
 # app/models.py
 
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON
 import enum
 from datetime import datetime
 
@@ -20,10 +20,24 @@ class DocumentStatus(str, enum.Enum):
     requires_correction = "requires_correction"
 
 
+class NotificationEventType(str, enum.Enum):
+    upload = "upload"
+    status_change = "status_change"
+    document_edit = "document_edit"
+    document_register = "document_register"
+
+
 DOCUMENT_STATUS_LABELS = {
     DocumentStatus.pending_review: "На проверке",
     DocumentStatus.verified: "Проверено",
     DocumentStatus.requires_correction: "Требуется исправление",
+}
+
+DISPLAY_STATUS_NO_FILE = "Файл не загружен"
+
+DOCUMENT_TYPE_LABELS = {
+    "DD": "КД",
+    "TD": "ТД",
 }
 
 DEPARTMENTS = [
@@ -45,6 +59,23 @@ class User(Base):
     email = Column(String(100), nullable=True)
     preferred_org_code = Column(String(8), nullable=True)
     preferred_org_okpo = Column(Boolean, default=False, nullable=False)
+    visible_columns = Column(JSON, nullable=True)
+    notifications = relationship("Notification", back_populates="user")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    event_type = Column(SAEnum(NotificationEventType), nullable=False)
+
+    user = relationship("User", back_populates="notifications")
+    document = relationship("BaseDocument")
 
 
 class Project(Base):
@@ -102,6 +133,8 @@ class BaseDocument(Base):
         default=DocumentStatus.pending_review,
         nullable=False,
     )
+    review_comment = Column(Text, nullable=True)
+    registration_notified_at = Column(DateTime, nullable=True)
 
     project = relationship("Project", back_populates="documents")
     design_document = relationship(

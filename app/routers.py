@@ -11,7 +11,9 @@ from app.models import UserRole, User, DEPARTMENTS
 from app.schemas import UserCreate, Token, UserAdminUpdate, UserProfileUpdate
 from app.schemas import User as UserSchema
 from app.auth import create_access_token, get_current_user, get_password_hash, authenticate_user
+from app.column_preferences import DEFAULT_VISIBLE_COLUMNS
 from app.dependencies import get_current_admin_user
+from app.user_helpers import build_full_name
 
 router = APIRouter()
 
@@ -22,6 +24,10 @@ async def register(
     password: str = Form(..., description="Пароль пользователя"),
     password_confirm: str = Form(..., description="Подтверждение пароля"),
     full_name: Optional[str] = Form(None, description="Полное имя"),
+    last_name: Optional[str] = Form(None, description="Фамилия"),
+    first_name: Optional[str] = Form(None, description="Имя"),
+    patronymic: Optional[str] = Form(None, description="Отчество"),
+    email: Optional[str] = Form(None, description="Email"),
     position: Optional[str] = Form(None, description="Должность"),
     department: Optional[str] = Form(None, description="Отдел"),
     session: AsyncSession = Depends(get_session),
@@ -32,6 +38,11 @@ async def register(
     if department not in DEPARTMENTS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимый отдел")
 
+    if last_name and first_name:
+        resolved_name = build_full_name(last_name, first_name, patronymic or "")
+    else:
+        resolved_name = full_name
+
     result = await session.execute(select(User).where(User.login == login))
     if result.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Login already registered")
@@ -39,9 +50,10 @@ async def register(
     user = User(
         login=login,
         password_hash=get_password_hash(password),
-        full_name=full_name,
+        full_name=resolved_name,
         position=position,
         department=department,
+        email=(email or "").strip() or None,
         role=UserRole.user,
     )
     session.add(user)
@@ -81,11 +93,15 @@ async def update_my_profile(
         current_user.full_name = profile.full_name
     if profile.position is not None:
         current_user.position = profile.position
+    if profile.email is not None:
+        current_user.email = profile.email or None
     if profile.department is not None:
         current_user.department = profile.department
     if profile.preferred_org_code is not None:
         current_user.preferred_org_code = profile.preferred_org_code or None
     current_user.preferred_org_okpo = profile.preferred_org_okpo
+    if profile.visible_columns is not None:
+        current_user.visible_columns = profile.visible_columns or list(DEFAULT_VISIBLE_COLUMNS)
 
     await session.commit()
     await session.refresh(current_user)

@@ -9,6 +9,7 @@
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
         .container { padding: 2rem; }
         table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; font-size: 0.9rem; }
         th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
@@ -25,56 +26,86 @@
         .btn-warning { background: #ffc107; color: #212529; }
         .btn-danger { background: #dc3545; color: white; }
         .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
-        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .create-section { max-width: 800px; margin: 0 auto 2rem; text-align: center; }
+        .create-section h2 { text-align: center; }
+        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: left; }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-        .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+        .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; justify-content: center; margin-bottom: 1rem; }
         .designation-row .form-group { margin-bottom: 0; flex: 0 0 auto; }
         .designation-row .form-group label { font-size: 0.8rem; white-space: nowrap; }
-        .designation-row .form-group input, .designation-row .form-group select { width: 100%; }
-        .field-org input { width: 9ch; min-width: 9ch; }
-        .field-class input { width: 8ch; min-width: 8ch; }
-        .field-reg input { width: 5ch; min-width: 5ch; }
-        .field-kind select { min-width: 8rem; width: auto; }
-        .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; }
+        .field-org input { width: 8ch; min-width: 8ch; max-width: 8ch; }
+        .field-class input { width: 9ch; min-width: 9ch; max-width: 9ch; }
+        .field-reg input { width: 6ch; min-width: 6ch; max-width: 6ch; }
+        .field-reg { position: relative; }
+        .field-reg .reg-tooltip {
+            display: none;
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 0.35rem);
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            font-size: 0.75rem;
+            line-height: 1.3;
+            padding: 0.45rem 0.6rem;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .field-reg:hover .reg-tooltip,
+        .field-reg:focus-within .reg-tooltip { display: block; }
+        .field-kind select { width: 4.5ch; min-width: 4.5ch; padding: 0.5rem 0.25rem; }
+        .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; }
+        .field-okpo label { margin: 0; font-size: 0.8rem; white-space: nowrap; cursor: pointer; }
+        .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; text-align: center; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .no-file { color: red; font-weight: bold; }
-        .status-pending { color: #856404; }
-        .status-verified { color: #155724; }
-        .status-correction { color: #721c24; }
+        .status-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+        .status-no-file { color: #495057; background: #e9ecef; }
+        .status-pending { color: #856404; background: #fff3cd; }
+        .status-verified { color: #155724; background: #d4edda; }
+        .status-correction { color: #721c24; background: #f8d7da; }
+        .status-comment-link { margin-top: 0.35rem; font-size: 0.8rem; }
+        .status-comment-link a { color: #007bff; }
+        .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
+        .doc-type-buttons .doc-type-btn.active { background: #007bff; color: white; }
         .actions-cell form { display: inline; margin: 0 2px; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: white; padding: 1.5rem; border-radius: 8px; max-width: 420px; width: 90%; }
+        .modal-box textarea { width: 100%; min-height: 80px; margin: 0.75rem 0; box-sizing: border-box; padding: 0.5rem; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Архив документов</h1>
-        <nav>
-            <a href="{{ url_path('/profile') }}">Личный кабинет</a>
-            <a href="{{ url_path('/logout') }}">Выйти ({{ user.full_name or user.login }})</a>
-        </nav>
+        <h1>Архив документов <span class="version-tag">v{{ service_version }}</span></h1>
+        {% include "_header_nav.html" %}
     </div>
 
     <div class="container">
         {% if can_create %}
+        <div class="create-section">
         <h2>Добавить новый документ</h2>
         <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container">
             <div class="form-group">
-                <label for="doc_type">Тип документа:</label>
-                <select id="doc_type" name="doc_type" required>
-                    <option value="" disabled selected>Выберите тип</option>
-                    <option value="DD">Конструкторский документ (КД)</option>
-                    <option value="TD">Технологический документ (ТД)</option>
-                </select>
+                <label>Тип документа:</label>
+                <input type="hidden" id="doc_type" name="doc_type" value="">
+                <div class="doc-type-buttons">
+                    <button type="button" class="btn btn-secondary doc-type-btn" data-type="DD">Конструкторская документация</button>
+                    <button type="button" class="btn btn-secondary doc-type-btn" data-type="TD">Технологическая документация</button>
+                </div>
             </div>
 
             <div id="doc-fields" style="display: none;">
                 <div class="form-group">
                     <label for="project_name">Проект:</label>
-                    <input type="text" id="project_name" name="project_name" list="projects-list" required placeholder="Выберите или введите название проекта">
+                    <input type="text" id="project_name" name="project_name" list="projects-list" required placeholder="Выберите из списка или введите новый проект">
                     <datalist id="projects-list">
                         {% for p in projects %}
-                        <option value="{{ p.name }}">
+                        <option value="{{ p.name }}"></option>
                         {% endfor %}
                     </datalist>
                     <small>Файл будет сохранён в папку проекта на сервере.</small>
@@ -91,6 +122,7 @@
                     </div>
                     <div class="form-group field-reg">
                         <label for="reg_number" id="reg_number_label">Порядковый №</label>
+                        <span class="reg-tooltip">Для автоматического присвоения порядкового номера оставьте поле пустым</span>
                         <input type="text" id="reg_number" name="reg_number" maxlength="4" pattern="\d{0,4}" autocomplete="off">
                     </div>
                     <div class="form-group field-kind" id="doc-kind-group">
@@ -103,11 +135,15 @@
                             <option value="ТУ">ТУ</option>
                         </select>
                     </div>
+                    <div class="form-group field-okpo">
+                        <label><input type="checkbox" id="is_okpo" name="is_okpo" value="true"> ОКПО</label>
+                    </div>
                 </div>
                 <div class="designation-preview" id="designation-preview"></div>
 
                 <div class="form-group">
-                    <label><input type="checkbox" id="is_okpo" name="is_okpo" value="true"> Код по ОКПО</label>
+                    <label for="doc_name">Наименование документа:</label>
+                    <input type="text" id="doc_name" name="doc_name">
                 </div>
                 <div class="form-group" id="org-name-group" style="display: none;">
                     <label for="org_name">Название организации:</label>
@@ -115,16 +151,13 @@
                     <small id="org-name-hint"></small>
                 </div>
                 <div class="form-group">
-                    <label for="doc_name">Наименование документа:</label>
-                    <input type="text" id="doc_name" name="doc_name">
-                </div>
-                <div class="form-group">
                     <label for="developed_by">ФИО разработчика:</label>
                     <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}" required>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">Создать запись и перейти к загрузке</button>
+            <button type="submit" class="btn btn-primary" id="create-submit" style="display: none;">Создать запись и перейти к загрузке</button>
         </form>
+        </div>
         {% endif %}
 
         <h2>Список документов</h2>
@@ -181,7 +214,9 @@
             <thead>
                 <tr>
                     {% macro sort_link(col, label) -%}
+                    {% if col in visible_columns %}
                     <th><a href="{{ url_path('/documents') }}?{% for k,v in filters.items() if v and k not in ['sort','order'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                    {% endif %}
                     {%- endmacro %}
                     {{ sort_link('designation', 'Обозначение') }}
                     {{ sort_link('org_name', 'Компания') }}
@@ -201,18 +236,28 @@
             <tbody>
                 {% for doc in documents %}
                 <tr>
-                    <td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>
-                    <td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>
-                    <td>{{ doc.project.name if doc.project else '—' }}</td>
-                    <td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>
-                    <td>{{ doc.developed_by or '—' }}</td>
-                    <td>{{ doc.doc_name or '—' }}</td>
-                    <td {% if not doc.file_name %}class="no-file"{% endif %}>{{ doc.file_name or 'Файл не загружен' }}</td>
-                    <td>{{ doc.type }}</td>
-                    <td>{{ doc.created_by or '—' }}</td>
-                    <td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>
-                    <td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>
-                    <td class="status-{{ doc.status.value }}">{{ DOCUMENT_STATUS_LABELS[doc.status] }}</td>
+                    {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
+                    {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
+                    {% if 'project' in visible_columns %}<td>{{ doc.project.name if doc.project else '—' }}</td>{% endif %}
+                    {% if 'okpo' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>{% endif %}
+                    {% if 'developed_by' in visible_columns %}<td>{{ doc.developed_by or '—' }}</td>{% endif %}
+                    {% if 'doc_name' in visible_columns %}<td>{{ doc.doc_name or '—' }}</td>{% endif %}
+                    {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
+                    {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
+                    {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
+                    {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
+                    {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
+                    {% if 'status' in visible_columns %}
+                    <td>
+                        {% set display_status = get_document_display_status(doc) %}
+                        <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span>
+                        {% if doc.status.value == 'requires_correction' and doc.review_comment %}
+                        <div class="status-comment-link">
+                            <a href="#" class="view-comment-link" data-comment="{{ doc.review_comment|e }}">Комментарий</a>
+                        </div>
+                        {% endif %}
+                    </td>
+                    {% endif %}
                     <td class="actions-cell">
                         {% if doc.file_name %}
                         <a href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}" class="btn btn-sm btn-primary">Скачать</a>
@@ -230,10 +275,7 @@
                             <input type="hidden" name="new_status" value="verified">
                             <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Отметить как проверенный?')">Проверено</button>
                         </form>
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/status') }}" style="display:inline;">
-                            <input type="hidden" name="new_status" value="requires_correction">
-                            <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Отметить «Требуется исправление»?')">Исправить</button>
-                        </form>
+                        <button type="button" class="btn btn-sm btn-warning correction-btn" data-doc-id="{{ doc.id }}">Исправить</button>
                         {% endif %}
                         {% if can_delete_document(user) %}
                         <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/delete') }}" style="display:inline;">
@@ -243,11 +285,34 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="13" style="text-align:center;">Документы не найдены.</td></tr>
+                <tr><td colspan="{{ visible_columns|length + 1 }}" style="text-align:center;">Документы не найдены.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <div class="modal-overlay" id="comment-view-modal">
+        <div class="modal-box">
+            <h3>Комментарий проверяющего</h3>
+            <p id="comment-view-text" style="white-space: pre-wrap; margin: 1rem 0;"></p>
+            <button type="button" class="btn btn-secondary" id="comment-view-close">Закрыть</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="correction-modal">
+        <div class="modal-box">
+            <h3>Требуется исправление</h3>
+            <p>Укажите комментарий для пользователя:</p>
+            <form method="post" id="correction-form" action="">
+                <input type="hidden" name="new_status" value="requires_correction">
+                <textarea name="comment" required placeholder="Комментарий для исправления..."></textarea>
+                <button type="submit" class="btn btn-warning">Отправить на исправление</button>
+                <button type="button" class="btn btn-secondary" id="correction-cancel">Отмена</button>
+            </form>
+        </div>
+    </div>
+
+    {% include "_notifications_widget.html" %}
 
     <script>
         const PREFERRED_ORG_CODE = {{ preferred_org_code|tojson }};
@@ -267,6 +332,7 @@
         const projectNameInput = document.getElementById('project_name');
         const regNumberInput = document.getElementById('reg_number');
         const docKindSelect = document.getElementById('doc_kind_code');
+        const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
         const createForm = document.getElementById('create-doc-form');
 
@@ -281,7 +347,8 @@
             const cls = classCodeInput.value.trim();
             const reg = regNumberInput.value.trim();
             const kind = docKindSelect.value;
-            if (!org && !cls) {
+            const docName = docNameInput ? docNameInput.value.trim() : '';
+            if (!org && !cls && !docName) {
                 designationPreview.textContent = '';
                 return;
             }
@@ -289,6 +356,7 @@
             preview += '.' + (cls || '?'.repeat(getClassMaxLen()));
             preview += '.' + (reg ? reg.padStart(3, '0') : '???');
             if (docTypeSelect.value === 'DD' && kind) preview += kind;
+            if (docName) preview += ' — ' + docName;
             designationPreview.textContent = preview;
         }
 
@@ -355,11 +423,14 @@
 
         function updateDocTypeFields() {
             const type = docTypeSelect.value;
+            const createSubmit = document.getElementById('create-submit');
             if (!type) {
                 docFields.style.display = 'none';
+                if (createSubmit) createSubmit.style.display = 'none';
                 return;
             }
             docFields.style.display = 'block';
+            if (createSubmit) createSubmit.style.display = 'inline-block';
             const maxClass = getClassMaxLen();
             if (type === 'DD') {
                 classCodeLabel.textContent = 'Характеристика (6)';
@@ -374,7 +445,6 @@
                 regNumberLabel.textContent = 'Порядковый № (ПРН)';
                 docKindGroup.style.display = 'none';
             }
-            document.querySelector('.field-class input').style.width = (maxClass + 2) + 'ch';
             applyPreferredOrg();
             restoreLocalStorage();
             updateDesignationPreview();
@@ -390,7 +460,14 @@
         }
 
         if (docTypeSelect) {
-            docTypeSelect.addEventListener('change', updateDocTypeFields);
+            document.querySelectorAll('.doc-type-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.doc-type-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    docTypeSelect.value = btn.dataset.type;
+                    updateDocTypeFields();
+                });
+            });
         }
 
         if (isOkpoCheckbox) {
@@ -404,6 +481,10 @@
         if (orgCodeInput) {
             orgCodeInput.addEventListener('blur', checkOrg);
             orgCodeInput.addEventListener('input', updateDesignationPreview);
+        }
+
+        if (docNameInput) {
+            docNameInput.addEventListener('input', updateDesignationPreview);
         }
 
         setupAutoAdvance(orgCodeInput, 8, classCodeInput);
@@ -443,6 +524,44 @@
                 if (classCodeInput && classCodeInput.value.trim()) {
                     localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
                 }
+            });
+        }
+
+        const correctionModal = document.getElementById('correction-modal');
+        const correctionForm = document.getElementById('correction-form');
+        const correctionCancel = document.getElementById('correction-cancel');
+        document.querySelectorAll('.correction-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const docId = btn.getAttribute('data-doc-id');
+                correctionForm.action = '{{ url_path('/documents') }}/' + docId + '/status';
+                correctionModal.classList.add('active');
+            });
+        });
+        if (correctionCancel) {
+            correctionCancel.addEventListener('click', () => correctionModal.classList.remove('active'));
+        }
+        if (correctionModal) {
+            correctionModal.addEventListener('click', (e) => {
+                if (e.target === correctionModal) correctionModal.classList.remove('active');
+            });
+        }
+
+        const commentViewModal = document.getElementById('comment-view-modal');
+        const commentViewText = document.getElementById('comment-view-text');
+        const commentViewClose = document.getElementById('comment-view-close');
+        document.querySelectorAll('.view-comment-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                commentViewText.textContent = link.getAttribute('data-comment') || '';
+                commentViewModal.classList.add('active');
+            });
+        });
+        if (commentViewClose) {
+            commentViewClose.addEventListener('click', () => commentViewModal.classList.remove('active'));
+        }
+        if (commentViewModal) {
+            commentViewModal.addEventListener('click', (e) => {
+                if (e.target === commentViewModal) commentViewModal.classList.remove('active');
             });
         }
     </script>

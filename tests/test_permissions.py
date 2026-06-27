@@ -69,7 +69,15 @@ def test_admin_can_always_upload():
     assert can_upload_file(_user(UserRole.admin), doc)
 
 
-def test_only_admin_edits_metadata():
-    doc = _doc()
-    assert can_edit_document_metadata(_user(UserRole.admin), doc)
-    assert not can_edit_document_metadata(_user(UserRole.user), doc)
+def test_edit_metadata_rules():
+    pending = _doc(status=DocumentStatus.pending_review)
+    verified = _doc(uploaded_by=1, status=DocumentStatus.verified)
+    correction = _doc(uploaded_by=1, status=DocumentStatus.requires_correction)
+
+    assert not can_edit_document_metadata(_user(UserRole.admin), pending)
+    assert can_edit_document_metadata(_user(UserRole.admin), verified)
+
+    assert not can_edit_document_metadata(_user(UserRole.user, 1), pending)
+    assert can_edit_document_metadata(_user(UserRole.user, 1), verified)
+    assert can_edit_document_metadata(_user(UserRole.user, 1), correction)
+    assert not can_edit_document_metadata(_user(UserRole.user, 2), verified)
