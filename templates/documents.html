@@ -101,14 +101,13 @@
 
             <div id="doc-fields" style="display: none;">
                 <div class="form-group">
-                    <label for="project_select">Проект:</label>
-                    <select id="project_select">
-                        <option value="">— выберите из списка —</option>
+                    <label for="project_name">Проект:</label>
+                    <input type="text" id="project_name" name="project_name" list="projects-list" required placeholder="Выберите из списка или введите новый проект">
+                    <datalist id="projects-list">
                         {% for p in projects %}
-                        <option value="{{ p.name }}">{{ p.name }}</option>
+                        <option value="{{ p.name }}"></option>
                         {% endfor %}
-                    </select>
-                    <input type="text" id="project_name" name="project_name" required placeholder="Или введите название нового проекта" style="margin-top: 0.5rem;">
+                    </datalist>
                     <small>Файл будет сохранён в папку проекта на сервере.</small>
                 </div>
 
@@ -398,17 +397,8 @@
 
         function restoreLocalStorage() {
             const lastProject = localStorage.getItem('last_project_name');
-            const projectSelect = document.getElementById('project_select');
             if (lastProject && projectNameInput && !projectNameInput.value) {
                 projectNameInput.value = lastProject;
-                if (projectSelect) {
-                    for (const opt of projectSelect.options) {
-                        if (opt.value === lastProject) {
-                            projectSelect.value = lastProject;
-                            break;
-                        }
-                    }
-                }
             }
             const type = docTypeSelect.value;
             if (type && classCodeInput) {
@@ -477,15 +467,6 @@
                     docTypeSelect.value = btn.dataset.type;
                     updateDocTypeFields();
                 });
-            });
-        }
-
-        const projectSelect = document.getElementById('project_select');
-        if (projectSelect && projectNameInput) {
-            projectSelect.addEventListener('change', () => {
-                if (projectSelect.value) {
-                    projectNameInput.value = projectSelect.value;
-                }
             });
         }
 

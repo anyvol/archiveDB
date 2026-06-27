@@ -27,6 +27,13 @@ def test_display_status_with_file():
     assert css == "status-verified"
 
 
+def test_display_status_pending_and_correction():
+    _, pending_css = get_document_display_status(_doc(file_name="a.pdf", status=DocumentStatus.pending_review))
+    _, correction_css = get_document_display_status(_doc(file_name="a.pdf", status=DocumentStatus.requires_correction))
+    assert pending_css == "status-pending"
+    assert correction_css == "status-correction"
+
+
 def test_format_field_change():
     assert format_field_change("наименование", "A", "B") == "наименование: «A» → «B»"
     assert format_field_change("наименование", "A", "A") is None
