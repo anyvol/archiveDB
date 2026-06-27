@@ -63,9 +63,15 @@
         .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; text-align: center; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .no-file { color: red; font-weight: bold; }
-        .status-pending { color: #856404; }
-        .status-verified { color: #155724; }
-        .status-correction { color: #721c24; }
+        .status-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+        .status-no-file { color: #495057; background: #e9ecef; }
+        .status-pending { color: #856404; background: #fff3cd; }
+        .status-verified { color: #155724; background: #d4edda; }
+        .status-correction { color: #721c24; background: #f8d7da; }
+        .status-comment-link { margin-top: 0.35rem; font-size: 0.8rem; }
+        .status-comment-link a { color: #007bff; }
+        .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
+        .doc-type-buttons .doc-type-btn.active { background: #007bff; color: white; }
         .actions-cell form { display: inline; margin: 0 2px; }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
@@ -85,23 +91,24 @@
         <h2>Добавить новый документ</h2>
         <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container">
             <div class="form-group">
-                <label for="doc_type">Тип документа:</label>
-                <select id="doc_type" name="doc_type" required>
-                    <option value="" disabled selected>Выберите тип</option>
-                    <option value="DD">Конструкторский документ (КД)</option>
-                    <option value="TD">Технологический документ (ТД)</option>
-                </select>
+                <label>Тип документа:</label>
+                <input type="hidden" id="doc_type" name="doc_type" value="">
+                <div class="doc-type-buttons">
+                    <button type="button" class="btn btn-secondary doc-type-btn" data-type="DD">Конструкторская документация</button>
+                    <button type="button" class="btn btn-secondary doc-type-btn" data-type="TD">Технологическая документация</button>
+                </div>
             </div>
 
             <div id="doc-fields" style="display: none;">
                 <div class="form-group">
-                    <label for="project_name">Проект:</label>
-                    <input type="text" id="project_name" name="project_name" list="projects-list" required placeholder="Выберите или введите название проекта">
-                    <datalist id="projects-list">
+                    <label for="project_select">Проект:</label>
+                    <select id="project_select">
+                        <option value="">— выберите из списка —</option>
                         {% for p in projects %}
-                        <option value="{{ p.name }}">
+                        <option value="{{ p.name }}">{{ p.name }}</option>
                         {% endfor %}
-                    </datalist>
+                    </select>
+                    <input type="text" id="project_name" name="project_name" required placeholder="Или введите название нового проекта" style="margin-top: 0.5rem;">
                     <small>Файл будет сохранён в папку проекта на сервере.</small>
                 </div>
 
@@ -149,7 +156,7 @@
                     <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}" required>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">Создать запись и перейти к загрузке</button>
+            <button type="submit" class="btn btn-primary" id="create-submit" style="display: none;">Создать запись и перейти к загрузке</button>
         </form>
         </div>
         {% endif %}
@@ -236,12 +243,22 @@
                     {% if 'okpo' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>{% endif %}
                     {% if 'developed_by' in visible_columns %}<td>{{ doc.developed_by or '—' }}</td>{% endif %}
                     {% if 'doc_name' in visible_columns %}<td>{{ doc.doc_name or '—' }}</td>{% endif %}
-                    {% if 'file_name' in visible_columns %}<td {% if not doc.file_name %}class="no-file"{% endif %}>{{ doc.file_name or 'Файл не загружен' }}</td>{% endif %}
+                    {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
                     {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
                     {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
                     {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
                     {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
-                    {% if 'status' in visible_columns %}<td class="status-{{ doc.status.value }}">{{ DOCUMENT_STATUS_LABELS[doc.status] }}</td>{% endif %}
+                    {% if 'status' in visible_columns %}
+                    <td>
+                        {% set display_status = get_document_display_status(doc) %}
+                        <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span>
+                        {% if doc.status.value == 'requires_correction' and doc.review_comment %}
+                        <div class="status-comment-link">
+                            <a href="#" class="view-comment-link" data-comment="{{ doc.review_comment|e }}">Комментарий</a>
+                        </div>
+                        {% endif %}
+                    </td>
+                    {% endif %}
                     <td class="actions-cell">
                         {% if doc.file_name %}
                         <a href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}" class="btn btn-sm btn-primary">Скачать</a>
@@ -273,6 +290,14 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div class="modal-overlay" id="comment-view-modal">
+        <div class="modal-box">
+            <h3>Комментарий проверяющего</h3>
+            <p id="comment-view-text" style="white-space: pre-wrap; margin: 1rem 0;"></p>
+            <button type="button" class="btn btn-secondary" id="comment-view-close">Закрыть</button>
+        </div>
     </div>
 
     <div class="modal-overlay" id="correction-modal">
@@ -373,8 +398,17 @@
 
         function restoreLocalStorage() {
             const lastProject = localStorage.getItem('last_project_name');
+            const projectSelect = document.getElementById('project_select');
             if (lastProject && projectNameInput && !projectNameInput.value) {
                 projectNameInput.value = lastProject;
+                if (projectSelect) {
+                    for (const opt of projectSelect.options) {
+                        if (opt.value === lastProject) {
+                            projectSelect.value = lastProject;
+                            break;
+                        }
+                    }
+                }
             }
             const type = docTypeSelect.value;
             if (type && classCodeInput) {
@@ -399,11 +433,14 @@
 
         function updateDocTypeFields() {
             const type = docTypeSelect.value;
+            const createSubmit = document.getElementById('create-submit');
             if (!type) {
                 docFields.style.display = 'none';
+                if (createSubmit) createSubmit.style.display = 'none';
                 return;
             }
             docFields.style.display = 'block';
+            if (createSubmit) createSubmit.style.display = 'inline-block';
             const maxClass = getClassMaxLen();
             if (type === 'DD') {
                 classCodeLabel.textContent = 'Характеристика (6)';
@@ -433,7 +470,23 @@
         }
 
         if (docTypeSelect) {
-            docTypeSelect.addEventListener('change', updateDocTypeFields);
+            document.querySelectorAll('.doc-type-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.doc-type-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    docTypeSelect.value = btn.dataset.type;
+                    updateDocTypeFields();
+                });
+            });
+        }
+
+        const projectSelect = document.getElementById('project_select');
+        if (projectSelect && projectNameInput) {
+            projectSelect.addEventListener('change', () => {
+                if (projectSelect.value) {
+                    projectNameInput.value = projectSelect.value;
+                }
+            });
         }
 
         if (isOkpoCheckbox) {
@@ -509,6 +562,25 @@
         if (correctionModal) {
             correctionModal.addEventListener('click', (e) => {
                 if (e.target === correctionModal) correctionModal.classList.remove('active');
+            });
+        }
+
+        const commentViewModal = document.getElementById('comment-view-modal');
+        const commentViewText = document.getElementById('comment-view-text');
+        const commentViewClose = document.getElementById('comment-view-close');
+        document.querySelectorAll('.view-comment-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                commentViewText.textContent = link.getAttribute('data-comment') || '';
+                commentViewModal.classList.add('active');
+            });
+        });
+        if (commentViewClose) {
+            commentViewClose.addEventListener('click', () => commentViewModal.classList.remove('active'));
+        }
+        if (commentViewModal) {
+            commentViewModal.addEventListener('click', (e) => {
+                if (e.target === commentViewModal) commentViewModal.classList.remove('active');
             });
         }
     </script>

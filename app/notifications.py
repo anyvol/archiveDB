@@ -4,7 +4,6 @@ from datetime import datetime
 
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from app.models import (
     BaseDocument,
@@ -56,17 +55,46 @@ async def _create_notifications(
         )
 
 
-async def notify_upload(session: AsyncSession, doc: BaseDocument, actor: User) -> None:
+async def _notify_admin_reviewers(
+    session: AsyncSession,
+    doc: BaseDocument,
+    message: str,
+    event_type: NotificationEventType,
+) -> None:
+    recipients: set[int] = set(await _get_admin_reviewer_ids(session))
+    await _create_notifications(session, recipients, message, doc.id, event_type)
+
+
+async def notify_document_registered(session: AsyncSession, doc: BaseDocument, actor: User) -> None:
     await session.refresh(doc, ["design_document", "tech_document"])
     designation = get_document_designation(doc)
-    message = f"{_actor_name(actor)} загрузил(а) документ «{designation}»"
-    recipients: set[int] = set(await _get_admin_reviewer_ids(session))
-    if doc.uploaded_by:
-        recipients.add(doc.uploaded_by)
-    recipients.discard(actor.id)
-    await _create_notifications(
-        session, recipients, message, doc.id, NotificationEventType.upload
-    )
+    message = f"{_actor_name(actor)} зарегистрировал(а) документ «{designation}»"
+    await _notify_admin_reviewers(session, doc, message, NotificationEventType.document_register)
+
+
+async def notify_file_upload(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    *,
+    had_file_before: bool,
+    registration_already_notified: bool,
+) -> None:
+    await session.refresh(doc, ["design_document", "tech_document"])
+    designation = get_document_designation(doc)
+    actor_label = _actor_name(actor)
+
+    if had_file_before:
+        message = f"{actor_label} заменил(а) файл документа «{designation}»"
+        event_type = NotificationEventType.upload
+    elif registration_already_notified:
+        message = f"{actor_label} добавил(а) файл к документу «{designation}»"
+        event_type = NotificationEventType.upload
+    else:
+        message = f"{actor_label} зарегистрировал(а) и добавил(а) электронный документ «{designation}»"
+        event_type = NotificationEventType.document_register
+
+    await _notify_admin_reviewers(session, doc, message, event_type)
 
 
 async def notify_status_change(
@@ -92,10 +120,20 @@ async def notify_status_change(
     )
 
 
-async def notify_document_edit(session: AsyncSession, doc: BaseDocument, actor: User) -> None:
+async def notify_document_edit(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    changes: list[str],
+) -> None:
     await session.refresh(doc, ["design_document", "tech_document"])
     designation = get_document_designation(doc)
-    message = f"{_actor_name(actor)} изменил(а) документ «{designation}»"
+    if changes:
+        changes_text = "; ".join(changes)
+        message = f"{_actor_name(actor)} изменил(а) документ «{designation}»: {changes_text}"
+    else:
+        message = f"{_actor_name(actor)} изменил(а) документ «{designation}»"
+
     recipients: set[int] = set(await _get_admin_reviewer_ids(session))
     if doc.uploaded_by:
         recipients.add(doc.uploaded_by)

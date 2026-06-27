@@ -21,8 +21,9 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
-from app.notifications import notify_upload, notify_status_change
+from app.notifications import notify_file_upload, notify_status_change
 from app.permissions import require_upload_permission
+from datetime import datetime
 from app.document_queries import fetch_documents
 from app.project_helpers import get_legacy_project
 
@@ -212,6 +213,10 @@ async def update_document_status(
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc.status = payload.status
+    if payload.status == DocumentStatus.requires_correction:
+        doc.review_comment = (payload.comment or "").strip()
+    elif payload.status == DocumentStatus.verified:
+        doc.review_comment = None
     await notify_status_change(
         session, doc, current_user, payload.status, (payload.comment or "").strip() or None
     )
@@ -247,14 +252,23 @@ async def upload_file(
         raise HTTPException(status_code=404, detail="Document not found")
 
     require_upload_permission(current_user, doc)
-    await session.refresh(doc, ["project"])
+    await session.refresh(doc, ["project", "design_document", "tech_document"])
     project_slug = doc.project.slug if doc.project else "_legacy"
+    had_file_before = bool(doc.file_name)
+    registration_already_notified = bool(doc.registration_notified_at)
     file_path, file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
     doc.file_path = file_path
     doc.file_name = file_name
     doc.status = DocumentStatus.pending_review
-    await session.refresh(doc, ["design_document", "tech_document"])
-    await notify_upload(session, doc, current_user)
+    if not doc.registration_notified_at:
+        doc.registration_notified_at = datetime.utcnow()
+    await notify_file_upload(
+        session,
+        doc,
+        current_user,
+        had_file_before=had_file_before,
+        registration_already_notified=registration_already_notified,
+    )
     await session.commit()
     return {"filename": file_name}
 

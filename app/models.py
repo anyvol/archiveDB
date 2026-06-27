@@ -24,6 +24,7 @@ class NotificationEventType(str, enum.Enum):
     upload = "upload"
     status_change = "status_change"
     document_edit = "document_edit"
+    document_register = "document_register"
 
 
 DOCUMENT_STATUS_LABELS = {
@@ -31,6 +32,8 @@ DOCUMENT_STATUS_LABELS = {
     DocumentStatus.verified: "Проверено",
     DocumentStatus.requires_correction: "Требуется исправление",
 }
+
+DISPLAY_STATUS_NO_FILE = "Файл не загружен"
 
 DOCUMENT_TYPE_LABELS = {
     "DD": "КД",
@@ -130,6 +133,8 @@ class BaseDocument(Base):
         default=DocumentStatus.pending_review,
         nullable=False,
     )
+    review_comment = Column(Text, nullable=True)
+    registration_notified_at = Column(DateTime, nullable=True)
 
     project = relationship("Project", back_populates="documents")
     design_document = relationship(

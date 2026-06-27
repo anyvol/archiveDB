@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 from typing import Optional
 import os
 import logging
+from datetime import datetime
 
 from app.database import (
     engine,
@@ -49,6 +50,8 @@ from app.permissions import (
     can_set_document_status,
     can_upload_file,
     can_delete_document,
+    is_admin,
+    is_owner,
     require_delete_permission,
     require_edit_metadata_permission,
     require_status_change_permission,
@@ -61,10 +64,12 @@ from app.notifications import (
     mark_all_read,
     get_notifications_for_user,
     poll_new_notifications,
-    notify_upload,
+    notify_file_upload,
+    notify_document_registered,
     notify_status_change,
     notify_document_edit,
 )
+from app.document_display import get_document_display_status, format_field_change
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,7 +97,7 @@ templates.env.globals["can_delete_document"] = can_delete_document
 templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
 templates.env.globals["service_version"] = SERVICE_VERSION
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
-templates.env.globals["get_visible_columns"] = get_visible_columns
+templates.env.globals["get_document_display_status"] = get_document_display_status
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -430,6 +435,39 @@ async def create_document_record(
     return RedirectResponse(url=url_path(f"/documents/{base_doc.id}/upload"), status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/documents/{doc_id}/skip-upload", response_class=RedirectResponse)
+async def skip_upload(
+    doc_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    result = await session.execute(
+        select(BaseDocument)
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+        )
+        .where(BaseDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    if not is_admin(user) and not is_owner(user, doc):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    if not doc.registration_notified_at:
+        await notify_document_registered(session, doc, user)
+        doc.registration_notified_at = datetime.utcnow()
+
+    await session.commit()
+    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/documents/{doc_id}/upload", response_class=HTMLResponse)
 async def upload_page(
     doc_id: int,
@@ -500,6 +538,8 @@ async def handle_upload(
     require_upload_permission(user, doc)
     await session.refresh(doc, ["project"])
     project_slug = doc.project.slug if doc.project else "_legacy"
+    had_file_before = bool(doc.file_name)
+    registration_already_notified = bool(doc.registration_notified_at)
 
     try:
         file_path, unique_file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
@@ -509,7 +549,15 @@ async def handle_upload(
     doc.file_path = file_path
     doc.file_name = unique_file_name
     doc.status = DocumentStatus.pending_review
-    await notify_upload(session, doc, user)
+    if not doc.registration_notified_at:
+        doc.registration_notified_at = datetime.utcnow()
+    await notify_file_upload(
+        session,
+        doc,
+        user,
+        had_file_before=had_file_before,
+        registration_already_notified=registration_already_notified,
+    )
     await session.commit()
 
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
@@ -573,10 +621,21 @@ async def edit_document(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     require_edit_metadata_permission(user, doc)
-    doc.doc_name = doc_name or None
+    old_doc_name = doc.doc_name
+    old_developed_by = doc.developed_by
+    new_doc_name = doc_name or None
+    changes = []
+    name_change = format_field_change("наименование", old_doc_name, new_doc_name)
+    if name_change:
+        changes.append(name_change)
+    dev_change = format_field_change("разработчик", old_developed_by, developed_by)
+    if dev_change:
+        changes.append(dev_change)
+
+    doc.doc_name = new_doc_name
     doc.developed_by = developed_by
     doc.status = DocumentStatus.pending_review
-    await notify_document_edit(session, doc, user)
+    await notify_document_edit(session, doc, user, changes)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -611,6 +670,10 @@ async def set_document_status(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     doc.status = status_enum
+    if status_enum == DocumentStatus.requires_correction:
+        doc.review_comment = comment.strip()
+    elif status_enum == DocumentStatus.verified:
+        doc.review_comment = None
     await notify_status_change(session, doc, user, status_enum, comment.strip() or None)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
