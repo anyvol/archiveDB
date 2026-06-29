@@ -144,6 +144,11 @@ def _filter_params(request: Request) -> dict:
     }
 
 
+@app.get("/version")
+async def version():
+    return {"version": SERVICE_VERSION}
+
+
 @app.get("/", response_class=RedirectResponse)
 async def root():
     return RedirectResponse(url=url_path("/documents"))
