@@ -14,6 +14,7 @@ from app.models import (
     DocumentStatus,
     DOCUMENT_STATUS_LABELS,
 )
+from app.push import send_push_to_users
 
 
 def get_document_designation(doc: BaseDocument) -> str:
@@ -42,6 +43,8 @@ async def _create_notifications(
     document_id: int | None,
     event_type: NotificationEventType,
 ) -> None:
+    if not recipient_ids:
+        return
     for user_id in recipient_ids:
         session.add(
             Notification(
@@ -53,6 +56,7 @@ async def _create_notifications(
                 is_read=False,
             )
         )
+    await send_push_to_users(session, recipient_ids, message, event_type)
 
 
 async def _notify_admin_reviewers(

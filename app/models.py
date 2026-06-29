@@ -65,6 +65,8 @@ class User(Base):
     preferred_org_code = Column(String(8), nullable=True)
     preferred_org_okpo = Column(Boolean, default=False, nullable=False)
     visible_columns = Column(JSON, nullable=True)
+    push_subscription = Column(JSON, nullable=True)
+    push_preferences = Column(JSON, nullable=True)
     notifications = relationship("Notification", back_populates="user")
 
 

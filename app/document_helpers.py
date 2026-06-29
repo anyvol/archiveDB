@@ -91,3 +91,17 @@ async def save_development_order_file(
 def remove_file_if_exists(file_path: Optional[str]) -> None:
     if file_path and os.path.exists(file_path):
         os.remove(file_path)
+
+
+def compute_stored_file_name(original_name: str, doc_id: int) -> str:
+    filename_base, extension = os.path.splitext(original_name)
+    return f"{filename_base}_{doc_id}{extension}"
+
+
+def build_upload_rename_message(designation: str, original_name: str) -> str:
+    return f"Файл будет переименован в {designation}({original_name})"
+
+
+def file_name_matches_designation(original_name: str, designation: str) -> bool:
+    filename_base, _ = os.path.splitext(os.path.basename(original_name))
+    return filename_base.strip().casefold() == designation.strip().casefold()
