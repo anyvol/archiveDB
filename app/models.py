@@ -25,6 +25,7 @@ class NotificationEventType(str, enum.Enum):
     status_change = "status_change"
     document_edit = "document_edit"
     document_register = "document_register"
+    document_delete = "document_delete"
 
 
 DOCUMENT_STATUS_LABELS = {
@@ -39,6 +40,10 @@ DOCUMENT_TYPE_LABELS = {
     "DD": "КД",
     "TD": "ТД",
 }
+
+DOC_KIND_CODES = ("СБ", "СП", "ГЧ", "ТУ", "Э2", "Е1", "РЭ", "ВП", "ПС")
+
+MISC_DOCS_FOLDER = "Прочие документы"
 
 DEPARTMENTS = [
     "Конструкторский отдел",

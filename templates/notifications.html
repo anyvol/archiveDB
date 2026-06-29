@@ -12,6 +12,7 @@
         .container { padding: 2rem; max-width: 800px; margin: 0 auto; }
         .notification-list { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .notification-item { padding: 1rem 1.25rem; border-bottom: 1px solid #eee; }
+        .notification-item.unread { background-color: #e8f5e9; }
         .notification-item:last-child { border-bottom: none; }
         .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
         .empty { padding: 2rem; text-align: center; color: #6c757d; }
@@ -27,7 +28,7 @@
     <div class="container">
         <div class="notification-list">
             {% for n in notifications %}
-            <div class="notification-item">
+            <div class="notification-item{% if n.id in unread_ids %} unread{% endif %}">
                 <div>{{ n.message }}</div>
                 <div class="notification-time">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
             </div>

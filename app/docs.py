@@ -1,8 +1,9 @@
 # app/docs.py
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -21,7 +22,12 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
-from app.notifications import notify_file_upload, notify_status_change
+from app.notifications import (
+    notify_file_upload,
+    notify_status_change,
+    clear_document_references,
+    notify_document_delete,
+)
 from app.permissions import require_upload_permission
 from datetime import datetime
 from app.document_queries import fetch_documents
@@ -228,14 +234,25 @@ async def update_document_status(
 @router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     doc_id: int,
+    comment: str = Query(..., min_length=1),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
 ):
-    doc = await session.get(BaseDocument, doc_id)
+    result = await session.execute(
+        select(BaseDocument)
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+        )
+        .where(BaseDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    await notify_document_delete(session, doc, current_user, comment.strip())
     remove_file_if_exists(doc.file_path)
+    await clear_document_references(session, doc_id)
     await session.delete(doc)
     await session.commit()
 
@@ -256,7 +273,13 @@ async def upload_file(
     project_slug = doc.project.slug if doc.project else "_legacy"
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
-    file_path, file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
+    file_path, file_name = await save_upload_file(
+        doc_id,
+        file,
+        project_slug,
+        doc.file_path,
+        doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+    )
     doc.file_path = file_path
     doc.file_name = file_name
     doc.status = DocumentStatus.pending_review

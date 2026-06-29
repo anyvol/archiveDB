@@ -8,7 +8,8 @@
     <style>
         body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        .header a { color: white; text-decoration: none; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
         .container { max-width: 520px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .drop-zone { border: 2px dashed #ccc; padding: 2rem; text-align: center; border-radius: 8px; cursor: pointer; background: #fafafa; margin: 1rem 0; }
         .drop-zone.ready { border-color: #28a745; background: #d4edda; }
@@ -26,7 +27,7 @@
 <body>
     <div class="header">
         <h1>Загрузка файла</h1>
-        <a href="{{ url_path('/documents') }}">К списку документов</a>
+        {% include "_header_nav.html" %}
     </div>
 
     <div class="container">
