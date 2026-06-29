@@ -1,6 +1,6 @@
 # app/main.py
 
-from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response
+from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
@@ -70,6 +70,7 @@ from app.notifications import (
     notify_status_change,
     notify_document_edit,
     clear_document_references,
+    notify_document_delete,
 )
 from app.document_display import get_document_display_status, format_field_change
 
@@ -514,6 +515,7 @@ async def upload_page(
         designation = doc.tech_document.designation
 
     can_upload = can_upload_file(user, doc)
+    ctx = await _page_context(session, user)
     return templates.TemplateResponse(
         "upload.html",
         {
@@ -523,6 +525,8 @@ async def upload_page(
             "doc": doc,
             "can_upload": can_upload,
             "error": request.query_params.get("error"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
         },
     )
 
@@ -703,6 +707,7 @@ async def set_document_status(
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
 async def delete_document(
     doc_id: int,
+    comment: str = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -712,10 +717,22 @@ async def delete_document(
     user = await get_current_user_from_token(access_token=access_token, db=session)
     require_delete_permission(user)
 
-    doc = await session.get(BaseDocument, doc_id)
+    if not comment.strip():
+        raise HTTPException(status_code=400, detail="Для удаления документа необходим комментарий.")
+
+    result = await session.execute(
+        select(BaseDocument)
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+        )
+        .where(BaseDocument.id == doc_id)
+    )
+    doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
+    await notify_document_delete(session, doc, user, comment.strip())
     await clear_document_references(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
@@ -733,6 +750,32 @@ async def check_org_endpoint(
     await _require_user(access_token, session)
     is_okpo = is_okpo_str == "true"
     return await check_org_exists(session, org_code, is_okpo)
+
+
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    ctx: dict = {"service_version": SERVICE_VERSION}
+    if access_token:
+        try:
+            user = await get_current_user_from_token(access_token=access_token, db=session)
+            ctx.update(await _page_context(session, user))
+            ctx["user"] = user
+            ctx["nav_context"] = "help"
+        except HTTPException:
+            ctx["user"] = None
+            ctx["unread_count"] = 0
+    else:
+        ctx["user"] = None
+        ctx["unread_count"] = 0
+
+    return templates.TemplateResponse(
+        "help.html",
+        {"request": request, **ctx},
+    )
 
 
 @app.get("/profile", response_class=HTMLResponse)

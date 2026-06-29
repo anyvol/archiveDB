@@ -143,6 +143,28 @@ async def notify_document_edit(
     )
 
 
+async def notify_document_delete(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    comment: str,
+) -> None:
+    await session.refresh(doc, ["design_document", "tech_document"])
+    designation = get_document_designation(doc)
+    message = (
+        f"{_actor_name(actor)} удалил(а) документ «{designation}» "
+        f"с комментарием «{comment}»"
+    )
+
+    recipients: set[int] = set(await _get_admin_reviewer_ids(session))
+    if doc.uploaded_by:
+        recipients.add(doc.uploaded_by)
+    recipients.discard(actor.id)
+    await _create_notifications(
+        session, recipients, message, None, NotificationEventType.document_delete
+    )
+
+
 async def clear_document_references(session: AsyncSession, document_id: int) -> None:
     await session.execute(
         update(Notification)

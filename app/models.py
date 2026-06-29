@@ -25,6 +25,7 @@ class NotificationEventType(str, enum.Enum):
     status_change = "status_change"
     document_edit = "document_edit"
     document_register = "document_register"
+    document_delete = "document_delete"
 
 
 DOCUMENT_STATUS_LABELS = {

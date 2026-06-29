@@ -62,6 +62,7 @@
         .project-subgroup { margin-bottom: 0.75rem; }
         .project-subgroup label { font-size: 0.9rem; }
         #new-project-fields { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #ddd; }
+        #new-project-section { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #ddd; }
         .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; }
         .field-okpo label { margin: 0; font-size: 0.8rem; white-space: nowrap; cursor: pointer; }
         .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; text-align: center; }
@@ -106,7 +107,7 @@
             <div id="doc-fields" style="display: none;">
                 <div class="form-group project-section">
                     <label class="section-label">Проект:</label>
-                    <div class="project-subgroup">
+                    <div class="project-subgroup" id="existing-project-section">
                         <label for="existing_project_id">Выбрать из существующих:</label>
                         <select id="existing_project_id" name="existing_project_id">
                             <option value="">— не выбран —</option>
@@ -115,19 +116,21 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="project-subgroup">
-                        <label for="new_project_name">Добавить новый проект:</label>
-                        <input type="text" id="new_project_name" name="new_project_name" placeholder="Название нового проекта">
-                    </div>
-                    <div id="new-project-fields">
+                    <div id="new-project-section">
                         <div class="project-subgroup">
-                            <label for="new_project_cipher">Шифр проекта:</label>
-                            <input type="text" id="new_project_cipher" name="new_project_cipher" placeholder="Шифр проекта">
+                            <label for="new_project_name">Добавить новый проект:</label>
+                            <input type="text" id="new_project_name" name="new_project_name" placeholder="Название нового проекта">
                         </div>
-                        <div class="project-subgroup">
-                            <label for="project_dev_order">Документ (приказ на разработку):</label>
-                            <input type="file" id="project_dev_order" name="project_dev_order" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
-                            <small>Необязательно. Файл будет сохранён в папку «Прочие документы» проекта.</small>
+                        <div id="new-project-fields">
+                            <div class="project-subgroup">
+                                <label for="new_project_cipher">Шифр проекта:</label>
+                                <input type="text" id="new_project_cipher" name="new_project_cipher" placeholder="Шифр проекта">
+                            </div>
+                            <div class="project-subgroup">
+                                <label for="project_dev_order">Документ (приказ на разработку):</label>
+                                <input type="file" id="project_dev_order" name="project_dev_order" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
+                                <small>Необязательно. Файл будет сохранён в папку «Прочие документы» проекта.</small>
+                            </div>
                         </div>
                     </div>
                     <small>Файлы документов сохраняются в папку проекта на сервере.</small>
@@ -299,9 +302,7 @@
                         <button type="button" class="btn btn-sm btn-warning correction-btn" data-doc-id="{{ doc.id }}">Исправить</button>
                         {% endif %}
                         {% if can_delete_document(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/delete') }}" style="display:inline;">
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Удалить документ #{{ doc.id }}?')">Удалить</button>
-                        </form>
+                        <button type="button" class="btn btn-sm btn-danger delete-btn" data-doc-id="{{ doc.id }}" data-doc-label="{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}#{{ doc.id }}{% endif %}">Удалить</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -333,6 +334,19 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="delete-modal">
+        <div class="modal-box">
+            <h3>Удаление документа</h3>
+            <p id="delete-doc-label" style="margin: 0.5rem 0 1rem;"></p>
+            <p>Укажите причину удаления. Комментарий будет отправлен в уведомлениях:</p>
+            <form method="post" id="delete-form" action="">
+                <textarea name="comment" required placeholder="Причина удаления..."></textarea>
+                <button type="submit" class="btn btn-danger">Удалить</button>
+                <button type="button" class="btn btn-secondary" id="delete-cancel">Отмена</button>
+            </form>
+        </div>
+    </div>
+
     {% include "_notifications_widget.html" %}
 
     <script>
@@ -354,6 +368,8 @@
         const newProjectNameInput = document.getElementById('new_project_name');
         const newProjectCipherInput = document.getElementById('new_project_cipher');
         const newProjectFields = document.getElementById('new-project-fields');
+        const newProjectSection = document.getElementById('new-project-section');
+        const existingProjectSection = document.getElementById('existing-project-section');
         const regNumberInput = document.getElementById('reg_number');
         const docKindSelect = document.getElementById('doc_kind_code');
         const docNameInput = document.getElementById('doc_name');
@@ -419,22 +435,38 @@
             }
         }
 
-        function updateNewProjectFields() {
+        function updateProjectSections() {
+            const hasExisting = existingProjectSelect && existingProjectSelect.value;
             const hasNewProject = newProjectNameInput && newProjectNameInput.value.trim().length > 0;
+
+            if (existingProjectSection) {
+                existingProjectSection.style.display = hasNewProject ? 'none' : 'block';
+            }
+            if (newProjectSection) {
+                newProjectSection.style.display = hasExisting ? 'none' : 'block';
+            }
             if (newProjectFields) {
                 newProjectFields.style.display = hasNewProject ? 'block' : 'none';
             }
-            if (hasNewProject && existingProjectSelect) {
-                existingProjectSelect.value = '';
+        }
+
+        function updateNewProjectFields() {
+            if (hasNewProjectInput()) {
+                if (existingProjectSelect) existingProjectSelect.value = '';
             }
+            updateProjectSections();
+        }
+
+        function hasNewProjectInput() {
+            return newProjectNameInput && newProjectNameInput.value.trim().length > 0;
         }
 
         function updateExistingProjectSelection() {
-            if (existingProjectSelect && existingProjectSelect.value && newProjectNameInput) {
-                newProjectNameInput.value = '';
+            if (existingProjectSelect && existingProjectSelect.value) {
+                if (newProjectNameInput) newProjectNameInput.value = '';
                 if (newProjectCipherInput) newProjectCipherInput.value = '';
-                if (newProjectFields) newProjectFields.style.display = 'none';
             }
+            updateProjectSections();
         }
 
         function restoreLocalStorage() {
@@ -443,6 +475,7 @@
                 const option = existingProjectSelect.querySelector(`option[value="${lastProjectId}"]`);
                 if (option) existingProjectSelect.value = lastProjectId;
             }
+            updateProjectSections();
             const type = docTypeSelect.value;
             if (type && classCodeInput) {
                 const savedClass = localStorage.getItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd');
@@ -592,6 +625,29 @@
                 if (classCodeInput && classCodeInput.value.trim()) {
                     localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
                 }
+            });
+        }
+
+        const deleteModal = document.getElementById('delete-modal');
+        const deleteForm = document.getElementById('delete-form');
+        const deleteCancel = document.getElementById('delete-cancel');
+        const deleteDocLabel = document.getElementById('delete-doc-label');
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const docId = btn.getAttribute('data-doc-id');
+                const docLabel = btn.getAttribute('data-doc-label') || ('#' + docId);
+                deleteForm.action = '{{ url_path('/documents') }}/' + docId + '/delete';
+                deleteDocLabel.textContent = 'Документ: ' + docLabel;
+                deleteForm.querySelector('textarea').value = '';
+                deleteModal.classList.add('active');
+            });
+        });
+        if (deleteCancel) {
+            deleteCancel.addEventListener('click', () => deleteModal.classList.remove('active'));
+        }
+        if (deleteModal) {
+            deleteModal.addEventListener('click', (e) => {
+                if (e.target === deleteModal) deleteModal.classList.remove('active');
             });
         }
 
