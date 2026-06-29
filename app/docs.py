@@ -1,6 +1,6 @@
 # app/docs.py
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -22,8 +22,12 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
-from app.notifications import clear_document_references
-from app.notifications import notify_file_upload, notify_status_change, clear_document_references, notify_document_delete
+from app.notifications import (
+    notify_file_upload,
+    notify_status_change,
+    clear_document_references,
+    notify_document_delete,
+)
 from app.permissions import require_upload_permission
 from datetime import datetime
 from app.document_queries import fetch_documents
