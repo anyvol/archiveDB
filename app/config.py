@@ -16,6 +16,11 @@ def read_version() -> str:
 
 SERVICE_VERSION = read_version()
 
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@example.com")
+VAPID_CLAIMS = {"sub": VAPID_SUBJECT}
+
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_files")
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
 ALLOWED_EXTENSIONS = {

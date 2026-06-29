@@ -1,7 +1,7 @@
 # app/main.py
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -44,7 +44,7 @@ from app.auth import get_current_user_from_token, authenticate_user, get_passwor
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
 from app.project_helpers import get_project_by_id, create_new_project
-from app.config import UPLOAD_DIR, ROOT_PATH, url_path, SERVICE_VERSION
+from app.config import UPLOAD_DIR, ROOT_PATH, url_path, SERVICE_VERSION, VAPID_PUBLIC_KEY
 from app.permissions import (
     can_create_document,
     can_edit_document_metadata,
@@ -73,6 +73,8 @@ from app.notifications import (
     notify_document_delete,
 )
 from app.document_display import get_document_display_status, format_field_change
+from app.changelog import render_changelog_html
+from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -147,6 +149,47 @@ def _filter_params(request: Request) -> dict:
 @app.get("/version")
 async def version():
     return {"version": SERVICE_VERSION}
+
+
+@app.get("/sw.js", response_class=PlainTextResponse)
+async def service_worker():
+    sw_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "sw.js")
+    with open(sw_path, encoding="utf-8") as f:
+        content = f.read()
+    return PlainTextResponse(
+        content,
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"},
+    )
+
+
+@app.get("/changelog", response_class=HTMLResponse)
+async def changelog_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    ctx: dict = {"service_version": SERVICE_VERSION}
+    if access_token:
+        try:
+            user = await get_current_user_from_token(access_token=access_token, db=session)
+            ctx.update(await _page_context(session, user))
+            ctx["user"] = user
+        except HTTPException:
+            ctx["user"] = None
+            ctx["unread_count"] = 0
+    else:
+        ctx["user"] = None
+        ctx["unread_count"] = 0
+
+    return templates.TemplateResponse(
+        "changelog.html",
+        {
+            "request": request,
+            "changelog_html": render_changelog_html(SERVICE_VERSION),
+            **ctx,
+        },
+    )
 
 
 @app.get("/", response_class=RedirectResponse)
@@ -814,6 +857,9 @@ async def profile_page(
             "visible_columns": get_visible_columns(user),
             "service_version": SERVICE_VERSION,
             "nav_context": "profile",
+            "push_preferences": normalize_push_preferences(user.push_preferences),
+            "vapid_public_key": VAPID_PUBLIC_KEY,
+            "has_push_subscription": bool(user.push_subscription),
             **ctx,
         },
     )
@@ -858,6 +904,14 @@ async def handle_profile(
     user.preferred_org_code = preferred_org_code.strip() or None
     user.preferred_org_okpo = preferred_org_okpo == "true"
     user.visible_columns = selected_columns
+
+    push_prefs = normalize_push_preferences(user.push_preferences)
+    push_prefs["enabled"] = form_data.get("push_enabled") == "true"
+    for key in DEFAULT_PUSH_PREFERENCES:
+        if key == "enabled":
+            continue
+        push_prefs[key] = form_data.get(f"push_{key}") == "true"
+    user.push_preferences = push_prefs
 
     await session.commit()
     return RedirectResponse(url=url_path("/profile?success=true"), status_code=status.HTTP_303_SEE_OTHER)
@@ -904,3 +958,46 @@ async def poll_notifications_api(
     notifications = await poll_new_notifications(session, user, after_id=after)
     unread = await count_unread(session, user.id)
     return {"notifications": notifications, "unread_count": unread}
+
+
+@app.get("/api/push/vapid-public-key")
+async def push_vapid_public_key(
+    access_token: Optional[str] = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    await _require_user(access_token, session)
+    if not VAPID_PUBLIC_KEY:
+        raise HTTPException(status_code=503, detail="Push-уведомления не настроены на сервере.")
+    return {"public_key": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    subscription = await request.json()
+    if not subscription.get("endpoint"):
+        raise HTTPException(status_code=400, detail="Некорректная подписка.")
+    user.push_subscription = subscription
+    prefs = normalize_push_preferences(user.push_preferences)
+    prefs["enabled"] = True
+    user.push_preferences = prefs
+    await session.commit()
+    return {"status": "subscribed"}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    user.push_subscription = None
+    prefs = normalize_push_preferences(user.push_preferences)
+    prefs["enabled"] = False
+    user.push_preferences = prefs
+    await session.commit()
+    return {"status": "unsubscribed"}
