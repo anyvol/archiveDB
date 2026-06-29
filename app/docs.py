@@ -21,6 +21,7 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.notifications import clear_document_references
 from app.notifications import notify_file_upload, notify_status_change
 from app.permissions import require_upload_permission
 from datetime import datetime
@@ -236,6 +237,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     remove_file_if_exists(doc.file_path)
+    await clear_document_references(session, doc_id)
     await session.delete(doc)
     await session.commit()
 
@@ -256,7 +258,13 @@ async def upload_file(
     project_slug = doc.project.slug if doc.project else "_legacy"
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
-    file_path, file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
+    file_path, file_name = await save_upload_file(
+        doc_id,
+        file,
+        project_slug,
+        doc.file_path,
+        doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+    )
     doc.file_path = file_path
     doc.file_name = file_name
     doc.status = DocumentStatus.pending_review

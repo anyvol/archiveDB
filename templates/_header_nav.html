@@ -1,5 +1,5 @@
 <nav>
-    {% if nav_context == 'profile' %}
+    {% if nav_context in ('profile', 'notifications') %}
     <a href="{{ url_path('/documents') }}">Архив документов</a>
     {% else %}
     <a href="{{ url_path('/profile') }}">Личный кабинет</a>

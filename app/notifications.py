@@ -143,6 +143,14 @@ async def notify_document_edit(
     )
 
 
+async def clear_document_references(session: AsyncSession, document_id: int) -> None:
+    await session.execute(
+        update(Notification)
+        .where(Notification.document_id == document_id)
+        .values(document_id=None)
+    )
+
+
 async def count_unread(session: AsyncSession, user_id: int) -> int:
     result = await session.execute(
         select(func.count(Notification.id)).where(

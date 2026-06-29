@@ -35,9 +35,9 @@
         .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; justify-content: center; margin-bottom: 1rem; }
         .designation-row .form-group { margin-bottom: 0; flex: 0 0 auto; }
         .designation-row .form-group label { font-size: 0.8rem; white-space: nowrap; }
-        .field-org input { width: 8ch; min-width: 8ch; max-width: 8ch; }
+        .field-org input { width: 12ch; min-width: 12ch; max-width: 12ch; }
         .field-class input { width: 9ch; min-width: 9ch; max-width: 9ch; }
-        .field-reg input { width: 6ch; min-width: 6ch; max-width: 6ch; }
+        .field-reg input { width: calc(6ch * 1.2); min-width: calc(6ch * 1.2); max-width: calc(6ch * 1.2); }
         .field-reg { position: relative; }
         .field-reg .reg-tooltip {
             display: none;
@@ -57,7 +57,11 @@
         }
         .field-reg:hover .reg-tooltip,
         .field-reg:focus-within .reg-tooltip { display: block; }
-        .field-kind select { width: 4.5ch; min-width: 4.5ch; padding: 0.5rem 0.25rem; }
+        .field-kind select { width: 5ch; min-width: 5ch; padding: 0.5rem 0.25rem; }
+        .project-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; }
+        .project-subgroup { margin-bottom: 0.75rem; }
+        .project-subgroup label { font-size: 0.9rem; }
+        #new-project-fields { display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #ddd; }
         .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; }
         .field-okpo label { margin: 0; font-size: 0.8rem; white-space: nowrap; cursor: pointer; }
         .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; text-align: center; }
@@ -89,7 +93,7 @@
         {% if can_create %}
         <div class="create-section">
         <h2>Добавить новый документ</h2>
-        <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container">
+        <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container" enctype="multipart/form-data">
             <div class="form-group">
                 <label>Тип документа:</label>
                 <input type="hidden" id="doc_type" name="doc_type" value="">
@@ -100,15 +104,33 @@
             </div>
 
             <div id="doc-fields" style="display: none;">
-                <div class="form-group">
-                    <label for="project_name">Проект:</label>
-                    <input type="text" id="project_name" name="project_name" list="projects-list" required placeholder="Выберите из списка или введите новый проект">
-                    <datalist id="projects-list">
-                        {% for p in projects %}
-                        <option value="{{ p.name }}"></option>
-                        {% endfor %}
-                    </datalist>
-                    <small>Файл будет сохранён в папку проекта на сервере.</small>
+                <div class="form-group project-section">
+                    <label class="section-label">Проект:</label>
+                    <div class="project-subgroup">
+                        <label for="existing_project_id">Выбрать из существующих:</label>
+                        <select id="existing_project_id" name="existing_project_id">
+                            <option value="">— не выбран —</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="project-subgroup">
+                        <label for="new_project_name">Добавить новый проект:</label>
+                        <input type="text" id="new_project_name" name="new_project_name" placeholder="Название нового проекта">
+                    </div>
+                    <div id="new-project-fields">
+                        <div class="project-subgroup">
+                            <label for="new_project_cipher">Шифр проекта:</label>
+                            <input type="text" id="new_project_cipher" name="new_project_cipher" placeholder="Шифр проекта">
+                        </div>
+                        <div class="project-subgroup">
+                            <label for="project_dev_order">Документ (приказ на разработку):</label>
+                            <input type="file" id="project_dev_order" name="project_dev_order" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
+                            <small>Необязательно. Файл будет сохранён в папку «Прочие документы» проекта.</small>
+                        </div>
+                    </div>
+                    <small>Файлы документов сохраняются в папку проекта на сервере.</small>
                 </div>
 
                 <div class="designation-row">
@@ -129,10 +151,9 @@
                         <label for="doc_kind_code">Код вида</label>
                         <select id="doc_kind_code" name="doc_kind_code">
                             <option value="" selected>—</option>
-                            <option value="СБ">СБ</option>
-                            <option value="СП">СП</option>
-                            <option value="ГЧ">ГЧ</option>
-                            <option value="ТУ">ТУ</option>
+                            {% for code in DOC_KIND_CODES %}
+                            <option value="{{ code }}">{{ code }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="form-group field-okpo">
@@ -329,7 +350,10 @@
         const orgNameGroup = document.getElementById('org-name-group');
         const orgNameInput = document.getElementById('org_name');
         const orgNameHint = document.getElementById('org-name-hint');
-        const projectNameInput = document.getElementById('project_name');
+        const existingProjectSelect = document.getElementById('existing_project_id');
+        const newProjectNameInput = document.getElementById('new_project_name');
+        const newProjectCipherInput = document.getElementById('new_project_cipher');
+        const newProjectFields = document.getElementById('new-project-fields');
         const regNumberInput = document.getElementById('reg_number');
         const docKindSelect = document.getElementById('doc_kind_code');
         const docNameInput = document.getElementById('doc_name');
@@ -395,10 +419,29 @@
             }
         }
 
+        function updateNewProjectFields() {
+            const hasNewProject = newProjectNameInput && newProjectNameInput.value.trim().length > 0;
+            if (newProjectFields) {
+                newProjectFields.style.display = hasNewProject ? 'block' : 'none';
+            }
+            if (hasNewProject && existingProjectSelect) {
+                existingProjectSelect.value = '';
+            }
+        }
+
+        function updateExistingProjectSelection() {
+            if (existingProjectSelect && existingProjectSelect.value && newProjectNameInput) {
+                newProjectNameInput.value = '';
+                if (newProjectCipherInput) newProjectCipherInput.value = '';
+                if (newProjectFields) newProjectFields.style.display = 'none';
+            }
+        }
+
         function restoreLocalStorage() {
-            const lastProject = localStorage.getItem('last_project_name');
-            if (lastProject && projectNameInput && !projectNameInput.value) {
-                projectNameInput.value = lastProject;
+            const lastProjectId = localStorage.getItem('last_project_id');
+            if (lastProjectId && existingProjectSelect && !existingProjectSelect.value) {
+                const option = existingProjectSelect.querySelector(`option[value="${lastProjectId}"]`);
+                if (option) existingProjectSelect.value = lastProjectId;
             }
             const type = docTypeSelect.value;
             if (type && classCodeInput) {
@@ -408,8 +451,12 @@
         }
 
         function focusFirstEmpty() {
-            if (projectNameInput && !projectNameInput.value.trim()) {
-                projectNameInput.focus();
+            if (existingProjectSelect && !existingProjectSelect.value && newProjectNameInput && !newProjectNameInput.value.trim()) {
+                existingProjectSelect.focus();
+                return;
+            }
+            if (newProjectNameInput && newProjectNameInput.value.trim() && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
+                newProjectCipherInput.focus();
                 return;
             }
             if (orgCodeInput && !orgCodeInput.value.trim()) {
@@ -436,13 +483,13 @@
                 classCodeLabel.textContent = 'Характеристика (6)';
                 classCodeInput.maxLength = 6;
                 classCodeInput.pattern = '\\d{6}';
-                regNumberLabel.textContent = 'Порядковый № (ПРНИ)';
+                regNumberLabel.textContent = 'Порядковый №';
                 docKindGroup.style.display = 'block';
             } else {
                 classCodeLabel.textContent = 'Характеристика (7)';
                 classCodeInput.maxLength = 7;
                 classCodeInput.pattern = '\\d{7}';
-                regNumberLabel.textContent = 'Порядковый № (ПРН)';
+                regNumberLabel.textContent = 'Порядковый №';
                 docKindGroup.style.display = 'none';
             }
             applyPreferredOrg();
@@ -510,15 +557,36 @@
             });
         });
 
+        if (existingProjectSelect) {
+            existingProjectSelect.addEventListener('change', updateExistingProjectSelection);
+        }
+        if (newProjectNameInput) {
+            newProjectNameInput.addEventListener('input', updateNewProjectFields);
+        }
+
         if (createForm) {
             createForm.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     createForm.submit();
                 }
             });
-            createForm.addEventListener('submit', function() {
-                if (projectNameInput && projectNameInput.value.trim()) {
-                    localStorage.setItem('last_project_name', projectNameInput.value.trim());
+            createForm.addEventListener('submit', function(e) {
+                const hasExisting = existingProjectSelect && existingProjectSelect.value;
+                const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
+                if (!hasExisting && !hasNew) {
+                    e.preventDefault();
+                    alert('Выберите существующий проект или укажите новый.');
+                    return;
+                }
+                if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
+                    e.preventDefault();
+                    alert('Для нового проекта необходимо указать шифр проекта.');
+                    return;
+                }
+                if (hasExisting) {
+                    localStorage.setItem('last_project_id', existingProjectSelect.value);
+                } else {
+                    localStorage.removeItem('last_project_id');
                 }
                 const type = docTypeSelect.value;
                 if (classCodeInput && classCodeInput.value.trim()) {

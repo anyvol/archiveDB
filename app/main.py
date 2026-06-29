@@ -36,13 +36,14 @@ from app.models import (
     DOCUMENT_TYPE_LABELS,
     DEPARTMENTS,
     Project,
+    DOC_KIND_CODES,
 )
 from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.document_queries import fetch_documents
-from app.document_helpers import save_upload_file, remove_file_if_exists
-from app.project_helpers import get_or_create_project
+from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
+from app.project_helpers import get_project_by_id, create_new_project
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, SERVICE_VERSION
 from app.permissions import (
     can_create_document,
@@ -68,6 +69,7 @@ from app.notifications import (
     notify_document_registered,
     notify_status_change,
     notify_document_edit,
+    clear_document_references,
 )
 from app.document_display import get_document_display_status, format_field_change
 
@@ -87,6 +89,7 @@ app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["DOCUMENT_STATUS_LABELS"] = DOCUMENT_STATUS_LABELS
 templates.env.globals["DOCUMENT_TYPE_LABELS"] = DOCUMENT_TYPE_LABELS
+templates.env.globals["DOC_KIND_CODES"] = DOC_KIND_CODES
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 templates.env.globals["url_path"] = url_path
 templates.env.globals["DocumentStatus"] = DocumentStatus
@@ -354,19 +357,31 @@ async def create_document_record(
     developed_by = form_data.get("developed_by")
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
-    doc_kind_code = form_data.get("doc_kind_code", "")
-    project_name = form_data.get("project_name", "").strip()
+    doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
+    existing_project_id = (form_data.get("existing_project_id") or "").strip()
+    new_project_name = (form_data.get("new_project_name") or "").strip()
+    new_project_cipher = (form_data.get("new_project_cipher") or "").strip()
+    project_dev_order = form_data.get("project_dev_order")
 
     if not developed_by:
         raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
-    if not project_name:
-        raise HTTPException(status_code=400, detail="Необходимо указать проект.")
     if doc_type not in ("DD", "TD"):
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
     if not all([org_code, class_code]):
         raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
+    if doc_kind_code and doc_kind_code not in DOC_KIND_CODES:
+        raise HTTPException(status_code=400, detail="Неверный код вида документа.")
 
-    project = await get_or_create_project(session, project_name)
+    if existing_project_id and new_project_name:
+        raise HTTPException(status_code=400, detail="Выберите существующий проект или укажите новый, но не оба сразу.")
+    if existing_project_id:
+        project = await get_project_by_id(session, int(existing_project_id))
+    elif new_project_name:
+        project = await create_new_project(session, new_project_name, new_project_cipher)
+        if project_dev_order and getattr(project_dev_order, "filename", None):
+            await save_development_order_file(project_dev_order, project.slug)
+    else:
+        raise HTTPException(status_code=400, detail="Необходимо выбрать или указать проект.")
 
     base_doc = BaseDocument(
         type=doc_type,
@@ -542,7 +557,13 @@ async def handle_upload(
     registration_already_notified = bool(doc.registration_notified_at)
 
     try:
-        file_path, unique_file_name = await save_upload_file(doc_id, file, project_slug, doc.file_path)
+        file_path, unique_file_name = await save_upload_file(
+            doc_id,
+            file,
+            project_slug,
+            doc.file_path,
+            doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+        )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
 
@@ -695,6 +716,7 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
+    await clear_document_references(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
     await session.commit()
@@ -803,9 +825,10 @@ async def notifications_page(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
+    notifications = await get_notifications_for_user(session, user)
+    unread_ids = {n.id for n in notifications if not n.is_read}
     await mark_all_read(session, user.id)
     await session.commit()
-    notifications = await get_notifications_for_user(session, user)
     ctx = await _page_context(session, user)
 
     return templates.TemplateResponse(
@@ -813,7 +836,9 @@ async def notifications_page(
         {
             "request": request,
             "notifications": notifications,
+            "unread_ids": unread_ids,
             "service_version": SERVICE_VERSION,
+            "nav_context": "notifications",
             **ctx,
         },
     )
