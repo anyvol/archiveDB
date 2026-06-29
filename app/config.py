@@ -5,7 +5,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
-SERVICE_VERSION = os.getenv("SERVICE_VERSION", "0.701")
+
+_VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
+
+
+def read_version() -> str:
+    with open(_VERSION_FILE, encoding="utf-8") as f:
+        return f.read().strip()
+
+
+SERVICE_VERSION = read_version()
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_files")
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
