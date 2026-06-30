@@ -1,6 +1,7 @@
 """Shared document/file helpers."""
 
 import os
+import re
 import uuid
 from typing import Optional
 
@@ -8,6 +9,8 @@ from fastapi import HTTPException, UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOAD_DIR
 from app.models import DOC_KIND_CODES, MISC_DOCS_FOLDER
+
+_UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 def validate_upload_file(file: UploadFile) -> None:
@@ -47,29 +50,51 @@ def _resolve_upload_subdirectory(
     return os.path.join(UPLOAD_DIR, project_slug)
 
 
+def _sanitize_storage_name(name: str) -> str:
+    sanitized = _UNSAFE_FILENAME_CHARS.sub("_", name).strip()
+    return sanitized or "file"
+
+
+def file_name_matches_designation(original_name: str, designation: str) -> bool:
+    filename_base, _ = os.path.splitext(os.path.basename(original_name))
+    return filename_base.strip().casefold() == designation.strip().casefold()
+
+
+def compute_stored_file_name(designation: Optional[str], original_name: str) -> str:
+    original_name = os.path.basename(original_name)
+    if designation and not file_name_matches_designation(original_name, designation):
+        return f"{designation}({original_name})"
+    return original_name
+
+
+def build_upload_rename_message(designation: str, original_name: str) -> str:
+    return f"Файл будет переименован в {designation}({original_name})"
+
+
 async def save_upload_file(
-    doc_id: int,
     file: UploadFile,
     project_slug: str,
     old_path: Optional[str] = None,
     *,
     doc_kind_code: Optional[str] = None,
+    designation: Optional[str] = None,
 ) -> tuple[str, str]:
     contents, safe_name = await _read_upload_contents(file)
 
     if old_path and os.path.exists(old_path):
         os.remove(old_path)
 
+    stored_name = compute_stored_file_name(designation, safe_name)
+    disk_name = _sanitize_storage_name(stored_name)
+
     upload_dir = _resolve_upload_subdirectory(project_slug, doc_kind_code=doc_kind_code)
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f"{doc_id}_{safe_name}")
+    file_path = os.path.join(upload_dir, disk_name)
 
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
-    filename_base, extension = os.path.splitext(safe_name)
-    unique_file_name = f"{filename_base}_{doc_id}{extension}"
-    return file_path, unique_file_name
+    return file_path, stored_name
 
 
 async def save_development_order_file(
@@ -91,17 +116,3 @@ async def save_development_order_file(
 def remove_file_if_exists(file_path: Optional[str]) -> None:
     if file_path and os.path.exists(file_path):
         os.remove(file_path)
-
-
-def compute_stored_file_name(original_name: str, doc_id: int) -> str:
-    filename_base, extension = os.path.splitext(original_name)
-    return f"{filename_base}_{doc_id}{extension}"
-
-
-def build_upload_rename_message(designation: str, original_name: str) -> str:
-    return f"Файл будет переименован в {designation}({original_name})"
-
-
-def file_name_matches_designation(original_name: str, designation: str) -> bool:
-    filename_base, _ = os.path.splitext(os.path.basename(original_name))
-    return filename_base.strip().casefold() == designation.strip().casefold()

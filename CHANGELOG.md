@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.9.1
+
+- Added HTTPS support in nginx (required for browser push outside localhost); self-signed certificate is auto-generated on first proxy start.
+- Document files are now physically renamed on upload to `{designation}({filename})` when the file name does not match the record designation.
+- Header link text changed from «изменения» to «changelog».
+- Updated documentation (HTTPS, VAPID keys, file naming).
+
 ## 0.9.0
 
 - Browser push notifications with per-event settings in the user profile.

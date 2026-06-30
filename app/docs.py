@@ -27,6 +27,7 @@ from app.notifications import (
     notify_status_change,
     clear_document_references,
     notify_document_delete,
+    get_document_designation,
 )
 from app.permissions import require_upload_permission
 from datetime import datetime
@@ -274,11 +275,11 @@ async def upload_file(
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
     file_path, file_name = await save_upload_file(
-        doc_id,
         file,
         project_slug,
         doc.file_path,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+        designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
     )
     doc.file_path = file_path
     doc.file_name = file_name

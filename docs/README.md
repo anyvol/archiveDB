@@ -1,117 +1,119 @@
-# Документация
+# Documentation
 
-## Скрипты администрирования
+## Administration scripts
 
-В каталоге `scripts/` находятся утилиты для ручного управления данными в БД. Они не запускаются автоматически при старте приложения — их вызывают администратор вручную.
+The `scripts/` directory contains utilities for manual database management. They are not run automatically at application startup.
 
-### `promote_user.py` — назначение роли пользователю
+### `promote_user.py` — assign a user role
 
-Скрипт меняет роль (`role`) существующего пользователя в таблице `users`. Используется, когда нужно вручную выдать права администратора или реviewer без изменения кода.
+Changes the `role` of an existing user in the `users` table.
 
-#### Роли
+#### Roles
 
-| Роль | Значение | Права (кратко) |
-|------|----------|----------------|
-| `user` | Обычный пользователь | Загрузка документов, работа со своими записями |
-| `reviewer` | Ревьюер | Проверка и смена статуса документов |
-| `admin` | Администратор | Полный доступ, удаление документов, редактирование метаданных |
+| Role | Description |
+|------|-------------|
+| `user` | Upload documents, work with own records |
+| `reviewer` | Review documents, change status |
+| `admin` | Full access, delete documents, edit metadata |
 
-#### Синтаксис
+#### Usage
 
 ```bash
 python scripts/promote_user.py <login> <role>
 ```
 
-- `<login>` — логин пользователя (как при регистрации в системе)
-- `<role>` — одно из значений: `admin`, `reviewer`, `user`
-
-#### Предварительные условия
-
-1. Пользователь с указанным логином уже зарегистрирован в системе.
-2. Файл `.env` настроен (можно скопировать из `.env.example`).
-3. PostgreSQL доступна и миграции применены (`alembic upgrade head`).
-
 ---
 
-## Запуск из Docker (рекомендуется)
-
-Если приложение поднято через Docker Compose, скрипт нужно запускать **внутри контейнера `api`**. Там уже установлены зависимости и `DATABASE_URL` указывает на сервис `db` (`@db:5432`).
-
-Убедитесь, что контейнеры запущены:
+## Running from Docker (recommended)
 
 ```bash
 docker compose up -d
-```
-
-Назначить роль:
-
-```bash
 docker compose exec api python scripts/promote_user.py ivanov admin
 ```
 
-Примеры:
+---
+
+## HTTPS and browser push notifications
+
+Browser push requires a **secure context** (HTTPS or `localhost`). The stack ships with nginx terminating TLS on port 443.
+
+### First-time setup
+
+1. Start services: `docker compose up -d`
+2. On first proxy start, a **self-signed certificate** is created in `nginx/certs/` if missing
+3. Open **https://localhost/archive/** and accept the browser certificate warning
+4. Configure VAPID keys (see root [README.md](../README.md))
+
+### LAN / hostname access
+
+Set your server hostname or IP in `.env`:
+
+```env
+SSL_CERT_CN=SERVER-PDM
+```
+
+Regenerate the certificate:
 
 ```bash
-# Повысить до администратора
-docker compose exec api python scripts/promote_user.py ivanov admin
-
-# Назначить реviewer
-docker compose exec api python scripts/promote_user.py ivanov reviewer
-
-# Вернуть обычную роль
-docker compose exec api python scripts/promote_user.py ivanov user
+rm -f nginx/certs/*.pem
+docker compose up -d proxy
 ```
 
-Успешный вывод:
+Or use the helper script on the host (requires OpenSSL):
 
-```text
-User 'ivanov' role set to 'admin'.
+```bash
+SSL_CERT_CN=SERVER-PDM ./scripts/generate-ssl-cert.sh
+docker compose up -d proxy
 ```
 
-Если пользователь не найден:
+Port 80 redirects to HTTPS. Push will not work when accessing the site as `http://192.168.x.x/...`.
 
-```text
-User 'ivanov' not found.
+### VAPID keys
+
+Generate inside the API container:
+
+```bash
+docker compose exec api python -m py_vapid --applicationServerKey
 ```
 
-(код выхода `1`)
+Add to `.env`:
+
+```env
+VAPID_PUBLIC_KEY=<Application Server Key>
+VAPID_PRIVATE_KEY=/app/private_key.pem
+VAPID_SUBJECT=mailto:admin@example.com
+```
+
+Restart: `docker compose up -d api`
+
+Users enable push in **Profile** → **Connect push** and choose event types.
 
 ---
 
-## Запуск на хосте (без exec в контейнер)
+## Document file naming
 
-Подходит для локальной разработки без Docker или когда контейнер `api` не запущен, но PostgreSQL доступна с хоста.
+When a file is uploaded, if its base name does not match the registered designation, it is **physically renamed** on disk and in the database to:
 
-1. Создайте и активируйте виртуальное окружение, установите зависимости:
+```text
+{designation}({original_filename})
+```
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate   # Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+Example: designation `ABCD.123456.001`, uploaded file `drawing.pdf` → `ABCD.123456.001(drawing.pdf)`.
 
-2. В `.env` укажите `DATABASE_URL` с хостом `localhost` и портом из `POSTGRES_HOST_PORT` (по умолчанию `5433`):
-
-   ```env
-   DATABASE_URL=postgresql+asyncpg://archiveuser:change_me_in_production@localhost:5433/archivedb
-   ```
-
-   Если БД крутится в Docker, а скрипт — на хосте, используйте именно `localhost:5433`, а не `@db:5432`.
-
-3. Запустите скрипт из корня репозитория:
-
-   ```bash
-   python scripts/promote_user.py ivanov admin
-   ```
+If the file name already matches the designation (e.g. `ABCD.123456.001.pdf`), no rename is applied.
 
 ---
 
-## Миграции (справочно)
-
-Для применения миграций из Docker используйте тот же контейнер `api`:
+## Migrations
 
 ```bash
 docker compose exec api alembic upgrade head
 ```
 
-С хоста — через `run_migrations.py` или `alembic`, с `ALEMBIC_DATABASE_URL` на `localhost` (см. комментарии в `.env.example`).
+From the host, use `ALEMBIC_DATABASE_URL` pointing to `localhost` (see comments in `.env.example`).
+
+---
+
+## Changelog
+
+Release notes are available at `/archive/changelog` (from the **changelog** link next to the version in the page header). The page lists versions from the current release onward.

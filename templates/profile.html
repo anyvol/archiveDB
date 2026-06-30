@@ -111,6 +111,8 @@
             </div>
             {% if not vapid_public_key %}
             <p><small>Push-уведомления недоступны: на сервере не настроены VAPID-ключи.</small></p>
+            {% else %}
+            <p><small>Push-уведомления работают только по HTTPS (или на localhost). При первом запуске proxy создаёт самоподписанный сертификат — примите предупреждение браузера.</small></p>
             {% endif %}
             <div class="form-group">
                 <label><input type="checkbox" name="push_enabled" id="push_enabled" value="true" {% if push_preferences.enabled %}checked{% endif %}> Включить push-уведомления</label>
@@ -162,7 +164,15 @@
         }
 
         async function subscribePush() {
-            if (!vapidPublicKey || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+            if (!vapidPublicKey) {
+                alert('Push-уведомления не настроены на сервере. Добавьте VAPID-ключи в .env и перезапустите API.');
+                return;
+            }
+            if (!window.isSecureContext) {
+                alert('Push-уведомления требуют безопасное соединение (HTTPS). Откройте сайт по адресу https://…/archive/');
+                return;
+            }
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
                 alert('Push-уведомления не поддерживаются в этом браузере.');
                 return;
             }

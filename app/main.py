@@ -71,6 +71,7 @@ from app.notifications import (
     notify_document_edit,
     clear_document_references,
     notify_document_delete,
+    get_document_designation,
 )
 from app.document_display import get_document_display_status, format_field_change
 from app.changelog import render_changelog_html
@@ -610,11 +611,11 @@ async def handle_upload(
 
     try:
         file_path, unique_file_name = await save_upload_file(
-            doc_id,
             file,
             project_slug,
             doc.file_path,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+            designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
