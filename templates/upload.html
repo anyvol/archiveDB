@@ -10,6 +10,9 @@
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
+        .version-tag-link:hover { opacity: 1; }
         .container { max-width: 520px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .drop-zone { border: 2px dashed #ccc; padding: 2rem; text-align: center; border-radius: 8px; cursor: pointer; background: #fafafa; margin: 1rem 0; }
         .drop-zone.ready { border-color: #28a745; background: #d4edda; }
@@ -26,7 +29,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>Загрузка файла</h1>
+        <h1>Загрузка файла {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
     </div>
 
@@ -51,6 +54,7 @@
                 <p id="drop-text">Перетащите файл сюда или кликните для выбора</p>
                 <div id="file-info" style="display:none; font-weight:bold; color:#007bff;"></div>
             </div>
+            <div class="warning" id="rename-warning" style="display:none;"></div>
             <div class="actions">
                 <button type="submit" class="btn" id="submit-btn" disabled>Загрузить файл</button>
             </div>
@@ -70,11 +74,23 @@
 
     {% if can_upload %}
     <script>
+        const DESIGNATION = {{ (designation or '')|tojson }};
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file');
         const fileInfo = document.getElementById('file-info');
         const submitBtn = document.getElementById('submit-btn');
         const dropText = document.getElementById('drop-text');
+        const renameWarning = document.getElementById('rename-warning');
+
+        function fileBaseName(name) {
+            const lastDot = name.lastIndexOf('.');
+            return lastDot > 0 ? name.slice(0, lastDot) : name;
+        }
+
+        function namesMatch(fileName, designation) {
+            if (!designation) return true;
+            return fileBaseName(fileName).trim().toLowerCase() === designation.trim().toLowerCase();
+        }
 
         dropZone.addEventListener('click', () => fileInput.click());
         ['dragenter','dragover','dragleave','drop'].forEach(ev => {
@@ -98,6 +114,7 @@
                 alert('Файл слишком большой (максимум 10 МБ).');
                 fileInput.value = '';
                 submitBtn.disabled = true;
+                renameWarning.style.display = 'none';
                 return;
             }
             fileInfo.textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
@@ -105,6 +122,13 @@
             dropText.style.display = 'none';
             dropZone.classList.add('ready');
             submitBtn.disabled = false;
+
+            if (DESIGNATION && !namesMatch(file.name, DESIGNATION)) {
+                renameWarning.textContent = 'Файл будет переименован в ' + DESIGNATION + '(' + file.name + ')';
+                renameWarning.style.display = 'block';
+            } else {
+                renameWarning.style.display = 'none';
+            }
         }
     </script>
     {% endif %}

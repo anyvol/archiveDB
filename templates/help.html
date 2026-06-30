@@ -10,6 +10,8 @@
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
+        .version-tag-link:hover { opacity: 1; }
         .container { padding: 2rem; max-width: 900px; margin: 0 auto; }
         .intro { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
         .help-section { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 1rem; }
@@ -25,7 +27,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>Помощь <span class="version-tag">v{{ service_version }}</span></h1>
+        <h1>Помощь {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
     </div>
 

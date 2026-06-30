@@ -17,11 +17,13 @@
         .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
         .empty { padding: 2rem; text-align: center; color: #6c757d; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; }
+        .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
+        .version-tag-link:hover { opacity: 1; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Уведомления <span class="version-tag">v{{ service_version }}</span></h1>
+        <h1>Уведомления {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
     </div>
 

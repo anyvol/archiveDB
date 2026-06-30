@@ -2,3 +2,9 @@ uploaded_files/*
 !uploaded_files/.gitkeep
 __pycache__/
 *.pyc
+.env
+*.pem
+nginx/certs/*.pem
+!nginx/certs/.gitkeep
+private_key.pem
+public_key.pem

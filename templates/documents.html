@@ -10,6 +10,8 @@
         .header h1 { margin: 0; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
+        .version-tag-link:hover { opacity: 1; }
         .container { padding: 2rem; }
         table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; font-size: 0.9rem; }
         th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
@@ -77,7 +79,36 @@
         .status-comment-link a { color: #007bff; }
         .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
         .doc-type-buttons .doc-type-btn.active { background: #007bff; color: white; }
-        .actions-cell form { display: inline; margin: 0 2px; }
+        tbody tr.doc-row { cursor: context-menu; }
+        tbody tr.doc-row:hover { background-color: #f0f7ff; }
+        .context-menu {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            min-width: 280px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            padding: 0.35rem 0;
+        }
+        .context-menu.active { display: block; }
+        .context-menu-item {
+            display: block;
+            width: 100%;
+            padding: 0.55rem 1rem;
+            border: none;
+            background: none;
+            text-align: left;
+            font-size: 0.9rem;
+            cursor: pointer;
+            color: #212529;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .context-menu-item:hover { background: #f0f7ff; }
+        .context-menu-item--danger { color: #dc3545; }
+        .context-menu-item--danger:hover { background: #fff5f5; }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
         .modal-box { background: white; padding: 1.5rem; border-radius: 8px; max-width: 420px; width: 90%; }
@@ -86,7 +117,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>Архив документов <span class="version-tag">v{{ service_version }}</span></h1>
+        <h1>Архив документов {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
     </div>
 
@@ -254,12 +285,20 @@
                     {{ sort_link('created_at', 'Дата рег.') }}
                     {{ sort_link('last_update', 'Обновлено') }}
                     {{ sort_link('status', 'Статус') }}
-                    <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
                 {% for doc in documents %}
-                <tr>
+                {% set doc_label = doc.design_document.designation if doc.design_document else (doc.tech_document.designation if doc.tech_document else ('#' ~ doc.id)) %}
+                <tr class="doc-row"
+                    data-doc-id="{{ doc.id }}"
+                    data-doc-label="{{ doc_label|e }}"
+                    {% if doc.file_name %}data-action-download="{{ url_path('/documents/' ~ doc.id ~ '/download') }}"{% endif %}
+                    {% if can_upload_file(user, doc) and not doc.file_name %}data-action-upload="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
+                    {% if can_upload_file(user, doc) and doc.file_name %}data-action-replace="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
+                    {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
+                    {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
+                    {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
                     {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
                     {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
                     {% if 'project' in visible_columns %}<td>{{ doc.project.name if doc.project else '—' }}</td>{% endif %}
@@ -282,36 +321,15 @@
                         {% endif %}
                     </td>
                     {% endif %}
-                    <td class="actions-cell">
-                        {% if doc.file_name %}
-                        <a href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}" class="btn btn-sm btn-primary">Скачать</a>
-                        {% elif can_upload_file(user, doc) %}
-                        <a href="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}" class="btn btn-sm btn-success">Загрузить</a>
-                        {% endif %}
-                        {% if can_upload_file(user, doc) and doc.file_name %}
-                        <a href="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}" class="btn btn-sm btn-warning">Заменить файл</a>
-                        {% endif %}
-                        {% if can_edit_document_metadata(user, doc) %}
-                        <a href="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" class="btn btn-sm btn-secondary">Изменить</a>
-                        {% endif %}
-                        {% if can_set_document_status(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/status') }}" style="display:inline;">
-                            <input type="hidden" name="new_status" value="verified">
-                            <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Отметить как проверенный?')">Проверено</button>
-                        </form>
-                        <button type="button" class="btn btn-sm btn-warning correction-btn" data-doc-id="{{ doc.id }}">Исправить</button>
-                        {% endif %}
-                        {% if can_delete_document(user) %}
-                        <button type="button" class="btn btn-sm btn-danger delete-btn" data-doc-id="{{ doc.id }}" data-doc-label="{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}#{{ doc.id }}{% endif %}">Удалить</button>
-                        {% endif %}
-                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="{{ visible_columns|length + 1 }}" style="text-align:center;">Документы не найдены.</td></tr>
+                <tr><td colspan="{{ visible_columns|length }}" style="text-align:center;">Документы не найдены.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <div class="context-menu" id="doc-context-menu"></div>
 
     <div class="modal-overlay" id="comment-view-modal">
         <div class="modal-box">
@@ -632,16 +650,121 @@
         const deleteForm = document.getElementById('delete-form');
         const deleteCancel = document.getElementById('delete-cancel');
         const deleteDocLabel = document.getElementById('delete-doc-label');
-        document.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const docId = btn.getAttribute('data-doc-id');
-                const docLabel = btn.getAttribute('data-doc-label') || ('#' + docId);
-                deleteForm.action = '{{ url_path('/documents') }}/' + docId + '/delete';
-                deleteDocLabel.textContent = 'Документ: ' + docLabel;
-                deleteForm.querySelector('textarea').value = '';
-                deleteModal.classList.add('active');
+        const correctionModal = document.getElementById('correction-modal');
+        const correctionForm = document.getElementById('correction-form');
+        const correctionCancel = document.getElementById('correction-cancel');
+        const contextMenu = document.getElementById('doc-context-menu');
+        const statusBaseUrl = '{{ url_path('/documents') }}';
+        let activeRow = null;
+
+        function hideContextMenu() {
+            if (contextMenu) contextMenu.classList.remove('active');
+            activeRow = null;
+        }
+
+        function openDeleteModal(docId, docLabel) {
+            deleteForm.action = statusBaseUrl + '/' + docId + '/delete';
+            deleteDocLabel.textContent = 'Документ: ' + docLabel;
+            deleteForm.querySelector('textarea').value = '';
+            deleteModal.classList.add('active');
+        }
+
+        function openCorrectionModal(docId) {
+            correctionForm.action = statusBaseUrl + '/' + docId + '/status';
+            correctionForm.querySelector('textarea').value = '';
+            correctionModal.classList.add('active');
+        }
+
+        function submitVerified(docId) {
+            if (!confirm('Изменить статус на «Проверено»?')) return;
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = statusBaseUrl + '/' + docId + '/status';
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'new_status';
+            input.value = 'verified';
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function buildContextMenu(row, x, y) {
+            const items = [];
+            const downloadUrl = row.dataset.actionDownload;
+            const uploadUrl = row.dataset.actionUpload;
+            const replaceUrl = row.dataset.actionReplace;
+            const editUrl = row.dataset.actionEdit;
+            const verifyId = row.dataset.actionVerify;
+            const correctionId = row.dataset.actionCorrection;
+            const deleteId = row.dataset.actionDelete;
+            const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
+
+            if (uploadUrl) items.push({ label: 'Загрузить файл', href: uploadUrl });
+            if (downloadUrl) items.push({ label: 'Скачать файл', href: downloadUrl });
+            if (replaceUrl) items.push({ label: 'Заменить файл', href: replaceUrl });
+            if (editUrl) items.push({ label: 'Изменить запись', href: editUrl });
+            if (verifyId) items.push({ label: 'Изменить статус на "Проверено"', action: 'verify', docId: verifyId });
+            if (correctionId) items.push({ label: 'Изменить статус на "Требуется исправление"', action: 'correction', docId: correctionId });
+            if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, danger: true });
+
+            if (!items.length) return;
+
+            contextMenu.innerHTML = '';
+            items.forEach(item => {
+                if (item.href) {
+                    const link = document.createElement('a');
+                    link.className = 'context-menu-item' + (item.danger ? ' context-menu-item--danger' : '');
+                    link.href = item.href;
+                    link.textContent = item.label;
+                    contextMenu.appendChild(link);
+                } else {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'context-menu-item' + (item.danger ? ' context-menu-item--danger' : '');
+                    btn.textContent = item.label;
+                    btn.addEventListener('click', () => {
+                        hideContextMenu();
+                        if (item.action === 'verify') submitVerified(item.docId);
+                        else if (item.action === 'correction') openCorrectionModal(item.docId);
+                        else if (item.action === 'delete') openDeleteModal(item.docId, item.docLabel);
+                    });
+                    contextMenu.appendChild(btn);
+                }
+            });
+
+            contextMenu.style.left = x + 'px';
+            contextMenu.style.top = y + 'px';
+            contextMenu.classList.add('active');
+            activeRow = row;
+
+            requestAnimationFrame(() => {
+                const rect = contextMenu.getBoundingClientRect();
+                if (rect.right > window.innerWidth) {
+                    contextMenu.style.left = Math.max(0, x - rect.width) + 'px';
+                }
+                if (rect.bottom > window.innerHeight) {
+                    contextMenu.style.top = Math.max(0, y - rect.height) + 'px';
+                }
+            });
+        }
+
+        document.querySelectorAll('.doc-row').forEach(row => {
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                buildContextMenu(row, e.clientX, e.clientY);
             });
         });
+
+        document.addEventListener('click', (e) => {
+            if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideContextMenu();
+        });
+        window.addEventListener('scroll', hideContextMenu, true);
+        window.addEventListener('resize', hideContextMenu);
+
         if (deleteCancel) {
             deleteCancel.addEventListener('click', () => deleteModal.classList.remove('active'));
         }
@@ -651,16 +774,6 @@
             });
         }
 
-        const correctionModal = document.getElementById('correction-modal');
-        const correctionForm = document.getElementById('correction-form');
-        const correctionCancel = document.getElementById('correction-cancel');
-        document.querySelectorAll('.correction-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const docId = btn.getAttribute('data-doc-id');
-                correctionForm.action = '{{ url_path('/documents') }}/' + docId + '/status';
-                correctionModal.classList.add('active');
-            });
-        });
         if (correctionCancel) {
             correctionCancel.addEventListener('click', () => correctionModal.classList.remove('active'));
         }

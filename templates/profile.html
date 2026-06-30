@@ -10,9 +10,18 @@
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
+        .version-tag-link:hover { opacity: 1; }
+        .push-status { padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; background: #e9ecef; color: #495057; font-size: 0.9rem; }
+        .push-status.active { background: #d4edda; color: #155724; }
+        .push-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
         .container { padding: 2rem; max-width: 640px; margin: 0 auto; }
         .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .form-container h2 { margin-top: 0; font-size: 1.1rem; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .form-container h2.section-heading { margin-top: 2rem; }
+        .form-container h2.section-heading:first-of-type { margin-top: 0; }
+        .section-intro { margin: 0 0 1rem; }
+        .push-section { margin-top: 0.5rem; padding-top: 0.25rem; }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
@@ -24,11 +33,21 @@
         .btn-secondary { background: #6c757d; color: white; }
         .form-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
         .alert-success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .cert-setup-wrap { margin-top: 1.5rem; text-align: center; }
+        .cert-reveal-btn { background: none; border: none; color: #6c757d; font-size: 0.8rem; cursor: pointer; text-decoration: underline; padding: 0.25rem; }
+        .cert-reveal-btn:hover { color: #007bff; }
+        .cert-setup-panel { margin-top: 1rem; text-align: left; }
+        .cert-setup-panel h2 { margin-top: 0; }
+        .cert-download-list { list-style: none; padding: 0; margin: 1rem 0; }
+        .cert-download-list li { margin-bottom: 0.75rem; }
+        .cert-download-list a { color: #007bff; }
+        .cert-script-block { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 0.75rem 1rem; margin: 0.5rem 0 1rem; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-all; }
+        .cert-note { color: #6c757d; font-size: 0.875rem; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Личный кабинет <span class="version-tag">v{{ service_version }}</span></h1>
+        <h1>Личный кабинет {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
     </div>
 
@@ -68,7 +87,7 @@
                 </select>
             </div>
 
-            <h2>Моя компания</h2>
+            <h2 class="section-heading">Моя компания</h2>
             <p><small>Если организация найдена в базе, её код будет подставляться автоматически при создании документа.</small></p>
             <div class="form-group">
                 <label for="preferred_org_code">Код организации (4 буквы или 8 цифр):</label>
@@ -83,12 +102,41 @@
                 <small id="org-name-hint"></small>
             </div>
 
-            <h2>Отображение колонок в списке документов</h2>
-            <p><small>Выберите колонки, которые будут показаны в таблице документов.</small></p>
+            <h2 class="section-heading">Отображение колонок в списке документов</h2>
+            <p class="section-intro"><small>Выберите колонки, которые будут показаны в таблице документов.</small></p>
             <div class="columns-grid">
                 {% for key, label in DOCUMENT_COLUMNS %}
                 <label><input type="checkbox" name="col_{{ key }}" value="true" {% if key in visible_columns %}checked{% endif %}> {{ label }}</label>
                 {% endfor %}
+            </div>
+
+            <div class="push-section">
+            <h2 class="section-heading">Push-уведомления браузера</h2>
+            <p class="section-intro"><small>Получайте уведомления в браузере, даже когда вкладка архива не активна. Настройте, о каких событиях сообщать.</small></p>
+            <div class="push-status{% if has_push_subscription %} active{% endif %}" id="push-status">
+                {% if has_push_subscription %}
+                Браузерные push-уведомления подключены.
+                {% else %}
+                Браузерные push-уведомления не подключены.
+                {% endif %}
+            </div>
+            <div class="push-actions">
+                <button type="button" class="btn btn-primary" id="push-enable-btn" {% if not vapid_public_key %}disabled{% endif %}>Подключить push</button>
+                <button type="button" class="btn btn-secondary" id="push-disable-btn" {% if not has_push_subscription %}disabled{% endif %}>Отключить push</button>
+            </div>
+            {% if not vapid_public_key %}
+            <p><small>Push-уведомления недоступны: на сервере не настроены VAPID-ключи.</small></p>
+            {% endif %}
+            <div class="form-group">
+                <label><input type="checkbox" name="push_enabled" id="push_enabled" value="true" {% if push_preferences.enabled %}checked{% endif %}> Включить push-уведомления</label>
+            </div>
+            <div class="columns-grid">
+                <label><input type="checkbox" name="push_upload" value="true" {% if push_preferences.upload %}checked{% endif %}> Загрузка и замена файлов</label>
+                <label><input type="checkbox" name="push_status_change" value="true" {% if push_preferences.status_change %}checked{% endif %}> Изменение статуса</label>
+                <label><input type="checkbox" name="push_document_edit" value="true" {% if push_preferences.document_edit %}checked{% endif %}> Изменение записи</label>
+                <label><input type="checkbox" name="push_document_register" value="true" {% if push_preferences.document_register %}checked{% endif %}> Регистрация документов</label>
+                <label><input type="checkbox" name="push_document_delete" value="true" {% if push_preferences.document_delete %}checked{% endif %}> Удаление документов</label>
+            </div>
             </div>
 
             <div class="form-actions">
@@ -96,6 +144,35 @@
                 <button type="button" class="btn btn-secondary" id="back-btn">Вернуться</button>
             </div>
         </form>
+
+        <div class="cert-setup-wrap">
+            <button type="button" class="cert-reveal-btn" id="cert-reveal-btn">Настройка сертификата сайта</button>
+            <div class="form-container cert-setup-panel" id="cert-setup-panel" hidden>
+                <h2>Настройка сертификата сайта</h2>
+                <p class="cert-note">Самоподписанный сертификат шифрует соединение, но браузер показывает предупреждение, пока сертификат не добавлен в доверенные на вашем компьютере.</p>
+                {% if cert_available %}
+                <p><strong>1. Скачайте скрипт для вашей ОС</strong> (адрес сервера уже прописан внутри)</p>
+                <ul class="cert-download-list">
+                    <li><a href="{{ url_path('/cert/scripts/trust-windows.cmd') }}" download>Windows — trust-windows.cmd</a></li>
+                    <li><a href="{{ url_path('/cert/scripts/trust-linux.sh') }}" download>Linux — trust-linux.sh</a></li>
+                    <li><a href="{{ url_path('/cert/scripts/trust-macos.sh') }}" download>macOS — trust-macos.sh</a></li>
+                </ul>
+                <p><strong>2. Запустите один раз от администратора</strong></p>
+                <p class="cert-note">Windows (запуск от администратора — двойной щелчок или из cmd):</p>
+                <div class="cert-script-block">trust-windows.cmd</div>
+                <p class="cert-note">Linux:</p>
+                <div class="cert-script-block">chmod +x trust-linux.sh
+sudo ./trust-linux.sh</div>
+                <p class="cert-note">macOS:</p>
+                <div class="cert-script-block">chmod +x trust-macos.sh
+sudo ./trust-macos.sh</div>
+                <p class="cert-note">Скрипт сам скачает сертификат с сервера и установит его. После этого перезапустите браузер.</p>
+                <p class="cert-note"><a href="{{ url_path('/cert/fullchain.pem') }}" download>Скачать сертификат вручную</a> (если нужен без скрипта). Для Docker+WSL на сервере: <a href="{{ url_path('/cert/scripts/windows-forward-ports.ps1') }}" download>windows-forward-ports.ps1</a>.</p>
+                {% else %}
+                <p class="cert-note">Сертификат на сервере пока не создан. Перезапустите proxy или задайте SSL_CERT_CN в .env.</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     {% include "_notifications_widget.html" %}
@@ -109,6 +186,101 @@
         const profileForm = document.getElementById('profile-form');
         const backBtn = document.getElementById('back-btn');
         const documentsUrl = '{{ url_path('/documents') }}';
+        const swUrl = '{{ url_path('/sw.js') }}';
+        const swScope = {{ sw_scope|tojson }};
+        const vapidPublicKey = {{ vapid_public_key|tojson }};
+        const pushSubscribeUrl = '{{ url_path('/api/push/subscribe') }}';
+        const pushUnsubscribeUrl = '{{ url_path('/api/push/unsubscribe') }}';
+        const pushEnableBtn = document.getElementById('push-enable-btn');
+        const pushDisableBtn = document.getElementById('push-disable-btn');
+        const pushStatus = document.getElementById('push-status');
+        const pushEnabledCheckbox = document.getElementById('push_enabled');
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        async function subscribePush() {
+            if (!vapidPublicKey) {
+                alert('Push-уведомления не настроены на сервере. Добавьте VAPID-ключи в .env и перезапустите API.');
+                return;
+            }
+            if (!window.isSecureContext) {
+                alert('Push-уведомления требуют HTTPS или localhost.');
+                return;
+            }
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                alert('Push-уведомления не поддерживаются в этом браузере.');
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                alert('Разрешение на уведомления не получено.');
+                return;
+            }
+            await navigator.serviceWorker.register(swUrl, { scope: swScope });
+            const registration = await navigator.serviceWorker.ready;
+            let subscription = await registration.pushManager.getSubscription();
+            if (subscription) {
+                await subscription.unsubscribe();
+            }
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            });
+            const resp = await fetch(pushSubscribeUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(subscription.toJSON()),
+            });
+            if (!resp.ok) {
+                const detail = await resp.text();
+                throw new Error(detail || ('HTTP ' + resp.status));
+            }
+            pushStatus.textContent = 'Браузерные push-уведомления подключены.';
+            pushStatus.classList.add('active');
+            pushEnableBtn.disabled = true;
+            pushDisableBtn.disabled = false;
+            if (pushEnabledCheckbox) pushEnabledCheckbox.checked = true;
+        }
+
+        async function unsubscribePush() {
+            const resp = await fetch(pushUnsubscribeUrl, { method: 'POST', credentials: 'same-origin' });
+            if (!resp.ok) {
+                alert('Не удалось отключить push на сервере.');
+                return;
+            }
+            if ('serviceWorker' in navigator) {
+                const registration = await navigator.serviceWorker.getRegistration(swScope);
+                if (registration) {
+                    const subscription = await registration.pushManager.getSubscription();
+                    if (subscription) await subscription.unsubscribe();
+                }
+            }
+            pushStatus.textContent = 'Браузерные push-уведомления не подключены.';
+            pushStatus.classList.remove('active');
+            pushEnableBtn.disabled = !vapidPublicKey;
+            pushDisableBtn.disabled = true;
+            if (pushEnabledCheckbox) pushEnabledCheckbox.checked = false;
+        }
+
+        if (pushEnableBtn) {
+            pushEnableBtn.addEventListener('click', () => subscribePush().catch(err => {
+                console.error('Push subscribe failed:', err);
+                alert('Ошибка подключения push-уведомлений: ' + (err.message || err));
+            }));
+        }
+        if (pushDisableBtn) {
+            pushDisableBtn.addEventListener('click', () => unsubscribePush().catch(() => alert('Ошибка отключения push-уведомлений.')));
+        }
 
         function getFormSnapshot() {
             const data = new FormData(profileForm);
@@ -169,6 +341,18 @@
                 } catch (e) {
                     alert('Ошибка проверки организации.');
                 }
+            });
+        }
+
+        const certRevealBtn = document.getElementById('cert-reveal-btn');
+        const certSetupPanel = document.getElementById('cert-setup-panel');
+        if (certRevealBtn && certSetupPanel) {
+            certRevealBtn.addEventListener('click', () => {
+                const opening = certSetupPanel.hidden;
+                certSetupPanel.hidden = !opening;
+                certRevealBtn.textContent = opening
+                    ? 'Скрыть настройку сертификата'
+                    : 'Настройка сертификата сайта';
             });
         }
     </script>

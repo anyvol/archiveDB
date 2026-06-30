@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
+PUBLIC_HTTPS_PORT = os.getenv("PUBLIC_HTTPS_PORT", os.getenv("HTTPS_PORT", "")).strip()
 
 _VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
 
@@ -15,6 +16,11 @@ def read_version() -> str:
 
 
 SERVICE_VERSION = read_version()
+
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "").strip()
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@example.com")
+VAPID_CLAIMS = {"sub": VAPID_SUBJECT}
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_files")
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
@@ -34,3 +40,8 @@ def url_path(path: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{ROOT_PATH}{path}" if ROOT_PATH else path
+
+
+def app_scope() -> str:
+    scope = url_path("/")
+    return scope if scope.endswith("/") else f"{scope}/"
