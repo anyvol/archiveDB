@@ -82,6 +82,39 @@ networkingMode=mirrored
 
 Then run `wsl --shutdown` and restart WSL.
 
+### LAN access (https://192.168.x.x:8443)
+
+Docker in WSL2 listens inside the WSL VM. The Windows LAN IP (e.g. `192.168.4.108`) does **not** forward to WSL automatically.
+
+**On the Windows host**, run as Administrator:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\windows-forward-ports.ps1
+```
+
+Add the server LAN IP to the certificate (optional, reduces browser warnings):
+
+```env
+SSL_CERT_CN=SERVER-PDM
+SSL_CERT_IP=192.168.4.108
+```
+
+Regenerate cert and restart proxy:
+
+```bash
+rm -f nginx/certs/*.pem
+docker compose up -d --build proxy
+```
+
+Test from another PC:
+
+```text
+https://192.168.4.108:8443/archive/
+```
+
+Push over LAN requires HTTPS (not plain `http://192.168.x.x`).
+
 ---
 
 Set your server hostname or IP in `.env`:

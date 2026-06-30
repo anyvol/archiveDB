@@ -44,6 +44,7 @@ services:
       - "0.0.0.0:${HTTPS_PORT:-8443}:443"
     environment:
       SSL_CERT_CN: ${SSL_CERT_CN:-localhost}
+      SSL_CERT_IP: ${SSL_CERT_IP:-}
       SSL_CERT_DAYS: ${SSL_CERT_DAYS:-825}
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
     volumes:
