@@ -203,10 +203,10 @@ Users enable push in **Profile** → **Connect push** and choose event types.
 When a file is uploaded, if its base name does not match the registered designation, it is **physically renamed** on disk and in the database to:
 
 ```text
-{designation}({original_filename})
+{designation}({original_basename}){extension}
 ```
 
-Example: designation `ABCD.123456.001`, uploaded file `drawing.pdf` → `ABCD.123456.001(drawing.pdf)`.
+Example: designation `ABCD.123456.001`, uploaded file `drawing.pdf` → `ABCD.123456.001(drawing).pdf`.
 
 If the file name already matches the designation (e.g. `ABCD.123456.001.pdf`), no rename is applied.
 

@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.9.3
+
+- Renamed uploaded files now keep the original extension at the end: `{designation}({basename}){ext}`.
+- Notifications page loads 20 items at a time with a “Load more” button.
+- Added project overview to the repository README.
+- Help for new users opens in a new browser tab.
+- Name and position fields cannot consist of digits only.
+- Improved OKPO and push-notification checkbox alignment in the profile.
+- Confirmation dialog when continuing without upload while a file is selected.
+- Consistent header title size across all pages.
+
 ## 0.9.1
 
 - Default HTTPS port is **8443** (port 443 is often blocked on WSL/Windows).

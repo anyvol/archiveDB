@@ -27,6 +27,10 @@
         <div class="alert">Выберите отдел из списка.</div>
         {% elif error == 'name' %}
         <div class="alert">Укажите фамилию и имя.</div>
+        {% elif error == 'name_digits' %}
+        <div class="alert">Фамилия, имя и отчество не могут состоять только из цифр.</div>
+        {% elif error == 'position_digits' %}
+        <div class="alert">Должность не может состоять только из цифр.</div>
         {% elif error == 'server' %}
         <div class="alert">Произошла ошибка при регистрации. Попробуйте позже.</div>
         {% elif error %}
@@ -58,7 +62,7 @@
         </select>
         <button type="submit">Зарегистрироваться</button>
         <div class="link"><a href="{{ url_path('/login') }}">Уже есть аккаунт? Войти</a></div>
-        <div class="link"><a href="{{ url_path('/help') }}">Помощь для новых пользователей</a></div>
+        <div class="link"><a href="{{ url_path('/help') }}" target="_blank" rel="noopener noreferrer">Помощь для новых пользователей</a></div>
     </form>
     <script>
         const form = document.getElementById('register-form');
@@ -72,6 +76,24 @@
                 clientError.textContent = 'Пароли не совпадают.';
                 clientError.style.display = 'block';
                 passwordConfirm.focus();
+                return;
+            }
+            const digitsOnly = /^\d+$/;
+            const lastName = document.getElementById('last_name').value.trim();
+            const firstName = document.getElementById('first_name').value.trim();
+            const patronymic = document.getElementById('patronymic').value.trim();
+            const position = document.getElementById('position').value.trim();
+            if (digitsOnly.test(lastName) || digitsOnly.test(firstName) ||
+                (patronymic && digitsOnly.test(patronymic))) {
+                e.preventDefault();
+                clientError.textContent = 'Фамилия, имя и отчество не могут состоять только из цифр.';
+                clientError.style.display = 'block';
+                return;
+            }
+            if (position && digitsOnly.test(position)) {
+                e.preventDefault();
+                clientError.textContent = 'Должность не может состоять только из цифр.';
+                clientError.style.display = 'block';
             }
         });
     </script>

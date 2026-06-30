@@ -16,6 +16,9 @@
         .notification-item:last-child { border-bottom: none; }
         .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
         .empty { padding: 2rem; text-align: center; color: #6c757d; }
+        .load-more-wrap { padding: 1rem; text-align: center; border-top: 1px solid #eee; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem; background: #007bff; color: white; }
+        .btn:disabled { background: #6c757d; cursor: not-allowed; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; }
         .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
         .version-tag-link:hover { opacity: 1; }
@@ -29,19 +32,65 @@
 
     <div class="container">
         <div class="notification-list">
-            {% for n in notifications %}
-            <div class="notification-item{% if n.id in unread_ids %} unread{% endif %}">
-                <div>{{ n.message }}</div>
-                <div class="notification-time">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+            <div id="notification-items">
+                {% for n in notifications %}
+                <div class="notification-item{% if n.id in unread_ids %} unread{% endif %}">
+                    <div>{{ n.message }}</div>
+                    <div class="notification-time">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+                </div>
+                {% else %}
+                <div class="empty" id="empty-message">Нет уведомлений</div>
+                {% endfor %}
             </div>
-            {% else %}
-            <div class="empty">Нет уведомлений</div>
-            {% endfor %}
+            {% if has_more %}
+            <div class="load-more-wrap">
+                <button type="button" class="btn" id="load-more-btn">Загрузить ещё {{ notifications_page_size }}</button>
+            </div>
+            {% endif %}
         </div>
     </div>
     <script>
         sessionStorage.setItem('last_notification_id', '{{ (notifications|map(attribute="id")|list|max) if notifications else 0 }}');
         sessionStorage.setItem('notifications_initialized', '1');
+
+        const loadMoreBtn = document.getElementById('load-more-btn');
+        const itemsContainer = document.getElementById('notification-items');
+        const emptyMessage = document.getElementById('empty-message');
+        const pageSize = {{ notifications_page_size }};
+        let loadedCount = {{ notifications|length }};
+        const listUrl = '{{ url_path('/api/notifications') }}';
+
+        function appendNotification(n) {
+            if (emptyMessage) emptyMessage.remove();
+            const item = document.createElement('div');
+            item.className = 'notification-item';
+            item.innerHTML = '<div>' + n.message + '</div><div class="notification-time">' + n.created_at + '</div>';
+            itemsContainer.appendChild(item);
+        }
+
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', async function() {
+                loadMoreBtn.disabled = true;
+                loadMoreBtn.textContent = 'Загрузка…';
+                try {
+                    const resp = await fetch(listUrl + '?offset=' + loadedCount + '&limit=' + pageSize);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    data.notifications.forEach(appendNotification);
+                    loadedCount += data.notifications.length;
+                    if (!data.has_more) {
+                        loadMoreBtn.parentElement.remove();
+                    } else {
+                        loadMoreBtn.disabled = false;
+                        loadMoreBtn.textContent = 'Загрузить ещё ' + pageSize;
+                    }
+                } catch (e) {
+                    loadMoreBtn.disabled = false;
+                    loadMoreBtn.textContent = 'Загрузить ещё ' + pageSize;
+                    alert('Не удалось загрузить уведомления.');
+                }
+            });
+        }
     </script>
 </body>
 </html>

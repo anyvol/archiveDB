@@ -25,8 +25,16 @@
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .form-group.checkbox-inline label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0; font-weight: normal; cursor: pointer; }
+        .form-group.checkbox-inline label input[type="checkbox"] { width: auto; margin: 0; flex-shrink: 0; }
+        .org-code-row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+        .org-code-row .form-group { flex: 1; min-width: 200px; margin-bottom: 0; }
+        .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; flex-shrink: 0; }
+        .field-okpo label { display: flex; align-items: center; gap: 0.35rem; margin: 0; font-size: 0.875rem; white-space: nowrap; cursor: pointer; font-weight: normal; }
+        .field-okpo label input[type="checkbox"] { width: auto; margin: 0; }
         .columns-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
-        .columns-grid label { font-weight: normal; cursor: pointer; }
+        .columns-grid label { display: flex; align-items: center; gap: 0.5rem; font-weight: normal; cursor: pointer; }
+        .columns-grid label input[type="checkbox"] { width: auto; margin: 0; flex-shrink: 0; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
         .btn-primary { background: #007bff; color: white; }
@@ -54,6 +62,10 @@
     <div class="container">
         {% if success %}
         <div class="alert-success">Профиль успешно сохранён.</div>
+        {% elif error == 'name_digits' %}
+        <div class="alert-success" style="background:#f8d7da;color:#721c24;">Фамилия, имя и отчество не могут состоять только из цифр.</div>
+        {% elif error == 'position_digits' %}
+        <div class="alert-success" style="background:#f8d7da;color:#721c24;">Должность не может состоять только из цифр.</div>
         {% endif %}
 
         <form action="{{ url_path('/profile') }}" method="post" class="form-container" id="profile-form">
@@ -89,12 +101,14 @@
 
             <h2 class="section-heading">Моя компания</h2>
             <p><small>Если организация найдена в базе, её код будет подставляться автоматически при создании документа.</small></p>
-            <div class="form-group">
-                <label for="preferred_org_code">Код организации (4 буквы или 8 цифр):</label>
-                <input type="text" id="preferred_org_code" name="preferred_org_code" value="{{ user.preferred_org_code or '' }}" maxlength="8">
-            </div>
-            <div class="form-group">
-                <label><input type="checkbox" id="preferred_org_okpo" name="preferred_org_okpo" value="true" {% if user.preferred_org_okpo %}checked{% endif %}> Код по ОКПО</label>
+            <div class="org-code-row">
+                <div class="form-group">
+                    <label for="preferred_org_code">Код организации (4 буквы или 8 цифр):</label>
+                    <input type="text" id="preferred_org_code" name="preferred_org_code" value="{{ user.preferred_org_code or '' }}" maxlength="8">
+                </div>
+                <div class="form-group field-okpo">
+                    <label><input type="checkbox" id="preferred_org_okpo" name="preferred_org_okpo" value="true" {% if user.preferred_org_okpo %}checked{% endif %}> ОКПО</label>
+                </div>
             </div>
             <div class="form-group" id="org-name-group" {% if not org_display_name %}style="display:none;"{% endif %}>
                 <label>Название организации:</label>
@@ -127,7 +141,7 @@
             {% if not vapid_public_key %}
             <p><small>Push-уведомления недоступны: на сервере не настроены VAPID-ключи.</small></p>
             {% endif %}
-            <div class="form-group">
+            <div class="form-group checkbox-inline">
                 <label><input type="checkbox" name="push_enabled" id="push_enabled" value="true" {% if push_preferences.enabled %}checked{% endif %}> Включить push-уведомления</label>
             </div>
             <div class="columns-grid">
@@ -311,6 +325,24 @@ sudo ./trust-macos.sh</div>
                 }
             }
             window.location.href = documentsUrl;
+        });
+
+        profileForm.addEventListener('submit', function(e) {
+            const digitsOnly = /^\d+$/;
+            const lastName = document.getElementById('last_name').value.trim();
+            const firstName = document.getElementById('first_name').value.trim();
+            const patronymic = document.getElementById('patronymic').value.trim();
+            const position = document.getElementById('position').value.trim();
+            if (digitsOnly.test(lastName) || digitsOnly.test(firstName) ||
+                (patronymic && digitsOnly.test(patronymic))) {
+                e.preventDefault();
+                alert('Фамилия, имя и отчество не могут состоять только из цифр.');
+                return;
+            }
+            if (position && digitsOnly.test(position)) {
+                e.preventDefault();
+                alert('Должность не может состоять только из цифр.');
+            }
         });
 
         if (isOkpoCheckbox) {
