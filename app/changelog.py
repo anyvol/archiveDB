@@ -40,17 +40,13 @@ def _load_sections() -> list[tuple[str, list[str]]]:
     return sections
 
 
-def get_changelog_sections(from_version: str) -> list[tuple[str, list[str]]]:
-    threshold = _parse_version(from_version)
-    return [
-        (version, lines)
-        for version, lines in _load_sections()
-        if _parse_version(version) >= threshold
-    ]
+def get_changelog_sections() -> list[tuple[str, list[str]]]:
+    sections = _load_sections()
+    return sorted(sections, key=lambda item: _parse_version(item[0]), reverse=True)
 
 
-def render_changelog_html(from_version: str) -> str:
-    sections = get_changelog_sections(from_version)
+def render_changelog_html() -> str:
+    sections = get_changelog_sections()
     if not sections:
         return "<p>Changelog is not available.</p>"
 

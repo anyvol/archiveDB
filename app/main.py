@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -79,8 +81,11 @@ from app.cert_scripts import (
     trust_linux_script,
     trust_macos_script,
     trust_windows_cmd,
+    trust_windows_ps1,
 )
+from app.changelog import render_changelog_html
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
+from app.web_errors import handle_http_exception, handle_validation_error
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,10 +127,21 @@ _CERT_SCRIPT_FILES = {
     "windows-forward-ports.ps1": ("windows-forward-ports.ps1", "application/octet-stream"),
 }
 _GENERATED_CERT_SCRIPTS = {
+    "trust-windows.ps1": ("trust-windows.ps1", trust_windows_ps1),
     "trust-windows.cmd": ("trust-windows.cmd", trust_windows_cmd),
     "trust-linux.sh": ("trust-linux.sh", trust_linux_script),
     "trust-macos.sh": ("trust-macos.sh", trust_macos_script),
 }
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return await handle_validation_error(request, exc)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return await handle_http_exception(request, exc)
 
 
 async def _page_context(session: AsyncSession, user: User) -> dict:
@@ -203,7 +219,7 @@ async def changelog_page(
         "changelog.html",
         {
             "request": request,
-            "changelog_html": render_changelog_html(SERVICE_VERSION),
+            "changelog_html": render_changelog_html(),
             **ctx,
         },
     )
@@ -271,11 +287,14 @@ async def logout():
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
+    msg = request.query_params.get("msg")
+    error = request.query_params.get("error")
     return templates.TemplateResponse(
         "register.html",
         {
             "request": request,
-            "error": request.query_params.get("error"),
+            "error": error,
+            "error_message": msg,
         },
     )
 
@@ -396,6 +415,8 @@ async def documents_page(
             "default_developed_by": user.full_name or "",
             "visible_columns": get_visible_columns(user),
             "service_version": SERVICE_VERSION,
+            "create_error": request.query_params.get("create_error"),
+            "action_error": request.query_params.get("action_error"),
             **ctx,
         },
     )
@@ -581,6 +602,9 @@ async def upload_page(
 
     can_upload = can_upload_file(user, doc)
     ctx = await _page_context(session, user)
+    error_msg = request.query_params.get("msg") if request.query_params.get("error") == "server" else None
+    if request.query_params.get("error") == "invalid":
+        error_msg = "Недопустимый файл или формат."
     return templates.TemplateResponse(
         "upload.html",
         {
@@ -590,6 +614,7 @@ async def upload_page(
             "doc": doc,
             "can_upload": can_upload,
             "error": request.query_params.get("error"),
+            "error_message": error_msg,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
@@ -690,7 +715,13 @@ async def edit_document_page(
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
         "edit_document.html",
-        {"request": request, "doc": doc, "service_version": SERVICE_VERSION, **ctx},
+        {
+            "request": request,
+            "doc": doc,
+            "service_version": SERVICE_VERSION,
+            "error_message": request.query_params.get("error"),
+            **ctx,
+        },
     )
 
 
@@ -868,6 +899,7 @@ async def profile_page(
             "request": request,
             "org_display_name": org_display_name,
             "success": request.query_params.get("success") == "true",
+            "error_message": request.query_params.get("msg") if request.query_params.get("error") == "message" else None,
             "last_name": last_name,
             "first_name": first_name,
             "patronymic": patronymic,

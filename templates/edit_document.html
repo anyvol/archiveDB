@@ -14,6 +14,7 @@
         input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; }
         button { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; }
         .info-box { background: #fff3cd; color: #856404; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .error-box { background: #f8d7da; color: #721c24; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -25,6 +26,9 @@
         <div class="info-box">
             После сохранения документ будет отправлен на проверку. Новое изменение можно сделать только после проверки или отправки на исправление.
         </div>
+        {% if error_message %}
+        <div class="error-box">{{ error_message }}</div>
+        {% endif %}
         <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post">
             <label for="doc_name">Наименование документа:</label>
             <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">

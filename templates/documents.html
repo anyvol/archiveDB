@@ -122,6 +122,12 @@
     </div>
 
     <div class="container">
+        {% if create_error %}
+        <div class="alert" style="background:#f8d7da;color:#721c24;padding:0.75rem;border-radius:4px;margin-bottom:1rem;">{{ create_error }}</div>
+        {% endif %}
+        {% if action_error %}
+        <div class="alert" style="background:#f8d7da;color:#721c24;padding:0.75rem;border-radius:4px;margin-bottom:1rem;">{{ action_error }}</div>
+        {% endif %}
         {% if can_create %}
         <div class="create-section">
         <h2>Добавить новый документ</h2>

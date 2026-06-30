@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.9.2
+
+- Form validation and business-rule errors on web pages (registration, profile, document actions) are shown as readable messages instead of raw JSON in the browser.
+- Fixed the changelog page (internal server error caused by a missing import).
+- Changelog page now lists the full release history, not only the current version.
+- Certificate trust scripts are generated dynamically on the server with the correct host, HTTPS port, and `/archive` prefix (fixes duplicate path and connection errors).
+- Windows certificate script is available as a readable `trust-windows.ps1` file instead of an encoded PowerShell command.
+- Windows cert download uses `curl.exe` when available, otherwise forces TLS 1.2 for PowerShell 5.x (fixes «Базовое соединение закрыто» on download).
+- Fixed `trust-windows.cmd` certificate import (cmd `^|` escape broke `Import-Certificate`).
+- Added departments: «Сервисный отдел» and «Отдел интеграции и сопровождения».
+
 ## 0.9.1
 
 - Default HTTPS port is **8443** (port 443 is often blocked on WSL/Windows).
