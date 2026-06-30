@@ -35,13 +35,13 @@ docker compose exec api python scripts/promote_user.py ivanov admin
 
 ## HTTPS and browser push notifications
 
-Browser push requires a **secure context** (HTTPS or `localhost`). The stack ships with nginx terminating TLS on port 443.
+Browser push requires a **secure context** (HTTPS or `localhost`). The stack ships with nginx terminating TLS on port **8443** by default (mapped to container 443).
 
 ### First-time setup
 
 1. Start services: `docker compose up -d`
 2. On first proxy start, a **self-signed certificate** is created in `nginx/certs/` if missing
-3. Open **https://localhost/archive/** and accept the browser certificate warning
+3. Open **https://localhost:8443/archive/** and accept the browser certificate warning
 4. Configure VAPID keys (see root [README.md](../README.md))
 
 ### LAN / hostname access
@@ -66,7 +66,9 @@ SSL_CERT_CN=SERVER-PDM ./scripts/generate-ssl-cert.sh
 docker compose up -d proxy
 ```
 
-Port 80 redirects to HTTPS. Push will not work when accessing the site as `http://192.168.x.x/...`.
+Port 80 redirects to HTTPS on port 8443. Push will not work when accessing the site as `http://192.168.x.x/...` without HTTPS.
+
+If connection is refused on port 443, use **8443** (default) or set `HTTPS_PORT` in `.env`.
 
 ### VAPID keys
 

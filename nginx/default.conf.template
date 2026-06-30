@@ -1,14 +1,14 @@
-# HTTP — redirect to HTTPS when SSL certificates are mounted
+# HTTP — redirect to HTTPS (external port from PUBLIC_HTTPS_PORT)
 server {
     listen 80;
     server_name _;
 
     location /archive/ {
-        return 301 https://$host$request_uri;
+        return 301 https://$host${REDIRECT_PORT}$request_uri;
     }
 
     location / {
-        return 301 https://$host/archive/;
+        return 301 https://$host${REDIRECT_PORT}/archive/;
     }
 }
 

@@ -36,9 +36,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Application: **https://localhost/archive/** (port 443)
+Application: **https://localhost:8443/archive/**
 
 HTTP (port 80) redirects to HTTPS. On first start, nginx auto-generates a self-signed TLS certificate if `nginx/certs/` is empty. Accept the browser security warning for internal use.
+
+Default HTTPS port is **8443** because port 443 is often blocked or unavailable on WSL/Windows. Override with `HTTPS_PORT=443` in `.env` if your environment allows it.
 
 For LAN access, set in `.env`:
 
@@ -53,7 +55,7 @@ rm -f nginx/certs/*.pem
 docker compose up -d proxy
 ```
 
-Open: `https://SERVER-PDM/archive/`
+Open: `https://SERVER-PDM:8443/archive/`
 
 Files are stored on the host at `./uploaded_files` (configure via `UPLOAD_HOST_PATH` in `.env`).
 
