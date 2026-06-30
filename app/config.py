@@ -16,8 +16,8 @@ def read_version() -> str:
 
 SERVICE_VERSION = read_version()
 
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "").strip()
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@example.com")
 VAPID_CLAIMS = {"sub": VAPID_SUBJECT}
 
@@ -39,3 +39,8 @@ def url_path(path: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{ROOT_PATH}{path}" if ROOT_PATH else path
+
+
+def app_scope() -> str:
+    scope = url_path("/")
+    return scope if scope.endswith("/") else f"{scope}/"

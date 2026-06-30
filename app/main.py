@@ -44,7 +44,7 @@ from app.auth import get_current_user_from_token, authenticate_user, get_passwor
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
 from app.project_helpers import get_project_by_id, create_new_project
-from app.config import UPLOAD_DIR, ROOT_PATH, url_path, SERVICE_VERSION, VAPID_PUBLIC_KEY
+from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
 from app.permissions import (
     can_create_document,
     can_edit_document_metadata,
@@ -96,6 +96,7 @@ templates.env.globals["DOCUMENT_TYPE_LABELS"] = DOCUMENT_TYPE_LABELS
 templates.env.globals["DOC_KIND_CODES"] = DOC_KIND_CODES
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 templates.env.globals["url_path"] = url_path
+templates.env.globals["app_scope"] = app_scope
 templates.env.globals["DocumentStatus"] = DocumentStatus
 templates.env.globals["UserRole"] = UserRole
 templates.env.globals["can_upload_file"] = can_upload_file
@@ -110,6 +111,14 @@ app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
 
 _COOKIE_PATH = ROOT_PATH or "/"
+_CERT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nginx", "certs", "fullchain.pem")
+_SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts")
+_CERT_SCRIPT_FILES = {
+    "trust-windows.ps1": ("trust-cert-windows.ps1", "application/octet-stream"),
+    "trust-linux.sh": ("trust-cert-linux.sh", "application/x-sh"),
+    "trust-macos.sh": ("trust-cert-macos.sh", "application/x-sh"),
+    "windows-forward-ports.ps1": ("windows-forward-ports.ps1", "application/octet-stream"),
+}
 
 
 async def _page_context(session: AsyncSession, user: User) -> dict:
@@ -861,6 +870,8 @@ async def profile_page(
             "push_preferences": normalize_push_preferences(user.push_preferences),
             "vapid_public_key": VAPID_PUBLIC_KEY,
             "has_push_subscription": bool(user.push_subscription),
+            "cert_available": os.path.isfile(_CERT_FILE),
+            "sw_scope": app_scope(),
             **ctx,
         },
     )
@@ -1002,3 +1013,34 @@ async def push_unsubscribe(
     user.push_preferences = prefs
     await session.commit()
     return {"status": "unsubscribed"}
+
+
+@app.get("/cert/fullchain.pem")
+async def download_site_certificate(
+    access_token: Optional[str] = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    await _require_user(access_token, session)
+    if not os.path.isfile(_CERT_FILE):
+        raise HTTPException(status_code=404, detail="Сертификат недоступен.")
+    return FileResponse(
+        _CERT_FILE,
+        filename="archive-site.pem",
+        media_type="application/x-pem-file",
+    )
+
+
+@app.get("/cert/scripts/{script_key}")
+async def download_cert_script(
+    script_key: str,
+    access_token: Optional[str] = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    await _require_user(access_token, session)
+    if script_key not in _CERT_SCRIPT_FILES:
+        raise HTTPException(status_code=404, detail="Скрипт не найден.")
+    filename, media_type = _CERT_SCRIPT_FILES[script_key]
+    script_path = os.path.join(_SCRIPTS_DIR, filename)
+    if not os.path.isfile(script_path):
+        raise HTTPException(status_code=404, detail="Скрипт не найден.")
+    return FileResponse(script_path, filename=filename, media_type=media_type)

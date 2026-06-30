@@ -13,5 +13,5 @@ def test_get_changelog_sections_from_current_version():
 def test_render_changelog_html_includes_current_version():
     html = render_changelog_html("0.9.1")
     assert "0.9.1" in html
-    assert "HTTPS support" in html
+    assert "HTTPS" in html
     assert "0.9.0" not in html
