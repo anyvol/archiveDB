@@ -209,7 +209,7 @@ async def update_document_status(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_reviewer_or_admin),
 ):
-    if payload.status not in (DocumentStatus.verified, DocumentStatus.requires_correction):
+    if payload.status not in (DocumentStatus.approved, DocumentStatus.requires_correction):
         raise HTTPException(status_code=400, detail="Invalid status for review action")
 
     if payload.status == DocumentStatus.requires_correction and not (payload.comment or "").strip():
@@ -222,7 +222,7 @@ async def update_document_status(
     doc.status = payload.status
     if payload.status == DocumentStatus.requires_correction:
         doc.review_comment = (payload.comment or "").strip()
-    elif payload.status == DocumentStatus.verified:
+    elif payload.status == DocumentStatus.approved:
         doc.review_comment = None
     await notify_status_change(
         session, doc, current_user, payload.status, (payload.comment or "").strip() or None

@@ -73,13 +73,14 @@
         .status-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
         .status-no-file { color: #495057; background: #e9ecef; }
         .status-pending { color: #856404; background: #fff3cd; }
-        .status-verified { color: #155724; background: #d4edda; }
+        .status-approved { color: #155724; background: #d4edda; }
         .status-correction { color: #721c24; background: #f8d7da; }
+        .status-correction-requested { color: #004085; background: #cce5ff; }
         .status-comment-link { margin-top: 0.35rem; font-size: 0.8rem; }
         .status-comment-link a { color: #007bff; }
         .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
         .doc-type-buttons .doc-type-btn.active { background: #007bff; color: white; }
-        tbody tr.doc-row { cursor: context-menu; }
+        tbody tr.doc-row { cursor: pointer; }
         tbody tr.doc-row:hover { background-color: #f0f7ff; }
         .context-menu {
             display: none;
@@ -293,9 +294,11 @@
                 <tr class="doc-row"
                     data-doc-id="{{ doc.id }}"
                     data-doc-label="{{ doc_label|e }}"
+                    data-action-open="{{ url_path('/documents/' ~ doc.id) }}"
                     {% if doc.file_name %}data-action-download="{{ url_path('/documents/' ~ doc.id ~ '/download') }}"{% endif %}
                     {% if can_upload_file(user, doc) and not doc.file_name %}data-action-upload="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
                     {% if can_upload_file(user, doc) and doc.file_name %}data-action-replace="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
+                    {% if can_apply_formal_change(user, doc) %}data-action-apply-change="{{ url_path('/documents/' ~ doc.id ~ '/apply-change') }}"{% endif %}
                     {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
                     {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
                     {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
@@ -317,6 +320,10 @@
                         {% if doc.status.value == 'requires_correction' and doc.review_comment %}
                         <div class="status-comment-link">
                             <a href="#" class="view-comment-link" data-comment="{{ doc.review_comment|e }}">Комментарий</a>
+                        </div>
+                        {% elif doc.status.value == 'correction_requested' %}
+                        <div class="status-comment-link">
+                            <a href="{{ url_path('/documents/' ~ doc.id) }}">Запрос исправления</a>
                         </div>
                         {% endif %}
                     </td>
@@ -683,7 +690,7 @@
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'new_status';
-            input.value = 'verified';
+            input.value = 'approved';
             form.appendChild(input);
             document.body.appendChild(form);
             form.submit();
@@ -691,21 +698,25 @@
 
         function buildContextMenu(row, x, y) {
             const items = [];
+            const openUrl = row.dataset.actionOpen;
             const downloadUrl = row.dataset.actionDownload;
             const uploadUrl = row.dataset.actionUpload;
             const replaceUrl = row.dataset.actionReplace;
+            const applyChangeUrl = row.dataset.actionApplyChange;
             const editUrl = row.dataset.actionEdit;
             const verifyId = row.dataset.actionVerify;
             const correctionId = row.dataset.actionCorrection;
             const deleteId = row.dataset.actionDelete;
             const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
 
+            if (openUrl) items.push({ label: 'Открыть запись', href: openUrl });
             if (uploadUrl) items.push({ label: 'Загрузить файл', href: uploadUrl });
             if (downloadUrl) items.push({ label: 'Скачать файл', href: downloadUrl });
             if (replaceUrl) items.push({ label: 'Заменить файл', href: replaceUrl });
-            if (editUrl) items.push({ label: 'Изменить запись', href: editUrl });
-            if (verifyId) items.push({ label: 'Изменить статус на "Проверено"', action: 'verify', docId: verifyId });
-            if (correctionId) items.push({ label: 'Изменить статус на "Требуется исправление"', action: 'correction', docId: correctionId });
+            if (applyChangeUrl) items.push({ label: 'Внести изменения в документ', href: applyChangeUrl });
+            if (editUrl) items.push({ label: 'Изменить метаданные', href: editUrl });
+            if (verifyId) items.push({ label: 'Утвердить', action: 'verify', docId: verifyId });
+            if (correctionId) items.push({ label: 'Требуется исправление', action: 'correction', docId: correctionId });
             if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, danger: true });
 
             if (!items.length) return;
@@ -753,6 +764,10 @@
             row.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 buildContextMenu(row, e.clientX, e.clientY);
+            });
+            row.addEventListener('dblclick', (e) => {
+                const openUrl = row.dataset.actionOpen;
+                if (openUrl) window.location.href = openUrl;
             });
         });
 

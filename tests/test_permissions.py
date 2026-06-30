@@ -2,9 +2,11 @@ import pytest
 
 from app.models import BaseDocument, DocumentStatus, User, UserRole
 from app.permissions import (
+    can_apply_formal_change,
     can_create_document,
     can_delete_document,
     can_edit_document_metadata,
+    can_request_minor_correction,
     can_set_document_status,
     can_upload_file,
 )
@@ -15,10 +17,10 @@ def _user(role: UserRole, user_id: int = 1) -> User:
     return u
 
 
-def _doc(uploaded_by: int = 1, file_name: str | None = None, status=DocumentStatus.pending_review) -> BaseDocument:
+def _doc(uploaded_by: int = 1, file_name: str | None = None, status=DocumentStatus.pending_review, doc_type="DD") -> BaseDocument:
     return BaseDocument(
         id=1,
-        type="DD",
+        type=doc_type,
         created_by="Author",
         uploaded_by=uploaded_by,
         status=status,
@@ -59,25 +61,42 @@ def test_user_can_replace_when_requires_correction():
     assert can_upload_file(_user(UserRole.user, 1), doc)
 
 
-def test_user_cannot_replace_when_verified():
-    doc = _doc(uploaded_by=1, file_name="file.pdf", status=DocumentStatus.verified)
+def test_any_user_can_replace_when_requires_correction():
+    doc = _doc(uploaded_by=99, file_name="file.pdf", status=DocumentStatus.requires_correction)
+    assert can_upload_file(_user(UserRole.user, 1), doc)
+
+
+def test_user_cannot_replace_when_approved():
+    doc = _doc(uploaded_by=1, file_name="file.pdf", status=DocumentStatus.approved)
     assert not can_upload_file(_user(UserRole.user, 1), doc)
 
 
-def test_admin_can_always_upload():
-    doc = _doc(uploaded_by=99, file_name="file.pdf", status=DocumentStatus.verified)
-    assert can_upload_file(_user(UserRole.admin), doc)
+def test_admin_cannot_replace_approved_kd():
+    doc = _doc(uploaded_by=99, file_name="file.pdf", status=DocumentStatus.approved)
+    assert not can_upload_file(_user(UserRole.admin), doc)
 
 
 def test_edit_metadata_rules():
     pending = _doc(status=DocumentStatus.pending_review)
-    verified = _doc(uploaded_by=1, status=DocumentStatus.verified)
+    approved = _doc(uploaded_by=1, status=DocumentStatus.approved)
     correction = _doc(uploaded_by=1, status=DocumentStatus.requires_correction)
 
     assert not can_edit_document_metadata(_user(UserRole.admin), pending)
-    assert can_edit_document_metadata(_user(UserRole.admin), verified)
+    assert can_edit_document_metadata(_user(UserRole.admin), approved)
 
     assert not can_edit_document_metadata(_user(UserRole.user, 1), pending)
-    assert can_edit_document_metadata(_user(UserRole.user, 1), verified)
+    assert can_edit_document_metadata(_user(UserRole.user, 1), approved)
     assert can_edit_document_metadata(_user(UserRole.user, 1), correction)
-    assert not can_edit_document_metadata(_user(UserRole.user, 2), verified)
+    assert not can_edit_document_metadata(_user(UserRole.user, 2), approved)
+
+
+def test_request_minor_correction():
+    doc = _doc(file_name="a.pdf", status=DocumentStatus.pending_review)
+    assert can_request_minor_correction(_user(UserRole.user), doc)
+    assert not can_request_minor_correction(_user(UserRole.user), _doc(file_name="a.pdf", status=DocumentStatus.approved))
+
+
+def test_apply_formal_change():
+    doc = _doc(file_name="a.pdf", status=DocumentStatus.approved)
+    assert can_apply_formal_change(_user(UserRole.user), doc)
+    assert not can_apply_formal_change(_user(UserRole.user), _doc(file_name="a.pdf", status=DocumentStatus.pending_review))

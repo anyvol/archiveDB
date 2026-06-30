@@ -22,9 +22,9 @@ def test_display_status_no_file():
 
 
 def test_display_status_with_file():
-    label, css = get_document_display_status(_doc(file_name="a.pdf", status=DocumentStatus.verified))
-    assert label == "Проверено"
-    assert css == "status-verified"
+    label, css = get_document_display_status(_doc(file_name="a.pdf", status=DocumentStatus.approved))
+    assert label == "Утверждено"
+    assert css == "status-approved"
 
 
 def test_display_status_pending_and_correction():

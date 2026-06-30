@@ -3,6 +3,7 @@
 from fastapi import HTTPException, status
 
 from app.models import BaseDocument, DocumentStatus, User, UserRole
+from app.change_log import is_governed_document
 
 
 def is_admin(user: User) -> bool:
@@ -39,25 +40,58 @@ def can_edit_document_metadata(user: User, doc: BaseDocument) -> bool:
     if is_admin(user):
         return True
     if is_owner(user, doc):
-        return doc.status in (DocumentStatus.verified, DocumentStatus.requires_correction)
+        return doc.status in (DocumentStatus.approved, DocumentStatus.requires_correction)
     return False
 
 
 def can_upload_file(user: User, doc: BaseDocument) -> bool:
+    """Replace or first upload. For КД/ТД governed docs, replace only when requires_correction."""
+    if not doc.file_name:
+        if is_admin(user):
+            return True
+        return is_owner(user, doc)
+
+    if is_governed_document(doc):
+        return doc.status == DocumentStatus.requires_correction
+
     if is_admin(user):
         return True
     if not is_owner(user, doc):
         return False
-    if not doc.file_name:
-        return True
     return doc.status == DocumentStatus.requires_correction
+
+
+def can_request_minor_correction(user: User, doc: BaseDocument) -> bool:
+    """Any user may request minor correction while document is on review (КД/ТД only)."""
+    if not is_governed_document(doc):
+        return False
+    if not doc.file_name:
+        return False
+    return doc.status == DocumentStatus.pending_review
+
+
+def can_respond_correction_request(user: User, doc: BaseDocument) -> bool:
+    return is_reviewer_or_admin(user) and doc.status == DocumentStatus.correction_requested
+
+
+def can_apply_formal_change(user: User, doc: BaseDocument) -> bool:
+    """Formal change with ИИ for approved КД/ТД documents."""
+    if not is_governed_document(doc):
+        return False
+    if not doc.file_name:
+        return False
+    return doc.status == DocumentStatus.approved
+
+
+def can_open_document_card(user: User) -> bool:
+    return user.role in (UserRole.admin, UserRole.user, UserRole.reviewer)
 
 
 def require_upload_permission(user: User, doc: BaseDocument) -> None:
     if not can_upload_file(user, doc):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Загрузка файла недоступна для текущего статуса документа.",
+            detail="Замена файла доступна только при статусе «Требуется исправление».",
         )
 
 

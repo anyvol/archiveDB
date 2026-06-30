@@ -169,6 +169,60 @@ async def notify_document_delete(
     )
 
 
+async def notify_correction_request(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    comment: str,
+) -> None:
+    await session.refresh(doc, ["design_document", "tech_document"])
+    designation = get_document_designation(doc)
+    message = (
+        f"{_actor_name(actor)} запросил(а) незначительное исправление документа «{designation}»: "
+        f"«{comment}»"
+    )
+    await _notify_admin_reviewers(session, doc, message, NotificationEventType.correction_request)
+
+
+async def notify_correction_request_response(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    approved: bool,
+    comment: str | None,
+) -> None:
+    await session.refresh(doc, ["design_document", "tech_document"])
+    designation = get_document_designation(doc)
+    verdict = "одобрил(а)" if approved else "отклонил(а)"
+    message = f"{_actor_name(actor)} {verdict} запрос на исправление документа «{designation}»"
+    if comment:
+        message += f": «{comment}»"
+
+    recipients: set[int] = set()
+    if doc.uploaded_by:
+        recipients.add(doc.uploaded_by)
+    recipients.discard(actor.id)
+    await _create_notifications(
+        session, recipients, message, doc.id, NotificationEventType.correction_request_response
+    )
+
+
+async def notify_formal_change(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User,
+    ii_number: str,
+    change_number: str,
+) -> None:
+    await session.refresh(doc, ["design_document", "tech_document"])
+    designation = get_document_designation(doc)
+    message = (
+        f"{_actor_name(actor)} внёс(ла) изменение №{change_number} в документ «{designation}» "
+        f"по извещению об изменении №{ii_number}"
+    )
+    await _notify_admin_reviewers(session, doc, message, NotificationEventType.formal_change)
+
+
 async def clear_document_references(session: AsyncSession, document_id: int) -> None:
     await session.execute(
         update(Notification)

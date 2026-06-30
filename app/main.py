@@ -25,7 +25,6 @@ from app.database import (
     check_prn_unique,
 )
 from app.models import (
-    Base,
     BaseDocument,
     DesignDocument,
     TechDocument,
@@ -51,6 +50,9 @@ from app.permissions import (
     can_set_document_status,
     can_upload_file,
     can_delete_document,
+    can_apply_formal_change,
+    can_request_minor_correction,
+    can_respond_correction_request,
     is_admin,
     is_owner,
     require_delete_permission,
@@ -58,6 +60,23 @@ from app.permissions import (
     require_status_change_permission,
     require_upload_permission,
 )
+from app.change_log import (
+    get_document_change_history,
+    format_change_event_summary,
+    is_governed_document,
+    log_change_event,
+    log_document_status_change,
+    log_file_upload,
+)
+from app.document_workflow import (
+    fetch_document,
+    preview_media_type,
+    request_minor_correction,
+    respond_correction_request,
+    apply_cosmetic_file_replace,
+    apply_formal_document_change,
+)
+from app.models import DocumentChangeEventType
 from app.user_helpers import build_full_name, split_full_name, validate_person_fields
 from app.column_preferences import DOCUMENT_COLUMNS, get_visible_columns, DEFAULT_VISIBLE_COLUMNS
 from app.notifications import (
@@ -91,8 +110,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
 
@@ -111,6 +128,10 @@ templates.env.globals["can_upload_file"] = can_upload_file
 templates.env.globals["can_set_document_status"] = can_set_document_status
 templates.env.globals["can_delete_document"] = can_delete_document
 templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
+templates.env.globals["can_apply_formal_change"] = can_apply_formal_change
+templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
+templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
+templates.env.globals["is_governed_document"] = is_governed_document
 templates.env.globals["service_version"] = SERVICE_VERSION
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["get_document_display_status"] = get_document_display_status
@@ -206,7 +227,7 @@ async def changelog_page(
         "changelog.html",
         {
             "request": request,
-            "changelog_html": render_changelog_html(SERVICE_VERSION),
+            "changelog_html": render_changelog_html(),
             **ctx,
         },
     )
@@ -470,6 +491,14 @@ async def create_document_record(
     )
     session.add(base_doc)
     await session.flush()
+    await session.refresh(base_doc, ["design_document", "tech_document"])
+    await log_change_event(
+        session,
+        base_doc,
+        user,
+        DocumentChangeEventType.register,
+        comment="Регистрация записи в архиве",
+    )
 
     org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name or None)
     is_kd = doc_type == "DD"
@@ -588,6 +617,7 @@ async def upload_page(
         designation = doc.tech_document.designation
 
     can_upload = can_upload_file(user, doc)
+    is_replace = bool(doc.file_name) and is_governed_document(doc)
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
         "upload.html",
@@ -597,6 +627,7 @@ async def upload_page(
             "designation": designation,
             "doc": doc,
             "can_upload": can_upload,
+            "is_replace": is_replace,
             "error": request.query_params.get("error"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -608,6 +639,7 @@ async def upload_page(
 async def handle_upload(
     doc_id: int,
     file: Optional[UploadFile] = File(None),
+    change_comment: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -615,15 +647,7 @@ async def handle_upload(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    result = await session.execute(
-        select(BaseDocument)
-        .options(
-            joinedload(BaseDocument.design_document),
-            joinedload(BaseDocument.tech_document),
-        )
-        .where(BaseDocument.id == doc_id)
-    )
-    doc = result.scalar_one_or_none()
+    doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
@@ -632,12 +656,33 @@ async def handle_upload(
     project_slug = doc.project.slug if doc.project else "_legacy"
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
+    is_replace = had_file_before
+
+    if is_replace and is_governed_document(doc):
+        if not change_comment.strip():
+            return RedirectResponse(
+                url=url_path(f"/documents/{doc_id}/upload?error=comment_required"),
+                status_code=303,
+            )
+        try:
+            await apply_cosmetic_file_replace(session, doc, user, file, change_comment)
+        except HTTPException:
+            return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
+        await notify_file_upload(
+            session,
+            doc,
+            user,
+            had_file_before=True,
+            registration_already_notified=registration_already_notified,
+        )
+        await session.commit()
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
 
     try:
         file_path, unique_file_name = await save_upload_file(
             file,
             project_slug,
-            doc.file_path,
+            doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
         )
@@ -646,9 +691,12 @@ async def handle_upload(
 
     doc.file_path = file_path
     doc.file_name = unique_file_name
+    old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if not doc.registration_notified_at:
         doc.registration_notified_at = datetime.utcnow()
+    await log_file_upload(session, doc, user, unique_file_name, replacement=had_file_before)
+    await log_document_status_change(session, doc, user, old_status, DocumentStatus.pending_review)
     await notify_file_upload(
         session,
         doc,
@@ -658,7 +706,7 @@ async def handle_upload(
     )
     await session.commit()
 
-    return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/documents/{doc_id}/download")
@@ -673,6 +721,93 @@ async def download_document(
         raise HTTPException(status_code=404, detail="Файл не найден")
 
     return FileResponse(path=doc.file_path, filename=doc.file_name, media_type="application/octet-stream")
+
+
+@app.get("/documents/{doc_id}/preview")
+async def preview_document(
+    doc_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    doc = await session.get(BaseDocument, doc_id)
+    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    media_type = preview_media_type(doc.file_path)
+    if not media_type:
+        raise HTTPException(status_code=415, detail="Предпросмотр недоступен для этого формата.")
+
+    return FileResponse(
+        path=doc.file_path,
+        media_type=media_type,
+        content_disposition_type="inline",
+    )
+
+
+@app.get("/documents/{doc_id}/ii/{ii_id}/preview")
+async def preview_change_notification(
+    doc_id: int,
+    ii_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    from app.models import ChangeNotification
+
+    ii = await session.get(ChangeNotification, ii_id)
+    if not ii or ii.document_id != doc_id or not os.path.exists(ii.file_path):
+        raise HTTPException(status_code=404, detail="Извещение не найдено.")
+
+    return FileResponse(
+        path=ii.file_path,
+        media_type="application/pdf",
+        content_disposition_type="inline",
+    )
+
+
+@app.get("/documents/{doc_id}", response_class=HTMLResponse)
+async def document_detail_page(
+    doc_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    designation = get_document_designation(doc)
+    history = await get_document_change_history(session, doc_id)
+    for event in history:
+        await session.refresh(event, ["actor", "change_notification"])
+        event.summary = format_change_event_summary(event)
+
+    can_preview = bool(doc.file_path and preview_media_type(doc.file_path))
+    preview_is_image = bool(
+        doc.file_path and preview_media_type(doc.file_path or "").startswith("image/")
+    )
+
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "document_detail.html",
+        {
+            "request": request,
+            "doc": doc,
+            "designation": designation,
+            "change_history": history,
+            "is_governed": is_governed_document(doc),
+            "can_preview": can_preview,
+            "preview_is_image": preview_is_image,
+            "error": request.query_params.get("error"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
 
 
 @app.get("/documents/{doc_id}/edit", response_class=HTMLResponse)
@@ -732,7 +867,17 @@ async def edit_document(
 
     doc.doc_name = new_doc_name
     doc.developed_by = developed_by
+    old_status = doc.status
     doc.status = DocumentStatus.pending_review
+    if changes:
+        await log_change_event(
+            session,
+            doc,
+            user,
+            DocumentChangeEventType.metadata_edit,
+            comment="; ".join(changes),
+        )
+    await log_document_status_change(session, doc, user, old_status, DocumentStatus.pending_review)
     await notify_document_edit(session, doc, user, changes)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
@@ -741,6 +886,7 @@ async def edit_document(
 @app.post("/documents/{doc_id}/status", response_class=RedirectResponse)
 async def set_document_status(
     doc_id: int,
+    request: Request,
     new_status: str = Form(...),
     comment: str = Form(""),
     session: AsyncSession = Depends(get_session),
@@ -757,8 +903,8 @@ async def set_document_status(
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный статус.")
 
-    if status_enum not in (DocumentStatus.verified, DocumentStatus.requires_correction):
-        raise HTTPException(status_code=400, detail="Можно установить только «Проверено» или «Требуется исправление».")
+    if status_enum not in (DocumentStatus.approved, DocumentStatus.requires_correction):
+        raise HTTPException(status_code=400, detail="Можно установить только «Утверждено» или «Требуется исправление».")
 
     if status_enum == DocumentStatus.requires_correction and not comment.strip():
         raise HTTPException(status_code=400, detail="Для статуса «Требуется исправление» необходим комментарий.")
@@ -767,14 +913,227 @@ async def set_document_status(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
+    old_status = doc.status
     doc.status = status_enum
     if status_enum == DocumentStatus.requires_correction:
         doc.review_comment = comment.strip()
-    elif status_enum == DocumentStatus.verified:
+    elif status_enum == DocumentStatus.approved:
         doc.review_comment = None
+    await log_document_status_change(
+        session,
+        doc,
+        user,
+        old_status,
+        status_enum,
+        comment=comment.strip() or None,
+    )
     await notify_status_change(session, doc, user, status_enum, comment.strip() or None)
     await session.commit()
+    redirect_to = request.headers.get("referer") or url_path("/documents")
+    if f"/documents/{doc_id}" in (redirect_to or ""):
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/documents/{doc_id}/request-correction", response_class=RedirectResponse)
+async def request_correction(
+    doc_id: int,
+    comment: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+    if not can_request_minor_correction(user, doc):
+        raise HTTPException(status_code=403, detail="Запрос на исправление недоступен.")
+
+    await request_minor_correction(session, doc, user, comment)
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/documents/{doc_id}/respond-correction", response_class=RedirectResponse)
+async def respond_correction(
+    doc_id: int,
+    approved: str = Form(...),
+    comment: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+    if not can_respond_correction_request(user, doc):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    is_approved = approved.lower() in ("true", "1", "yes")
+    await respond_correction_request(session, doc, user, approved=is_approved, comment=comment)
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/documents/{doc_id}/apply-change", response_class=HTMLResponse)
+async def apply_change_page(
+    doc_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+    if not can_apply_formal_change(user, doc):
+        raise HTTPException(status_code=403, detail="Формальное изменение недоступно для этого документа.")
+
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "apply_change.html",
+        {
+            "request": request,
+            "doc": doc,
+            "designation": get_document_designation(doc),
+            "error": request.query_params.get("error"),
+            "form": _empty_apply_change_form(),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+def _empty_apply_change_form() -> dict:
+    return {
+        "ii_number": "",
+        "change_number": "",
+        "change_date": "",
+        "comment": "",
+        "developer_signed": False,
+        "reviewer_signed": False,
+        "approver_signed": False,
+    }
+
+
+async def _render_apply_change_error(
+    request: Request,
+    session: AsyncSession,
+    user: User,
+    doc: BaseDocument,
+    *,
+    error: str,
+    ii_number: str = "",
+    change_number: str = "",
+    change_date: str = "",
+    comment: str = "",
+    developer_signed: bool = False,
+    reviewer_signed: bool = False,
+    approver_signed: bool = False,
+) -> HTMLResponse:
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "apply_change.html",
+        {
+            "request": request,
+            "doc": doc,
+            "designation": get_document_designation(doc),
+            "error": error,
+            "form": {
+                "ii_number": ii_number,
+                "change_number": change_number,
+                "change_date": change_date,
+                "comment": comment,
+                "developer_signed": developer_signed,
+                "reviewer_signed": reviewer_signed,
+                "approver_signed": approver_signed,
+            },
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.post("/documents/{doc_id}/apply-change")
+async def apply_change_submit(
+    doc_id: int,
+    request: Request,
+    ii_file: Optional[UploadFile] = File(None),
+    new_doc_file: Optional[UploadFile] = File(None),
+    ii_number: str = Form(""),
+    change_number: str = Form(""),
+    change_date: str = Form(""),
+    comment: str = Form(""),
+    developer_signed: Optional[str] = Form(None),
+    reviewer_signed: Optional[str] = Form(None),
+    approver_signed: Optional[str] = Form(None),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+    if not can_apply_formal_change(user, doc):
+        raise HTTPException(status_code=403, detail="Формальное изменение недоступно.")
+
+    form_kwargs = dict(
+        ii_number=ii_number,
+        change_number=change_number,
+        change_date=change_date,
+        comment=comment,
+        developer_signed=bool(developer_signed),
+        reviewer_signed=bool(reviewer_signed),
+        approver_signed=bool(approver_signed),
+    )
+
+    async def form_error(message: str) -> HTMLResponse:
+        return await _render_apply_change_error(
+            request, session, user, doc, error=message, **form_kwargs
+        )
+
+    if not ii_file or not ii_file.filename:
+        return await form_error("Приложите файл извещения об изменении (ИИ).")
+    if not new_doc_file or not new_doc_file.filename:
+        return await form_error("Приложите новую версию документа.")
+
+    try:
+        parsed_date = datetime.strptime(change_date, "%Y-%m-%d")
+    except ValueError:
+        return await form_error("Укажите корректную дату изменения.")
+
+    try:
+        await apply_formal_document_change(
+            session,
+            doc,
+            user,
+            ii_file=ii_file,
+            new_doc_file=new_doc_file,
+            ii_number=ii_number,
+            change_number=change_number,
+            change_date=parsed_date,
+            developer_signed=bool(developer_signed),
+            reviewer_signed=bool(reviewer_signed),
+            approver_signed=bool(approver_signed),
+            comment=comment,
+        )
+    except HTTPException as exc:
+        return await form_error(exc.detail)
+
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
