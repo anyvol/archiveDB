@@ -1,0 +1,291 @@
+<!-- templates/document_detail.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карточка записи — {{ designation }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem 1.5rem; }
+        .meta-item label { display: block; font-size: 0.8rem; color: #6c757d; margin-bottom: 0.15rem; }
+        .status-badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500; }
+        .status-no-file { color: #495057; background: #e9ecef; }
+        .status-pending { color: #856404; background: #fff3cd; }
+        .status-approved { color: #155724; background: #d4edda; }
+        .status-correction { color: #721c24; background: #f8d7da; }
+        .status-correction-requested { color: #004085; background: #cce5ff; }
+        .hint { font-size: 0.875rem; color: #6c757d; margin: 0.5rem 0 1rem; line-height: 1.45; }
+        .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+        .btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-danger { background: #dc3545; color: white; }
+        .preview-frame { width: 100%; height: 520px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+        .preview-image { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+        .preview-unavailable { padding: 2rem; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 4px; }
+        .history-list { list-style: none; padding: 0; margin: 0; }
+        .history-item { padding: 0.85rem 0; border-bottom: 1px solid #eee; }
+        .history-item:last-child { border-bottom: none; }
+        .history-meta { font-size: 0.8rem; color: #6c757d; margin-bottom: 0.25rem; }
+        .history-title { font-weight: 500; }
+        .history-comment { margin-top: 0.35rem; font-size: 0.9rem; }
+        .history-ii { margin-top: 0.35rem; font-size: 0.85rem; color: #0056b3; }
+        .alert { padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .alert-info { background: #e7f3ff; color: #004085; }
+        .alert-warning { background: #fff3cd; color: #856404; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 3000; align-items: center; justify-content: center; padding: 1rem; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 8px; max-width: 520px; width: 100%; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+        .modal h3 { margin-top: 0; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; }
+        .form-group textarea, .form-group input { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Карточка записи {% include "_version_tag.html" %}</h1>
+        {% include "_header_nav.html" %}
+    </div>
+
+    <div class="container">
+        <p><a href="{{ url_path('/documents') }}">← К архиву документов</a></p>
+
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <div class="card">
+            <h2>{{ designation }}</h2>
+            {% set display_status = get_document_display_status(doc) %}
+            <p>Статус: <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span></p>
+
+            {% if doc.status.value == 'correction_requested' and doc.correction_request_comment %}
+            <div class="alert alert-info">
+                <strong>Запрос на незначительное исправление:</strong> {{ doc.correction_request_comment }}
+            </div>
+            {% endif %}
+            {% if doc.status.value == 'requires_correction' and doc.review_comment %}
+            <div class="alert alert-warning">
+                <strong>Комментарий проверяющего:</strong> {{ doc.review_comment }}
+            </div>
+            {% endif %}
+
+            <div class="meta-grid">
+                <div class="meta-item"><label>Тип</label><div>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div></div>
+                <div class="meta-item"><label>Наименование</label><div>{{ doc.doc_name or '—' }}</div></div>
+                <div class="meta-item"><label>Разработчик</label><div>{{ doc.developed_by or '—' }}</div></div>
+                <div class="meta-item"><label>Проект</label><div>{{ doc.project.name if doc.project else '—' }}</div></div>
+                <div class="meta-item"><label>Файл</label><div>{{ doc.file_name or 'не загружен' }}</div></div>
+                <div class="meta-item"><label>Зарегистрировал</label><div>{{ doc.created_by or '—' }}</div></div>
+                <div class="meta-item"><label>Дата регистрации</label><div>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</div></div>
+                <div class="meta-item"><label>Обновлено</label><div>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</div></div>
+            </div>
+
+            {% if is_governed %}
+            <p class="hint">
+                Для записей КД и ТД действуют правила внесения изменений по ГОСТ 2.503-2013:
+                существенные изменения — только с извещением об изменении (ИИ);
+                незначительные правки — по запросу на исправление или после отправки на исправление проверяющим.
+            </p>
+            {% endif %}
+
+            <div class="actions">
+                {% if doc.file_name %}
+                <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}">Скачать файл</a>
+                {% endif %}
+                {% if can_upload_file(user, doc) and not doc.file_name %}
+                <a class="btn btn-primary" href="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}">Загрузить файл</a>
+                {% endif %}
+                {% if can_upload_file(user, doc) and doc.file_name %}
+                <a class="btn btn-warning" href="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}">Заменить файл</a>
+                {% endif %}
+                {% if can_edit_document_metadata(user, doc) %}
+                <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}">Изменить метаданные</a>
+                {% endif %}
+                {% if can_apply_formal_change(user, doc) %}
+                <a class="btn btn-primary" href="{{ url_path('/documents/' ~ doc.id ~ '/apply-change') }}">Внести изменения в документ</a>
+                {% endif %}
+                {% if can_request_minor_correction(user, doc) %}
+                <button type="button" class="btn btn-warning" id="open-request-modal">Запрос на исправление</button>
+                {% endif %}
+                {% if can_respond_correction_request(user, doc) %}
+                <button type="button" class="btn btn-success" id="open-approve-modal">Одобрить запрос</button>
+                <button type="button" class="btn btn-danger" id="open-reject-modal">Отклонить запрос</button>
+                {% endif %}
+                {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
+                <button type="button" class="btn btn-success" id="btn-approve">Утвердить</button>
+                <button type="button" class="btn btn-danger" id="btn-send-correction">Требуется исправление</button>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if doc.file_name and can_preview %}
+        <div class="card">
+            <h2>Просмотр документа</h2>
+            <p class="hint">Предпросмотр доступен для PDF и изображений.</p>
+            {% if preview_is_image %}
+            <img class="preview-image" src="{{ url_path('/documents/' ~ doc.id ~ '/preview') }}" alt="Предпросмотр">
+            {% else %}
+            <iframe class="preview-frame" src="{{ url_path('/documents/' ~ doc.id ~ '/preview') }}" title="Предпросмотр PDF"></iframe>
+            {% endif %}
+        </div>
+        {% elif doc.file_name %}
+        <div class="card">
+            <h2>Просмотр документа</h2>
+            <div class="preview-unavailable">Предпросмотр недоступен для этого формата. Скачайте файл для просмотра.</div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h2>Журнал изменений</h2>
+            <p class="hint">Электронный журнал изменений документа. Записи с основанием содержат ссылку на извещение об изменении (ИИ).</p>
+            {% if change_history %}
+            <ul class="history-list">
+                {% for event in change_history %}
+                <li class="history-item">
+                    <div class="history-meta">
+                        {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }}
+                        {% if event.actor %} · {{ event.actor.full_name or event.actor.login }}{% endif %}
+                    </div>
+                    <div class="history-title">{{ event.summary }}</div>
+                    {% if event.comment %}
+                    <div class="history-comment">{{ event.comment }}</div>
+                    {% endif %}
+                    {% if event.change_notification %}
+                    <div class="history-ii">
+                        ИИ № {{ event.change_notification.number }}
+                        от {{ event.change_notification.date.strftime('%Y-%m-%d') }}
+                        · <a href="{{ url_path('/documents/' ~ doc.id ~ '/ii/' ~ event.change_notification.id ~ '/preview') }}" target="_blank">просмотр ИИ</a>
+                    </div>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="hint">Записей пока нет.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if can_request_minor_correction(user, doc) %}
+    <div class="modal-overlay" id="request-modal">
+        <div class="modal">
+            <h3>Запрос на незначительное исправление</h3>
+            <p class="hint"><strong>Важно:</strong> этот запрос предназначен только для незначительных (косметических) правок.
+            Существенные изменения оформляются через извещение об изменении после утверждения документа.</p>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/request-correction') }}">
+                <div class="form-group">
+                    <label for="request-comment">Что нужно исправить?</label>
+                    <textarea id="request-comment" name="comment" rows="4" required minlength="10" placeholder="Опишите незначительные правки (опечатки, линии, штриховки…)"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-warning">Отправить запрос</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if can_respond_correction_request(user, doc) %}
+    <div class="modal-overlay" id="approve-modal">
+        <div class="modal">
+            <h3>Одобрить запрос на исправление</h3>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/respond-correction') }}">
+                <input type="hidden" name="approved" value="true">
+                <div class="form-group">
+                    <label for="approve-comment">Комментарий (необязательно)</label>
+                    <textarea id="approve-comment" name="comment" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-success">Одобрить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="modal-overlay" id="reject-modal">
+        <div class="modal">
+            <h3>Отклонить запрос на исправление</h3>
+            <p class="hint">Если по описанию видно, что требуется существенное изменение, отклоните запрос.
+            Разработчик должен дождаться утверждения и оформить изменение по ИИ.</p>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/respond-correction') }}">
+                <input type="hidden" name="approved" value="false">
+                <div class="form-group">
+                    <label for="reject-comment">Причина отклонения</label>
+                    <textarea id="reject-comment" name="comment" rows="3" required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Отклонить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
+    <div class="modal-overlay" id="correction-modal">
+        <div class="modal">
+            <h3>Требуется исправление</h3>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/status') }}">
+                <input type="hidden" name="new_status" value="requires_correction">
+                <div class="form-group">
+                    <label for="review-comment">Комментарий для разработчика</label>
+                    <textarea id="review-comment" name="comment" rows="4" required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Отправить на исправление</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        document.querySelectorAll('.modal-cancel').forEach(btn => {
+            btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.remove('active'));
+        });
+        const requestModal = document.getElementById('request-modal');
+        if (requestModal) {
+            document.getElementById('open-request-modal').addEventListener('click', () => requestModal.classList.add('active'));
+        }
+        const approveModal = document.getElementById('approve-modal');
+        const rejectModal = document.getElementById('reject-modal');
+        if (approveModal) {
+            document.getElementById('open-approve-modal').addEventListener('click', () => approveModal.classList.add('active'));
+            document.getElementById('open-reject-modal').addEventListener('click', () => rejectModal.classList.add('active'));
+        }
+        const correctionModal = document.getElementById('correction-modal');
+        if (correctionModal) {
+            document.getElementById('btn-send-correction').addEventListener('click', () => correctionModal.classList.add('active'));
+            document.getElementById('btn-approve').addEventListener('click', () => {
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '{{ url_path('/documents/' ~ doc.id ~ '/status') }}';
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'new_status';
+                input.value = 'approved';
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!-- templates/apply_change.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Внесение изменений — {{ designation }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .container { max-width: 640px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .hint { font-size: 0.875rem; color: #6c757d; line-height: 1.45; margin-bottom: 1.25rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.35rem; }
+        .form-group input[type="text"], .form-group input[type="date"], .form-group textarea { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .checkbox-group { margin: 1rem 0; }
+        .checkbox-group label { display: block; margin-bottom: 0.5rem; cursor: pointer; }
+        .btn { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-secondary { background: #6c757d; }
+        .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Внесение изменений {% include "_version_tag.html" %}</h1>
+        {% include "_header_nav.html" %}
+    </div>
+
+    <div class="container">
+        <p><a href="{{ url_path('/documents/' ~ doc.id) }}">← К карточке записи</a></p>
+        <h2>{{ designation }}</h2>
+
+        <p class="hint">
+            Формальное изменение утверждённого документа по ГОСТ 2.503-2013.
+            Приложите извещение об изменении (ИИ), новую версию файла и укажите номер изменения.
+            Отметки подписей подтверждают, что чертёж заполнен и ожидает приёма в архив
+            (разработчик, проверяющий, утверждающий документ — не путать с ролью ревьюера системы).
+        </p>
+
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="ii_file">Извещение об изменении (ИИ), PDF *</label>
+                <input type="file" id="ii_file" name="ii_file" accept=".pdf" required>
+            </div>
+            <div class="form-group">
+                <label for="new_doc_file">Новая версия документа *</label>
+                <input type="file" id="new_doc_file" name="new_doc_file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf" required>
+            </div>
+            <div class="form-group">
+                <label for="change_number">Номер изменения *</label>
+                <input type="text" id="change_number" name="change_number" required maxlength="64" placeholder="например, 1 или ИИ-001">
+            </div>
+            <div class="form-group">
+                <label for="change_date">Дата изменения *</label>
+                <input type="date" id="change_date" name="change_date" required>
+            </div>
+            <div class="form-group">
+                <label for="comment">Комментарий (содержание изменений)</label>
+                <textarea id="comment" name="comment" rows="3" placeholder="Кратко: что изменено"></textarea>
+            </div>
+            <div class="checkbox-group">
+                <label><input type="checkbox" name="developer_signed" value="true" required> Подпись разработчика</label>
+                <label><input type="checkbox" name="reviewer_signed" value="true" required> Подпись проверяющего (листа)</label>
+                <label><input type="checkbox" name="approver_signed" value="true" required> Подпись утверждающего документ (конструктор / руководитель)</label>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn">Внести изменение</button>
+                <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id) }}">Отмена</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

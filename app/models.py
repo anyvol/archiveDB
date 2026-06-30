@@ -16,8 +16,9 @@ class UserRole(str, enum.Enum):
 
 class DocumentStatus(str, enum.Enum):
     pending_review = "pending_review"
-    verified = "verified"
+    approved = "approved"
     requires_correction = "requires_correction"
+    correction_requested = "correction_requested"
 
 
 class NotificationEventType(str, enum.Enum):
@@ -26,12 +27,39 @@ class NotificationEventType(str, enum.Enum):
     document_edit = "document_edit"
     document_register = "document_register"
     document_delete = "document_delete"
+    correction_request = "correction_request"
+    correction_request_response = "correction_request_response"
+    formal_change = "formal_change"
+
+
+class DocumentChangeEventType(str, enum.Enum):
+    register = "register"
+    file_replace_cosmetic = "file_replace_cosmetic"
+    file_replace_formal = "file_replace_formal"
+    metadata_edit = "metadata_edit"
+    status_change = "status_change"
+    correction_request = "correction_request"
+    correction_request_approved = "correction_request_approved"
+    correction_request_rejected = "correction_request_rejected"
+
+
+DOCUMENT_CHANGE_EVENT_LABELS = {
+    DocumentChangeEventType.register: "Регистрация",
+    DocumentChangeEventType.file_replace_cosmetic: "Косметическое исправление файла",
+    DocumentChangeEventType.file_replace_formal: "Изменение по извещению",
+    DocumentChangeEventType.metadata_edit: "Изменение метаданных",
+    DocumentChangeEventType.status_change: "Изменение статуса",
+    DocumentChangeEventType.correction_request: "Запрос на исправление",
+    DocumentChangeEventType.correction_request_approved: "Запрос на исправление одобрен",
+    DocumentChangeEventType.correction_request_rejected: "Запрос на исправление отклонён",
+}
 
 
 DOCUMENT_STATUS_LABELS = {
     DocumentStatus.pending_review: "На проверке",
-    DocumentStatus.verified: "Проверено",
+    DocumentStatus.approved: "Утверждено",
     DocumentStatus.requires_correction: "Требуется исправление",
+    DocumentStatus.correction_requested: "Запрошено исправление",
 }
 
 DISPLAY_STATUS_NO_FILE = "Файл не загружен"
@@ -43,7 +71,11 @@ DOCUMENT_TYPE_LABELS = {
 
 DOC_KIND_CODES = ("СБ", "СП", "ГЧ", "ТУ", "Э2", "Е1", "РЭ", "ВП", "ПС")
 
+GOVERNED_DOCUMENT_TYPES = ("DD", "TD")
+
 MISC_DOCS_FOLDER = "Прочие документы"
+II_FOLDER = "Извещения об изменении"
+VERSIONS_FOLDER = "versions"
 
 DEPARTMENTS = [
     "Конструкторский отдел",
@@ -141,9 +173,25 @@ class BaseDocument(Base):
         nullable=False,
     )
     review_comment = Column(Text, nullable=True)
+    correction_request_comment = Column(Text, nullable=True)
     registration_notified_at = Column(DateTime, nullable=True)
 
     project = relationship("Project", back_populates="documents")
+    change_events = relationship(
+        "DocumentChangeEvent",
+        back_populates="document",
+        order_by="DocumentChangeEvent.created_at.desc()",
+    )
+    file_revisions = relationship(
+        "FileRevision",
+        back_populates="document",
+        order_by="FileRevision.archived_at.desc()",
+    )
+    change_notifications = relationship(
+        "ChangeNotification",
+        back_populates="document",
+        order_by="ChangeNotification.created_at.desc()",
+    )
     design_document = relationship(
         "DesignDocument",
         back_populates="base_document",
@@ -191,3 +239,61 @@ class TechDocument(Base):
     base_document = relationship("BaseDocument", back_populates="tech_document")
     td_class_code = relationship("ClassCodeTD")
     org = relationship("Organization", back_populates="tech_documents", foreign_keys=[org_id])
+
+
+class FileRevision(Base):
+    __tablename__ = "file_revisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    archived_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revision_label = Column(String, nullable=True)
+
+    document = relationship("BaseDocument", back_populates="file_revisions")
+
+
+class ChangeNotification(Base):
+    """Извещение об изменении (ИИ) — основание для формального изменения документа."""
+
+    __tablename__ = "change_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    number = Column(String(64), nullable=False)
+    date = Column(DateTime, nullable=False)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    developer_signed = Column(Boolean, default=False, nullable=False)
+    reviewer_signed = Column(Boolean, default=False, nullable=False)
+    approver_signed = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    document = relationship("BaseDocument", back_populates="change_notifications")
+    created_by = relationship("User")
+    change_event = relationship("DocumentChangeEvent", back_populates="change_notification", uselist=False)
+
+
+class DocumentChangeEvent(Base):
+    """Электронный журнал изменений документа."""
+
+    __tablename__ = "document_change_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    event_type = Column(SAEnum(DocumentChangeEventType), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    comment = Column(Text, nullable=True)
+    change_number = Column(String(64), nullable=True)
+    change_date = Column(DateTime, nullable=True)
+    change_notification_id = Column(Integer, ForeignKey("change_notifications.id"), nullable=True)
+    file_revision_id = Column(Integer, ForeignKey("file_revisions.id"), nullable=True)
+    payload = Column(JSON, nullable=True)
+
+    document = relationship("BaseDocument", back_populates="change_events")
+    actor = relationship("User")
+    change_notification = relationship("ChangeNotification", back_populates="change_event")
+    file_revision = relationship("FileRevision")

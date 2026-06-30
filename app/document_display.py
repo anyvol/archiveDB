@@ -4,8 +4,9 @@ from app.models import BaseDocument, DOCUMENT_STATUS_LABELS, DISPLAY_STATUS_NO_F
 
 STATUS_CSS_CLASS = {
     DocumentStatus.pending_review: "status-pending",
-    DocumentStatus.verified: "status-verified",
+    DocumentStatus.approved: "status-approved",
     DocumentStatus.requires_correction: "status-correction",
+    DocumentStatus.correction_requested: "status-correction-requested",
 }
 
 

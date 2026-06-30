@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.10.0
+
+- Status «Проверено» renamed to «Утверждено» (`approved`).
+- Document record card (`/documents/{id}`): status, PDF/image preview, electronic change log, actions.
+- Double-click or context menu «Открыть запись» opens the record card.
+- GOST 2.503-2013 change workflow for КД and ТД:
+  - Cosmetic file replace only when status is «Требуется исправление»; previous file kept in project `versions/` folder.
+  - «Запрос на исправление» while «На проверке» for minor fixes (any user); reviewer can approve or reject.
+  - «Внести изменения в документ» for approved records: ИИ upload, new file, change number/date, signature checkboxes.
+  - Change notifications (ИИ) stored in project `Извещения об изменении/` folder.
+- New tables: `document_change_events`, `change_notifications`, `file_revisions`.
+- Preview endpoints for documents and ИИ (inline PDF/images).
+
 ## 0.9.3
 
 - Renamed uploaded files now keep the original extension at the end: `{designation}({basename}){ext}`.

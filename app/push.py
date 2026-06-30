@@ -20,6 +20,9 @@ PUSH_EVENT_KEYS = {
     NotificationEventType.document_edit: "document_edit",
     NotificationEventType.document_register: "document_register",
     NotificationEventType.document_delete: "document_delete",
+    NotificationEventType.correction_request: "correction_request",
+    NotificationEventType.correction_request_response: "correction_request_response",
+    NotificationEventType.formal_change: "formal_change",
 }
 
 DEFAULT_PUSH_PREFERENCES: dict[str, bool] = {
@@ -29,6 +32,9 @@ DEFAULT_PUSH_PREFERENCES: dict[str, bool] = {
     "document_edit": True,
     "document_register": True,
     "document_delete": True,
+    "correction_request": True,
+    "correction_request_response": True,
+    "formal_change": True,
 }
 
 

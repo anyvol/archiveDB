@@ -3,6 +3,8 @@
 import os
 import re
 import uuid
+import shutil
+from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile
@@ -80,10 +82,17 @@ async def save_upload_file(
     *,
     doc_kind_code: Optional[str] = None,
     designation: Optional[str] = None,
+    archive_old: bool = False,
+    archive_dest_dir: Optional[str] = None,
 ) -> tuple[str, str]:
     contents, safe_name = await _read_upload_contents(file)
 
-    if old_path and os.path.exists(old_path):
+    if archive_old and old_path and os.path.exists(old_path) and archive_dest_dir:
+        os.makedirs(archive_dest_dir, exist_ok=True)
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        archived_name = f"{timestamp}_{os.path.basename(old_path)}"
+        shutil.copy2(old_path, os.path.join(archive_dest_dir, archived_name))
+    elif old_path and os.path.exists(old_path) and not archive_old:
         os.remove(old_path)
 
     stored_name = compute_stored_file_name(designation, safe_name)
