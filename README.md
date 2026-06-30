@@ -36,11 +36,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Application: **https://localhost:8443/archive/**
+Application: **http://localhost/archive/** (push works) or **https://localhost:8443/archive/**
 
-HTTP (port 80) redirects to HTTPS. On first start, nginx auto-generates a self-signed TLS certificate if `nginx/certs/` is empty. Accept the browser security warning for internal use.
-
-Default HTTPS port is **8443** because port 443 is often blocked or unavailable on WSL/Windows. Override with `HTTPS_PORT=443` in `.env` if your environment allows it.
+HTTP on `localhost` is enough for browser push (browsers treat localhost as secure). Use **https://SERVER-PDM:8443/archive/** for LAN access.
 
 For LAN access, set in `.env`:
 

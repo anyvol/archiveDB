@@ -5,8 +5,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.9.1
 
-- Added HTTPS support in nginx (required for browser push outside localhost); self-signed certificate is auto-generated on first proxy start.
-- Default HTTPS port is **8443** (port 443 is often blocked on WSL/Windows); HTTP redirects include the correct port.
+- Default HTTPS port is **8443** (port 443 is often blocked on WSL/Windows).
+- HTTP on **localhost** serves the app directly (no redirect) — push works at `http://localhost/archive/`.
 - Document files are now physically renamed on upload to `{designation}({filename})` when the file name does not match the record designation.
 - Header link text changed from «изменения» to «changelog».
 - Updated documentation (HTTPS, VAPID keys, file naming).

@@ -33,6 +33,8 @@ envsubst '${REDIRECT_PORT}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 
-echo "nginx listening: HTTP :80 -> HTTPS${REDIRECT_PORT:-:443}, app at ${PUBLIC_URL}"
+echo "nginx listening:"
+echo "  http://localhost/archive/          (push works — use from Windows if :8443 is blocked)"
+echo "  https://${CN}${REDIRECT_PORT}/archive/  (LAN / hostname access)"
 
 exec nginx -g 'daemon off;'

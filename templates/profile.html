@@ -112,7 +112,7 @@
             {% if not vapid_public_key %}
             <p><small>Push-уведомления недоступны: на сервере не настроены VAPID-ключи.</small></p>
             {% else %}
-            <p><small>Push-уведомления работают только по HTTPS (или на localhost). При первом запуске proxy создаёт самоподписанный сертификат — примите предупреждение браузера.</small></p>
+            <p><small>Push работает по HTTPS или на <strong>localhost</strong> (в т.ч. http://localhost/archive/ — удобно при Docker в WSL2). Для LAN: https://SERVER-PDM:8443/archive/</small></p>
             {% endif %}
             <div class="form-group">
                 <label><input type="checkbox" name="push_enabled" id="push_enabled" value="true" {% if push_preferences.enabled %}checked{% endif %}> Включить push-уведомления</label>
@@ -169,7 +169,7 @@
                 return;
             }
             if (!window.isSecureContext) {
-                alert('Push-уведомления требуют безопасное соединение (HTTPS). Откройте сайт по адресу https://…/archive/');
+                alert('Push-уведомления требуют HTTPS или localhost. Откройте http://localhost/archive/ (Windows+WSL) или https://…:8443/archive/');
                 return;
             }
             if (!('serviceWorker' in navigator) || !('PushManager' in window)) {

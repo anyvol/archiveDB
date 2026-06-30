@@ -44,7 +44,45 @@ Browser push requires a **secure context** (HTTPS or `localhost`). The stack shi
 3. Open **https://localhost:8443/archive/** and accept the browser certificate warning
 4. Configure VAPID keys (see root [README.md](../README.md))
 
-### LAN / hostname access
+### Access from Windows when Docker runs in WSL2
+
+WSL2 often does **not** forward port 8443 to Windows `localhost`. Two options:
+
+**Option A (simplest): use HTTP on localhost**
+
+Browsers treat `http://localhost` as a secure context — **push works without HTTPS**:
+
+```text
+http://localhost/archive/
+```
+
+From Windows PowerShell:
+
+```powershell
+curl http://localhost/archive/documents
+```
+
+**Option B: forward ports to WSL**
+
+Run as Administrator on Windows:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\windows-forward-ports.ps1
+```
+
+Then open `https://localhost:8443/archive/` or use Option A.
+
+You can also enable mirrored networking in `%UserProfile%\.wslconfig`:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+Then run `wsl --shutdown` and restart WSL.
+
+---
 
 Set your server hostname or IP in `.env`:
 
