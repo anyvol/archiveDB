@@ -25,7 +25,6 @@ from app.database import (
     check_prn_unique,
 )
 from app.models import (
-    Base,
     BaseDocument,
     DesignDocument,
     TechDocument,
@@ -109,8 +108,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()
 
@@ -739,7 +736,7 @@ async def preview_document(
     return FileResponse(
         path=doc.file_path,
         media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{doc.file_name or "preview"}"'},
+        content_disposition_type="inline",
     )
 
 
@@ -760,7 +757,7 @@ async def preview_change_notification(
     return FileResponse(
         path=ii.file_path,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{ii.file_name}"'},
+        content_disposition_type="inline",
     )
 
 
@@ -866,6 +863,14 @@ async def edit_document(
     doc.doc_name = new_doc_name
     doc.developed_by = developed_by
     doc.status = DocumentStatus.pending_review
+    if changes:
+        await log_change_event(
+            session,
+            doc,
+            user,
+            DocumentChangeEventType.metadata_edit,
+            comment="; ".join(changes),
+        )
     await notify_document_edit(session, doc, user, changes)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)

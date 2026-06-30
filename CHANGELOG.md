@@ -16,6 +16,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - New tables: `document_change_events`, `change_notifications`, `file_revisions`.
 - Preview endpoints for documents and ИИ (inline PDF/images).
 - Alembic migration `a1b2c3d4e5f6` is idempotent (safe to re-run if tables were created by app startup).
+- Removed `create_all` on API startup — use Alembic only (`alembic upgrade head`).
+- Fixed PDF preview for files with non-ASCII names (Cyrillic in `Content-Disposition`).
 
 ## 0.9.3
 

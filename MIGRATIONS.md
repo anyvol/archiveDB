@@ -3,7 +3,7 @@
 Alembic revision IDs are independent of the application release version.
 This file maps service releases to the migration chain they include.
 
-Apply migrations with:
+The API **does not** create tables on startup. Apply migrations before using the service:
 
 ```bash
 docker compose exec api alembic upgrade head
