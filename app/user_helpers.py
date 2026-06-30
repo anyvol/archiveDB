@@ -1,6 +1,27 @@
 """Helpers for building and parsing user full names."""
 
 
+def is_digits_only(value: str) -> bool:
+    stripped = value.strip()
+    return bool(stripped) and stripped.isdigit()
+
+
+def validate_person_fields(
+    last_name: str,
+    first_name: str,
+    patronymic: str = "",
+    position: str = "",
+) -> str | None:
+    """Return an error code when a name or position field is digits-only."""
+    if is_digits_only(last_name) or is_digits_only(first_name):
+        return "name_digits"
+    if patronymic.strip() and is_digits_only(patronymic):
+        return "name_digits"
+    if position.strip() and is_digits_only(position):
+        return "position_digits"
+    return None
+
+
 def build_full_name(last_name: str, first_name: str, patronymic: str = "") -> str:
     parts = [last_name.strip(), first_name.strip()]
     patronymic = patronymic.strip()

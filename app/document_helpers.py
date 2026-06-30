@@ -63,12 +63,14 @@ def file_name_matches_designation(original_name: str, designation: str) -> bool:
 def compute_stored_file_name(designation: Optional[str], original_name: str) -> str:
     original_name = os.path.basename(original_name)
     if designation and not file_name_matches_designation(original_name, designation):
-        return f"{designation}({original_name})"
+        filename_base, extension = os.path.splitext(original_name)
+        return f"{designation}({filename_base}){extension}"
     return original_name
 
 
 def build_upload_rename_message(designation: str, original_name: str) -> str:
-    return f"Файл будет переименован в {designation}({original_name})"
+    stored_name = compute_stored_file_name(designation, original_name)
+    return f"Файл будет переименован в {stored_name}"
 
 
 async def save_upload_file(

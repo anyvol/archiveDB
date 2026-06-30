@@ -62,7 +62,7 @@
         {% endif %}
 
         {% if not doc.file_name %}
-        <form action="{{ url_path('/documents/' ~ doc_id ~ '/skip-upload') }}" method="post" class="actions">
+        <form action="{{ url_path('/documents/' ~ doc_id ~ '/skip-upload') }}" method="post" class="actions" id="skip-upload-form">
             <button type="submit" class="btn btn-secondary">Продолжить без загрузки</button>
         </form>
         {% endif %}
@@ -124,11 +124,29 @@
             submitBtn.disabled = false;
 
             if (DESIGNATION && !namesMatch(file.name, DESIGNATION)) {
-                renameWarning.textContent = 'Файл будет переименован в ' + DESIGNATION + '(' + file.name + ')';
+                const lastDot = file.name.lastIndexOf('.');
+                const baseName = lastDot > 0 ? file.name.slice(0, lastDot) : file.name;
+                const ext = lastDot > 0 ? file.name.slice(lastDot) : '';
+                renameWarning.textContent = 'Файл будет переименован в ' + DESIGNATION + '(' + baseName + ')' + ext;
                 renameWarning.style.display = 'block';
             } else {
                 renameWarning.style.display = 'none';
             }
+        }
+    </script>
+    {% endif %}
+    {% if not doc.file_name %}
+    <script>
+        const skipForm = document.getElementById('skip-upload-form');
+        if (skipForm) {
+            skipForm.addEventListener('submit', function(e) {
+                const fileInput = document.getElementById('file');
+                if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                    if (!confirm('Если продолжить без загрузки, выбранный файл не будет добавлен к документу. Продолжить?')) {
+                        e.preventDefault();
+                    }
+                }
+            });
         }
     </script>
     {% endif %}

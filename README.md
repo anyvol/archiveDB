@@ -1,6 +1,8 @@
 # archiveDB
 
-Document archive for design (KD) and technological (TD) documentation with Russian-standard designations.
+**archiveDB** is a web-based document archive for engineering organizations. It stores design documentation (KD — конструкторская документация) and technological documentation (TD — технологическая документация) with Russian-standard designations (PRNI/PRN numbering), file uploads, review workflow, and role-based access control.
+
+The system is built for teams that need a single place to register documents, attach files, track verification status, and receive notifications when records change. It provides both a browser UI and a REST API, runs in Docker with PostgreSQL, and supports browser push notifications over HTTPS.
 
 ## Features
 
@@ -122,10 +124,10 @@ See [.env.example](.env.example):
 If the uploaded file name (without extension) does not match the document designation, the file is stored as:
 
 ```text
-{designation}({original_filename})
+{designation}({original_basename}){extension}
 ```
 
-Example: designation `ORG.123456.001`, file `report.pdf` → stored as `ORG.123456.001(report.pdf)`.
+Example: designation `ORG.123456.001`, file `report.pdf` → stored as `ORG.123456.001(report).pdf`.
 
 ## Tests
 

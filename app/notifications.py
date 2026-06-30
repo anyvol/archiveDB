@@ -195,13 +195,27 @@ async def mark_all_read(session: AsyncSession, user_id: int) -> None:
     )
 
 
+NOTIFICATIONS_PAGE_SIZE = 20
+
+
+async def count_notifications_for_user(session: AsyncSession, user_id: int) -> int:
+    result = await session.execute(
+        select(func.count(Notification.id)).where(Notification.user_id == user_id)
+    )
+    return result.scalar() or 0
+
+
 async def get_notifications_for_user(
-    session: AsyncSession, user: User, limit: int = 100
+    session: AsyncSession,
+    user: User,
+    limit: int = NOTIFICATIONS_PAGE_SIZE,
+    offset: int = 0,
 ) -> list[Notification]:
     query = (
         select(Notification)
         .where(Notification.user_id == user.id)
         .order_by(Notification.created_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     result = await session.execute(query)

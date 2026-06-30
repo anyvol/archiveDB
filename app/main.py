@@ -58,12 +58,14 @@ from app.permissions import (
     require_status_change_permission,
     require_upload_permission,
 )
-from app.user_helpers import build_full_name, split_full_name
+from app.user_helpers import build_full_name, split_full_name, validate_person_fields
 from app.column_preferences import DOCUMENT_COLUMNS, get_visible_columns, DEFAULT_VISIBLE_COLUMNS
 from app.notifications import (
     count_unread,
     mark_all_read,
     get_notifications_for_user,
+    count_notifications_for_user,
+    NOTIFICATIONS_PAGE_SIZE,
     poll_new_notifications,
     notify_file_upload,
     notify_document_registered,
@@ -81,6 +83,7 @@ from app.cert_scripts import (
     trust_windows_cmd,
 )
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
+from app.changelog import render_changelog_html
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -340,6 +343,11 @@ async def handle_register(
     full_name = build_full_name(last_name, first_name, patronymic)
     if not full_name:
         form_ctx["error"] = "name"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=400)
+
+    field_error = validate_person_fields(last_name, first_name, patronymic, position)
+    if field_error:
+        form_ctx["error"] = field_error
         return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
     try:
@@ -868,6 +876,7 @@ async def profile_page(
             "request": request,
             "org_display_name": org_display_name,
             "success": request.query_params.get("success") == "true",
+            "error": request.query_params.get("error"),
             "last_name": last_name,
             "first_name": first_name,
             "patronymic": patronymic,
@@ -909,6 +918,13 @@ async def handle_profile(
     if not full_name:
         raise HTTPException(status_code=400, detail="Необходимо указать фамилию и имя.")
 
+    field_error = validate_person_fields(last_name, first_name, patronymic, position)
+    if field_error:
+        return RedirectResponse(
+            url=url_path(f"/profile?error={field_error}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     form_data = await request.form()
     selected_columns = [
         key for key, _ in DOCUMENT_COLUMNS if form_data.get(f"col_{key}") == "true"
@@ -946,7 +962,9 @@ async def notifications_page(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    notifications = await get_notifications_for_user(session, user)
+    notifications = await get_notifications_for_user(session, user, limit=NOTIFICATIONS_PAGE_SIZE)
+    total_count = await count_notifications_for_user(session, user.id)
+    has_more = len(notifications) < total_count
     unread_ids = {n.id for n in notifications if not n.is_read}
     await mark_all_read(session, user.id)
     await session.commit()
@@ -958,11 +976,38 @@ async def notifications_page(
             "request": request,
             "notifications": notifications,
             "unread_ids": unread_ids,
+            "has_more": has_more,
+            "notifications_page_size": NOTIFICATIONS_PAGE_SIZE,
             "service_version": SERVICE_VERSION,
             "nav_context": "notifications",
             **ctx,
         },
     )
+
+
+@app.get("/api/notifications")
+async def list_notifications_api(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(NOTIFICATIONS_PAGE_SIZE, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    notifications = await get_notifications_for_user(session, user, limit=limit, offset=offset)
+    total_count = await count_notifications_for_user(session, user.id)
+    return {
+        "notifications": [
+            {
+                "id": n.id,
+                "message": n.message,
+                "created_at": n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else "",
+            }
+            for n in notifications
+        ],
+        "has_more": offset + len(notifications) < total_count,
+    }
 
 
 @app.get("/api/notifications/poll")
