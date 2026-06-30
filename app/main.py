@@ -78,7 +78,7 @@ from app.cert_scripts import (
     cert_download_url,
     trust_linux_script,
     trust_macos_script,
-    trust_windows_script,
+    trust_windows_cmd,
 )
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
 
@@ -122,7 +122,7 @@ _CERT_SCRIPT_FILES = {
     "windows-forward-ports.ps1": ("windows-forward-ports.ps1", "application/octet-stream"),
 }
 _GENERATED_CERT_SCRIPTS = {
-    "trust-windows.ps1": ("trust-windows.ps1", trust_windows_script),
+    "trust-windows.cmd": ("trust-windows.cmd", trust_windows_cmd),
     "trust-linux.sh": ("trust-linux.sh", trust_linux_script),
     "trust-macos.sh": ("trust-macos.sh", trust_macos_script),
 }

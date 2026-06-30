@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+
 from fastapi import Request
 
 from app.config import ROOT_PATH, url_path
@@ -18,16 +20,12 @@ def cert_download_url(request: Request) -> str:
     return f"{external_base_url(request)}{url_path('/cert/fullchain.pem')}"
 
 
-def trust_windows_script(cert_url: str) -> str:
-    return f"""# Archive site certificate trust (auto-generated)
-# Run in PowerShell as Administrator:
-#   Set-ExecutionPolicy -Scope Process Bypass
-#   .\\trust-windows.ps1
-
-$ErrorActionPreference = "Stop"
+def _trust_windows_powershell_body(cert_url: str) -> str:
+    return f"""$ErrorActionPreference = "Stop"
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {{ throw "Run this file as Administrator." }}
 $CertUrl = "{cert_url}"
 $TempCert = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n')).pem"
-
 Write-Host "Downloading certificate from $CertUrl ..."
 if ($PSVersionTable.PSVersion.Major -ge 6) {{
     Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck
@@ -39,13 +37,31 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {{
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
     }}
 }}
-
 Write-Host "Installing certificate into Trusted Root..."
 Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
 Remove-Item $TempCert -Force
-
-Write-Host ""
 Write-Host "Done. Restart the browser."
+"""
+
+
+def trust_windows_cmd(cert_url: str) -> str:
+    encoded = base64.b64encode(_trust_windows_powershell_body(cert_url).encode("utf-16-le")).decode(
+        "ascii"
+    )
+    return f"""@echo off
+REM Archive site certificate trust (auto-generated)
+REM Right-click and "Run as administrator", or run from elevated cmd.
+
+echo Installing archive site certificate...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}
+if errorlevel 1 (
+    echo.
+    echo Failed. Run this file as Administrator.
+    pause
+    exit /b 1
+)
+echo.
+pause
 """
 
 

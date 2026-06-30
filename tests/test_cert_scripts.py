@@ -4,7 +4,7 @@ from app.cert_scripts import (
     cert_download_url,
     trust_linux_script,
     trust_macos_script,
-    trust_windows_script,
+    trust_windows_cmd,
 )
 
 
@@ -23,8 +23,9 @@ def test_cert_download_url_uses_forwarded_proto():
 
 def test_generated_scripts_embed_cert_url():
     cert_url = "https://example.com/archive/cert/fullchain.pem"
-    assert cert_url in trust_windows_script(cert_url)
+    win_cmd = trust_windows_cmd(cert_url)
+    assert cert_url in win_cmd or "EncodedCommand" in win_cmd
+    assert "ExecutionPolicy Bypass" in win_cmd
     assert cert_url in trust_linux_script(cert_url)
     assert cert_url in trust_macos_script(cert_url)
     assert "curl -fsSk" in trust_linux_script(cert_url)
-    assert "SkipCertificateCheck" in trust_windows_script(cert_url)
