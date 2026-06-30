@@ -115,6 +115,41 @@ https://192.168.4.108:8443/archive/
 
 Push over LAN requires HTTPS (not plain `http://192.168.x.x`).
 
+### «Подключение не защищено» / crossed-out HTTPS
+
+This is **normal for a self-signed certificate**. The connection is encrypted, but the browser does not trust the issuer until you install the certificate.
+
+**Step 1 — regenerate with hostname and LAN IP in the certificate**
+
+In `.env` on the server:
+
+```env
+SSL_CERT_CN=SERVER-PDM
+SSL_CERT_IP=192.168.4.108
+```
+
+```bash
+rm -f nginx/certs/*.pem
+docker compose up -d --build proxy
+```
+
+Check SAN in logs: `DNS:SERVER-PDM, DNS:localhost, IP:127.0.0.1, IP:192.168.4.108`
+
+**Step 2 — trust the certificate on each client PC (Windows)**
+
+Copy `nginx/certs/fullchain.pem` from the server, then run **as Administrator**:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\trust-cert-windows.ps1 -CertPath C:\Temp\fullchain.pem
+```
+
+Restart the browser. The address bar should show a normal padlock.
+
+**Alternative:** open by hostname `https://SERVER-PDM:8443/archive/` (add `192.168.4.108 SERVER-PDM` to `hosts` on clients if there is no DNS).
+
+Without Step 2, users can still click «Advanced» → «Proceed» — push will work, but the warning remains.
+
 ---
 
 Set your server hostname or IP in `.env`:
