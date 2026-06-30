@@ -18,6 +18,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Alembic migration `a1b2c3d4e5f6` is idempotent (safe to re-run if tables were created by app startup).
 - Removed `create_all` on API startup — use Alembic only (`alembic upgrade head`).
 - Fixed PDF preview for files with non-ASCII names (Cyrillic in `Content-Disposition`).
+- Changelog page shows full history from `CHANGELOG.md`; header aligned with other pages.
 
 ## 0.9.3
 

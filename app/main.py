@@ -225,7 +225,7 @@ async def changelog_page(
         "changelog.html",
         {
             "request": request,
-            "changelog_html": render_changelog_html(SERVICE_VERSION),
+            "changelog_html": render_changelog_html(),
             **ctx,
         },
     )

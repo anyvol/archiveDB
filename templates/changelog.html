@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <title>История изменений</title>
     <style>
-        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; line-height: 1.6; color: #333; }
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
@@ -13,7 +13,7 @@
         .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
         .version-tag-link:hover { opacity: 1; }
         .container { padding: 2rem; max-width: 800px; margin: 0 auto; }
-        .changelog-content { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .changelog-content { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); line-height: 1.6; color: #333; }
         .changelog-section { margin-bottom: 2rem; }
         .changelog-section:last-child { margin-bottom: 0; }
         .changelog-section h2 { margin-top: 0; color: #007bff; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
@@ -24,7 +24,7 @@
 <body>
     <div class="header">
         <h1>История изменений {% include "_version_tag.html" %}</h1>
-        {% if user %}{% include "_header_nav.html" %}{% endif %}
+        {% include "_header_nav.html" %}
     </div>
 
     <div class="container">
