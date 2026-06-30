@@ -24,6 +24,7 @@ services:
     env_file: .env
     environment:
       ROOT_PATH: ${ROOT_PATH:-/archive}
+      PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files

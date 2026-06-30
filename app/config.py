@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT_PATH = os.getenv("ROOT_PATH", "").rstrip("/")
+PUBLIC_HTTPS_PORT = os.getenv("PUBLIC_HTTPS_PORT", os.getenv("HTTPS_PORT", "")).strip()
 
 _VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
 

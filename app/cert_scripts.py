@@ -6,18 +6,29 @@ import base64
 
 from fastapi import Request
 
-from app.config import ROOT_PATH, url_path
+from app.config import PUBLIC_HTTPS_PORT, ROOT_PATH
+
+
+def _request_host(request: Request) -> str:
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_host:
+        return forwarded_host.split(",")[0].strip()
+
+    host = request.headers.get("host", request.url.netloc)
+    if PUBLIC_HTTPS_PORT and PUBLIC_HTTPS_PORT not in ("443", "80") and ":" not in host:
+        host = f"{host}:{PUBLIC_HTTPS_PORT}"
+    return host
 
 
 def external_base_url(request: Request) -> str:
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get("host", request.url.netloc)
+    host = _request_host(request)
     root = ROOT_PATH.rstrip("/") if ROOT_PATH else ""
     return f"{scheme}://{host}{root}"
 
 
 def cert_download_url(request: Request) -> str:
-    return f"{external_base_url(request)}{url_path('/cert/fullchain.pem')}"
+    return f"{external_base_url(request)}/cert/fullchain.pem"
 
 
 def _trust_windows_powershell_body(cert_url: str) -> str:
