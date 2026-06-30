@@ -68,6 +68,9 @@
         .field-okpo { display: flex; align-items: center; padding-bottom: 0.5rem; }
         .field-okpo label { margin: 0; font-size: 0.8rem; white-space: nowrap; cursor: pointer; }
         .designation-preview { font-family: monospace; font-size: 1.1rem; color: #007bff; padding: 0.5rem 0; margin-bottom: 0.5rem; min-height: 1.5rem; text-align: center; }
+        .signature-grid { display: grid; grid-template-columns: 1fr 160px; gap: 0.75rem 1rem; align-items: end; margin: 1rem 0; }
+        .signature-grid .row-header { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 160px; gap: 1rem; font-size: 0.85rem; color: #6c757d; font-weight: 600; padding-bottom: 0.25rem; border-bottom: 1px solid #eee; }
+        .signature-grid .field-label { font-size: 0.85rem; color: #495057; margin-bottom: 0.25rem; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
         .no-file { color: red; font-weight: bold; }
         .status-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
@@ -206,10 +209,34 @@
                     <input type="text" id="org_name" name="org_name">
                     <small id="org-name-hint"></small>
                 </div>
-                <div class="form-group">
-                    <label for="developed_by">ФИО разработчика:</label>
-                    <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}" required>
+                <div class="signature-grid">
+                    <div class="row-header"><span>ФИО</span><span>Дата</span></div>
+                    <div>
+                        <div class="field-label">ФИО разработчика</div>
+                        <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}">
+                    </div>
+                    <div>
+                        <div class="field-label">Дата</div>
+                        <input type="date" id="developed_date" name="developed_date">
+                    </div>
+                    <div>
+                        <div class="field-label">ФИО проверяющего</div>
+                        <input type="text" id="reviewed_by" name="reviewed_by">
+                    </div>
+                    <div>
+                        <div class="field-label">Дата</div>
+                        <input type="date" id="reviewed_date" name="reviewed_date">
+                    </div>
+                    <div>
+                        <div class="field-label">ФИО утверждающего</div>
+                        <input type="text" id="approved_by" name="approved_by">
+                    </div>
+                    <div>
+                        <div class="field-label">Дата</div>
+                        <input type="date" id="approved_date" name="approved_date">
+                    </div>
                 </div>
+                <small>Поля ФИО и даты необязательны при регистрации. Для перевода в «Утверждено» позже нужно заполнить ФИО проверяющего и ФИО утверждающего через «Изменить метаданные».</small>
             </div>
             <button type="submit" class="btn btn-primary" id="create-submit" style="display: none;">Создать запись и перейти к загрузке</button>
         </form>

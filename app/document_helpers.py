@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 import shutil
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile
@@ -60,6 +60,57 @@ def _sanitize_storage_name(name: str) -> str:
 def file_name_matches_designation(original_name: str, designation: str) -> bool:
     filename_base, _ = os.path.splitext(os.path.basename(original_name))
     return filename_base.strip().casefold() == designation.strip().casefold()
+
+
+def compose_display_file_name(stored_name: str, record_name: Optional[str]) -> str:
+    name = (record_name or "").strip()
+    if name:
+        return f"{stored_name} {name}"
+    return stored_name
+
+
+def extract_stored_file_name(display_name: str, record_name: Optional[str]) -> str:
+    name = (record_name or "").strip()
+    if name and display_name.endswith(f" {name}"):
+        return display_name[: -(len(name) + 1)]
+    return display_name
+
+
+def resolve_record_display_name(
+    doc_name: Optional[str],
+    designation: Optional[str] = None,
+) -> Optional[str]:
+    if doc_name and doc_name.strip():
+        return doc_name.strip()
+    if designation and designation.strip():
+        return designation.strip()
+    return None
+
+
+def parse_optional_date(value: Optional[str]) -> Optional[date]:
+    if not value or not str(value).strip():
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Укажите корректную дату (ГГГГ-ММ-ДД).")
+
+
+def validate_approval_metadata(doc) -> None:
+    missing = []
+    if not (getattr(doc, "reviewed_by", None) or "").strip():
+        missing.append("ФИО проверяющего")
+    if not (getattr(doc, "approved_by", None) or "").strip():
+        missing.append("ФИО утверждающего")
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Перед утверждением заполните метаданные через «Изменить метаданные»: "
+                + ", ".join(missing)
+                + "."
+            ),
+        )
 
 
 def compute_stored_file_name(designation: Optional[str], original_name: str) -> str:

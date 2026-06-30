@@ -1,7 +1,7 @@
 # app/models.py
 
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Date, Enum as SAEnum, Boolean, Text, JSON
 import enum
 from datetime import datetime
 
@@ -164,6 +164,11 @@ class BaseDocument(Base):
     last_update = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = Column(String, nullable=False)
     developed_by = Column(String, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    approved_by = Column(String, nullable=True)
+    developed_date = Column(Date, nullable=True)
+    reviewed_date = Column(Date, nullable=True)
+    approved_date = Column(Date, nullable=True)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)

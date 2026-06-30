@@ -126,6 +126,11 @@ class BaseDocumentBase(BaseModel):
     type: str
     doc_name: Optional[str] = None
     developed_by: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    approved_by: Optional[str] = None
+    developed_date: Optional[str] = None
+    reviewed_date: Optional[str] = None
+    approved_date: Optional[str] = None
     project_id: int
     status: DocumentStatus = DocumentStatus.pending_review
 

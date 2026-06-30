@@ -6,8 +6,12 @@ from app.document_helpers import (
     _resolve_upload_subdirectory,
     build_upload_rename_message,
     compute_stored_file_name,
+    compose_display_file_name,
+    extract_stored_file_name,
     file_name_matches_designation,
+    resolve_record_display_name,
     _sanitize_storage_name,
+    validate_approval_metadata,
 )
 from app.models import DOC_KIND_CODES, MISC_DOCS_FOLDER
 
@@ -47,3 +51,20 @@ def test_build_upload_rename_message():
 
 def test_sanitize_storage_name():
     assert _sanitize_storage_name('bad<>name.pdf') == "bad__name.pdf"
+
+
+def test_compose_display_file_name():
+    assert compose_display_file_name("doc.pdf", "Наименование") == "doc.pdf Наименование"
+    assert compose_display_file_name("doc.pdf", None) == "doc.pdf"
+    assert compose_display_file_name("doc.pdf", "  ") == "doc.pdf"
+
+
+def test_extract_stored_file_name():
+    assert extract_stored_file_name("doc.pdf Наименование", "Наименование") == "doc.pdf"
+    assert extract_stored_file_name("doc.pdf", "Наименование") == "doc.pdf"
+
+
+def test_resolve_record_display_name():
+    assert resolve_record_display_name("Title", "ORG.001") == "Title"
+    assert resolve_record_display_name(None, "ORG.001") == "ORG.001"
+    assert resolve_record_display_name("", None) is None

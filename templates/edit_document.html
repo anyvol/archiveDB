@@ -9,11 +9,15 @@
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
-        .container { max-width: 600px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { max-width: 720px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         label { display: block; margin-bottom: 0.5rem; }
-        input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; }
-        button { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; }
+        input[type="text"], input[type="date"] { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; margin-top: 0.5rem; }
         .info-box { background: #fff3cd; color: #856404; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .form-group { margin-bottom: 1rem; }
+        .signature-grid { display: grid; grid-template-columns: 1fr 160px; gap: 0.75rem 1rem; align-items: end; margin: 1rem 0; }
+        .signature-grid .row-header { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 160px; gap: 1rem; font-size: 0.85rem; color: #6c757d; font-weight: 600; padding-bottom: 0.25rem; border-bottom: 1px solid #eee; }
+        .signature-grid .field-label { font-size: 0.85rem; color: #495057; margin-bottom: 0.25rem; }
     </style>
 </head>
 <body>
@@ -24,12 +28,40 @@
     <div class="container">
         <div class="info-box">
             После сохранения документ будет отправлен на проверку. Новое изменение можно сделать только после проверки или отправки на исправление.
+            Для перевода в «Утверждено» необходимо указать ФИО проверяющего и ФИО утверждающего.
         </div>
         <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post">
-            <label for="doc_name">Наименование документа:</label>
-            <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">
-            <label for="developed_by">ФИО разработчика:</label>
-            <input type="text" id="developed_by" name="developed_by" value="{{ doc.developed_by or '' }}" required>
+            <div class="form-group">
+                <label for="doc_name">Наименование документа:</label>
+                <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">
+            </div>
+            <div class="signature-grid">
+                <div class="row-header"><span>ФИО</span><span>Дата</span></div>
+                <div>
+                    <div class="field-label">ФИО разработчика</div>
+                    <input type="text" id="developed_by" name="developed_by" value="{{ doc.developed_by or '' }}">
+                </div>
+                <div>
+                    <div class="field-label">Дата</div>
+                    <input type="date" id="developed_date" name="developed_date" value="{{ doc.developed_date.strftime('%Y-%m-%d') if doc.developed_date else '' }}">
+                </div>
+                <div>
+                    <div class="field-label">ФИО проверяющего</div>
+                    <input type="text" id="reviewed_by" name="reviewed_by" value="{{ doc.reviewed_by or '' }}">
+                </div>
+                <div>
+                    <div class="field-label">Дата</div>
+                    <input type="date" id="reviewed_date" name="reviewed_date" value="{{ doc.reviewed_date.strftime('%Y-%m-%d') if doc.reviewed_date else '' }}">
+                </div>
+                <div>
+                    <div class="field-label">ФИО утверждающего</div>
+                    <input type="text" id="approved_by" name="approved_by" value="{{ doc.approved_by or '' }}">
+                </div>
+                <div>
+                    <div class="field-label">Дата</div>
+                    <input type="date" id="approved_date" name="approved_date" value="{{ doc.approved_date.strftime('%Y-%m-%d') if doc.approved_date else '' }}">
+                </div>
+            </div>
             <button type="submit">Сохранить</button>
         </form>
     </div>

@@ -16,6 +16,11 @@
         .card h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
         .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem 1.5rem; }
         .meta-item label { display: block; font-size: 0.8rem; color: #6c757d; margin-bottom: 0.15rem; }
+        .meta-item div { word-break: break-word; overflow-wrap: anywhere; }
+        .signature-meta { grid-column: 1 / -1; margin-top: 0.5rem; }
+        .signature-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .signature-table th, .signature-table td { padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid #eee; }
+        .signature-table th { color: #6c757d; font-weight: 500; font-size: 0.8rem; width: 50%; }
         .status-badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500; }
         .status-no-file { color: #495057; background: #e9ecef; }
         .status-pending { color: #856404; background: #fff3cd; }
@@ -30,8 +35,8 @@
         .btn-success { background: #28a745; color: white; }
         .btn-warning { background: #ffc107; color: #212529; }
         .btn-danger { background: #dc3545; color: white; }
-        .preview-frame { width: 100%; height: 520px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
-        .preview-image { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+        .preview-frame { width: 100%; height: 1040px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+        .preview-image { max-width: 100%; max-height: 1040px; border: 1px solid #ddd; border-radius: 4px; }
         .preview-unavailable { padding: 2rem; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 4px; }
         .history-list { list-style: none; padding: 0; margin: 0; }
         .history-item { padding: 0.85rem 0; border-bottom: 1px solid #eee; }
@@ -86,12 +91,34 @@
             <div class="meta-grid">
                 <div class="meta-item"><label>Тип</label><div>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div></div>
                 <div class="meta-item"><label>Наименование</label><div>{{ doc.doc_name or '—' }}</div></div>
-                <div class="meta-item"><label>Разработчик</label><div>{{ doc.developed_by or '—' }}</div></div>
                 <div class="meta-item"><label>Проект</label><div>{{ doc.project.name if doc.project else '—' }}</div></div>
                 <div class="meta-item"><label>Файл</label><div>{{ doc.file_name or 'не загружен' }}</div></div>
                 <div class="meta-item"><label>Зарегистрировал</label><div>{{ doc.created_by or '—' }}</div></div>
                 <div class="meta-item"><label>Дата регистрации</label><div>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</div></div>
                 <div class="meta-item"><label>Обновлено</label><div>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</div></div>
+                <div class="meta-item signature-meta">
+                    <table class="signature-table">
+                        <thead>
+                            <tr><th>ФИО разработчика</th><th>Дата</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ doc.developed_by or '—' }}</td>
+                                <td>{{ doc.developed_date.strftime('%Y-%m-%d') if doc.developed_date else '—' }}</td>
+                            </tr>
+                            <tr><th>ФИО проверяющего</th><th>Дата</th></tr>
+                            <tr>
+                                <td>{{ doc.reviewed_by or '—' }}</td>
+                                <td>{{ doc.reviewed_date.strftime('%Y-%m-%d') if doc.reviewed_date else '—' }}</td>
+                            </tr>
+                            <tr><th>ФИО утверждающего</th><th>Дата</th></tr>
+                            <tr>
+                                <td>{{ doc.approved_by or '—' }}</td>
+                                <td>{{ doc.approved_date.strftime('%Y-%m-%d') if doc.approved_date else '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {% if is_governed %}
@@ -100,6 +127,10 @@
                 существенные изменения — только с извещением об изменении (ИИ);
                 незначительные правки — по запросу на исправление или после отправки на исправление проверяющим.
             </p>
+            {% endif %}
+
+            {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
+            <p class="hint">Для перевода в «Утверждено» необходимо заполнить ФИО проверяющего и ФИО утверждающего через «Изменить метаданные».</p>
             {% endif %}
 
             <div class="actions">
