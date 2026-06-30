@@ -58,9 +58,13 @@ def test_generated_scripts_embed_cert_url():
     ps1 = cert_scripts_module.trust_windows_ps1(cert_url)
     assert cert_url in ps1
     assert "EncodedCommand" not in ps1
-    assert "Invoke-WebRequest" in ps1
+    assert "curl.exe" in ps1
+    assert "Tls12" in ps1
+    assert "UseBasicParsing" in ps1
     win_cmd = cert_scripts_module.trust_windows_cmd(cert_url)
     assert "EncodedCommand" not in win_cmd
     assert cert_url in win_cmd
+    assert "curl.exe" in win_cmd
+    assert "Tls12" in win_cmd
     assert cert_url in cert_scripts_module.trust_linux_script(cert_url)
     assert cert_url in cert_scripts_module.trust_macos_script(cert_url)

@@ -41,7 +41,41 @@ def cert_download_url(request: Request) -> str:
     return f"{external_base_url(request)}/cert/fullchain.pem"
 
 
+def _windows_download_cert_ps1() -> str:
+    """PowerShell block: download cert via curl.exe or Invoke-WebRequest (TLS 1.2 on PS 5.x)."""
+    return """
+$curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+if ($curl) {
+    & curl.exe -fsSk $CertUrl -o $TempCert
+} elseif ($PSVersionTable.PSVersion.Major -ge 6) {
+    Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck
+} else {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    try {
+        Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -UseBasicParsing
+    } finally {
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+    }
+}
+""".strip()
+
+
+def _windows_download_cert_cmd_oneliner() -> str:
+    """Single-line PowerShell for trust-windows.cmd."""
+    return (
+        "$curl=Get-Command curl.exe -ErrorAction SilentlyContinue;"
+        " if($curl){& curl.exe -fsSk $CertUrl -o $TempCert}"
+        " elseif($PSVersionTable.PSVersion.Major -ge 6){Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck}"
+        " else{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;"
+        " [System.Net.ServicePointManager]::ServerCertificateValidationCallback={$true};"
+        " try{Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -UseBasicParsing}"
+        " finally{[System.Net.ServicePointManager]::ServerCertificateValidationCallback=$null}}"
+    )
+
+
 def trust_windows_ps1(cert_url: str) -> str:
+    download_block = _windows_download_cert_ps1()
     return f"""# Archive site certificate trust (auto-generated)
 # Right-click -> Run with PowerShell (as Administrator)
 # Or from elevated PowerShell: .\\trust-windows.ps1
@@ -61,16 +95,7 @@ $TempCert = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n'))
 Write-Host "Installing archive site certificate..."
 Write-Host "Downloading certificate from $CertUrl ..."
 
-if ($PSVersionTable.PSVersion.Major -ge 6) {{
-    Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck
-}} else {{
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{ $true }}
-    try {{
-        Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert
-    }} finally {{
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-    }}
-}}
+{download_block}
 
 Write-Host "Installing certificate into Trusted Root..."
 Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
@@ -82,6 +107,7 @@ Read-Host "Press Enter to close"
 
 
 def trust_windows_cmd(cert_url: str) -> str:
+    download_oneliner = _windows_download_cert_cmd_oneliner()
     return f"""@echo off
 REM Archive site certificate trust (auto-generated)
 REM Right-click and "Run as administrator".
@@ -93,7 +119,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$CertUrl='{cert_url}';" ^
   "$TempCert=Join-Path $env:TEMP ('archive-site-' + [Guid]::NewGuid().ToString('n') + '.pem');" ^
   "Write-Host ('Downloading certificate from ' + $CertUrl + ' ...');" ^
-  "if ($PSVersionTable.PSVersion.Major -ge 6) {{ Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck }} else {{ [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{ $true }}; try {{ Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert }} finally {{ [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null }} }};" ^
+  "{download_oneliner};" ^
   "Write-Host 'Installing certificate into Trusted Root...';" ^
   "Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root ^| Out-Null;" ^
   "Remove-Item $TempCert -Force;" ^

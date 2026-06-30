@@ -10,6 +10,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Changelog page now lists the full release history, not only the current version.
 - Certificate trust scripts are generated dynamically on the server with the correct host, HTTPS port, and `/archive` prefix (fixes duplicate path and connection errors).
 - Windows certificate script is available as a readable `trust-windows.ps1` file instead of an encoded PowerShell command.
+- Windows cert download uses `curl.exe` when available, otherwise forces TLS 1.2 for PowerShell 5.x (fixes «Базовое соединение закрыто» on download).
 - Added departments: «Сервисный отдел» and «Отдел интеграции и сопровождения».
 
 ## 0.9.1
