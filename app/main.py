@@ -1,7 +1,7 @@
 # app/main.py
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -74,7 +74,12 @@ from app.notifications import (
     get_document_designation,
 )
 from app.document_display import get_document_display_status, format_field_change
-from app.changelog import render_changelog_html
+from app.cert_scripts import (
+    cert_download_url,
+    trust_linux_script,
+    trust_macos_script,
+    trust_windows_script,
+)
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
 
 logging.basicConfig(level=logging.INFO)
@@ -114,10 +119,12 @@ _COOKIE_PATH = ROOT_PATH or "/"
 _CERT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nginx", "certs", "fullchain.pem")
 _SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts")
 _CERT_SCRIPT_FILES = {
-    "trust-windows.ps1": ("trust-cert-windows.ps1", "application/octet-stream"),
-    "trust-linux.sh": ("trust-cert-linux.sh", "application/x-sh"),
-    "trust-macos.sh": ("trust-cert-macos.sh", "application/x-sh"),
     "windows-forward-ports.ps1": ("windows-forward-ports.ps1", "application/octet-stream"),
+}
+_GENERATED_CERT_SCRIPTS = {
+    "trust-windows.ps1": ("trust-windows.ps1", trust_windows_script),
+    "trust-linux.sh": ("trust-linux.sh", trust_linux_script),
+    "trust-macos.sh": ("trust-macos.sh", trust_macos_script),
 }
 
 
@@ -1016,11 +1023,7 @@ async def push_unsubscribe(
 
 
 @app.get("/cert/fullchain.pem")
-async def download_site_certificate(
-    access_token: Optional[str] = Cookie(None),
-    session: AsyncSession = Depends(get_session),
-):
-    await _require_user(access_token, session)
+async def download_site_certificate():
     if not os.path.isfile(_CERT_FILE):
         raise HTTPException(status_code=404, detail="Сертификат недоступен.")
     return FileResponse(
@@ -1033,10 +1036,23 @@ async def download_site_certificate(
 @app.get("/cert/scripts/{script_key}")
 async def download_cert_script(
     script_key: str,
+    request: Request,
     access_token: Optional[str] = Cookie(None),
     session: AsyncSession = Depends(get_session),
 ):
     await _require_user(access_token, session)
+
+    if script_key in _GENERATED_CERT_SCRIPTS:
+        filename, builder = _GENERATED_CERT_SCRIPTS[script_key]
+        cert_url = cert_download_url(request)
+        content = builder(cert_url)
+        media_type = "application/x-sh" if filename.endswith(".sh") else "application/octet-stream"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     if script_key not in _CERT_SCRIPT_FILES:
         raise HTTPException(status_code=404, detail="Скрипт не найден.")
     filename, media_type = _CERT_SCRIPT_FILES[script_key]

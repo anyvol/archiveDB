@@ -151,28 +151,24 @@
                 <h2>Настройка сертификата сайта</h2>
                 <p class="cert-note">Самоподписанный сертификат шифрует соединение, но браузер показывает предупреждение, пока сертификат не добавлен в доверенные на вашем компьютере.</p>
                 {% if cert_available %}
-                <p><strong>1. Скачайте сертификат</strong></p>
-                <ul class="cert-download-list">
-                    <li><a href="{{ url_path('/cert/fullchain.pem') }}" download>Сертификат сайта (archive-site.pem)</a></li>
-                </ul>
-                <p><strong>2. Скачайте скрипт для вашей ОС</strong></p>
+                <p><strong>1. Скачайте скрипт для вашей ОС</strong> (адрес сервера уже прописан внутри)</p>
                 <ul class="cert-download-list">
                     <li><a href="{{ url_path('/cert/scripts/trust-windows.ps1') }}" download>Windows — trust-windows.ps1</a></li>
                     <li><a href="{{ url_path('/cert/scripts/trust-linux.sh') }}" download>Linux — trust-linux.sh</a></li>
                     <li><a href="{{ url_path('/cert/scripts/trust-macos.sh') }}" download>macOS — trust-macos.sh</a></li>
-                    <li><a href="{{ url_path('/cert/scripts/windows-forward-ports.ps1') }}" download>Windows + WSL — проброс портов (windows-forward-ports.ps1)</a></li>
                 </ul>
-                <p><strong>3. Выполните на своём компьютере</strong></p>
+                <p><strong>2. Запустите один раз от администратора</strong></p>
                 <p class="cert-note">Windows (PowerShell от администратора):</p>
                 <div class="cert-script-block">Set-ExecutionPolicy -Scope Process Bypass
-.\trust-windows.ps1 -CertPath C:\Users\Admin\Downloads\archive-site.pem</div>
+.\trust-windows.ps1</div>
                 <p class="cert-note">Linux:</p>
                 <div class="cert-script-block">chmod +x trust-linux.sh
-sudo ./trust-linux.sh ~/Downloads/archive-site.pem</div>
+sudo ./trust-linux.sh</div>
                 <p class="cert-note">macOS:</p>
                 <div class="cert-script-block">chmod +x trust-macos.sh
-sudo ./trust-macos.sh ~/Downloads/archive-site.pem</div>
-                <p class="cert-note">После установки перезапустите браузер.</p>
+sudo ./trust-macos.sh</div>
+                <p class="cert-note">Скрипт сам скачает сертификат с сервера и установит его. После этого перезапустите браузер.</p>
+                <p class="cert-note"><a href="{{ url_path('/cert/fullchain.pem') }}" download>Скачать сертификат вручную</a> (если нужен без скрипта). Для Docker+WSL на сервере: <a href="{{ url_path('/cert/scripts/windows-forward-ports.ps1') }}" download>windows-forward-ports.ps1</a>.</p>
                 {% else %}
                 <p class="cert-note">Сертификат на сервере пока не создан. Перезапустите proxy или задайте SSL_CERT_CN в .env.</p>
                 {% endif %}
