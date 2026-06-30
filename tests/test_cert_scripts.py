@@ -31,6 +31,18 @@ def test_cert_download_url_no_double_root_path(monkeypatch):
     assert "/archive/archive/" not in url
 
 
+def test_request_host_strips_path_from_forwarded_host(monkeypatch):
+    monkeypatch.setenv("ROOT_PATH", "/archive")
+    monkeypatch.setenv("HTTPS_PORT", "8443")
+    reload(config_module)
+    reload(cert_scripts_module)
+
+    request = _FakeRequest(forwarded_host="192.168.4.108/archive")
+    url = cert_scripts_module.cert_download_url(request)
+    assert url == "https://192.168.4.108:8443/archive/cert/fullchain.pem"
+    assert "/archive/archive/" not in url
+
+
 def test_request_host_adds_https_port_when_missing(monkeypatch):
     monkeypatch.setenv("ROOT_PATH", "/archive")
     monkeypatch.setenv("HTTPS_PORT", "8443")
@@ -43,7 +55,12 @@ def test_request_host_adds_https_port_when_missing(monkeypatch):
 
 def test_generated_scripts_embed_cert_url():
     cert_url = "https://example.com/archive/cert/fullchain.pem"
+    ps1 = cert_scripts_module.trust_windows_ps1(cert_url)
+    assert cert_url in ps1
+    assert "EncodedCommand" not in ps1
+    assert "Invoke-WebRequest" in ps1
     win_cmd = cert_scripts_module.trust_windows_cmd(cert_url)
-    assert "ExecutionPolicy Bypass" in win_cmd
+    assert "EncodedCommand" not in win_cmd
+    assert cert_url in win_cmd
     assert cert_url in cert_scripts_module.trust_linux_script(cert_url)
     assert cert_url in cert_scripts_module.trust_macos_script(cert_url)

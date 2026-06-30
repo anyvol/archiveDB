@@ -69,6 +69,8 @@
 
         {% if error == 'invalid' %}
         <div class="error">Не удалось загрузить файл. Проверьте формат и размер (макс. 10 МБ).</div>
+        {% elif error_message %}
+        <div class="error">{{ error_message }}</div>
         {% endif %}
     </div>
 

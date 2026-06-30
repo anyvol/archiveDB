@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
-import base64
-
 from fastapi import Request
 
 from app.config import PUBLIC_HTTPS_PORT, ROOT_PATH
 
 
+def _sanitize_host(host: str) -> str:
+    host = host.strip()
+    if not host:
+        return host
+    if "/" in host:
+        host = host.split("/", 1)[0]
+    if "@" in host:
+        host = host.rsplit("@", 1)[-1]
+    return host
+
+
 def _request_host(request: Request) -> str:
     forwarded_host = request.headers.get("x-forwarded-host")
     if forwarded_host:
-        return forwarded_host.split(",")[0].strip()
+        host = _sanitize_host(forwarded_host.split(",")[0])
+    else:
+        host = _sanitize_host(request.headers.get("host", request.url.netloc))
 
-    host = request.headers.get("host", request.url.netloc)
     if PUBLIC_HTTPS_PORT and PUBLIC_HTTPS_PORT not in ("443", "80") and ":" not in host:
         host = f"{host}:{PUBLIC_HTTPS_PORT}"
     return host
@@ -31,13 +41,26 @@ def cert_download_url(request: Request) -> str:
     return f"{external_base_url(request)}/cert/fullchain.pem"
 
 
-def _trust_windows_powershell_body(cert_url: str) -> str:
-    return f"""$ErrorActionPreference = "Stop"
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {{ throw "Run this file as Administrator." }}
+def trust_windows_ps1(cert_url: str) -> str:
+    return f"""# Archive site certificate trust (auto-generated)
+# Right-click -> Run with PowerShell (as Administrator)
+# Or from elevated PowerShell: .\\trust-windows.ps1
+
+$ErrorActionPreference = "Stop"
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+if (-not $isAdmin) {{
+    Write-Error "Run this script as Administrator."
+}}
+
 $CertUrl = "{cert_url}"
 $TempCert = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n')).pem"
+
+Write-Host "Installing archive site certificate..."
 Write-Host "Downloading certificate from $CertUrl ..."
+
 if ($PSVersionTable.PSVersion.Major -ge 6) {{
     Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck
 }} else {{
@@ -48,23 +71,34 @@ if ($PSVersionTable.PSVersion.Major -ge 6) {{
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
     }}
 }}
+
 Write-Host "Installing certificate into Trusted Root..."
 Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
 Remove-Item $TempCert -Force
+
 Write-Host "Done. Restart the browser."
+Read-Host "Press Enter to close"
 """
 
 
 def trust_windows_cmd(cert_url: str) -> str:
-    encoded = base64.b64encode(_trust_windows_powershell_body(cert_url).encode("utf-16-le")).decode(
-        "ascii"
-    )
     return f"""@echo off
 REM Archive site certificate trust (auto-generated)
-REM Right-click and "Run as administrator", or run from elevated cmd.
+REM Right-click and "Run as administrator".
 
 echo Installing archive site certificate...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {{ throw 'Run this file as Administrator.' }};" ^
+  "$CertUrl='{cert_url}';" ^
+  "$TempCert=Join-Path $env:TEMP ('archive-site-' + [Guid]::NewGuid().ToString('n') + '.pem');" ^
+  "Write-Host ('Downloading certificate from ' + $CertUrl + ' ...');" ^
+  "if ($PSVersionTable.PSVersion.Major -ge 6) {{ Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck }} else {{ [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{ $true }}; try {{ Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert }} finally {{ [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null }} }};" ^
+  "Write-Host 'Installing certificate into Trusted Root...';" ^
+  "Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root ^| Out-Null;" ^
+  "Remove-Item $TempCert -Force;" ^
+  "Write-Host 'Done. Restart the browser.'"
+
 if errorlevel 1 (
     echo.
     echo Failed. Run this file as Administrator.

@@ -29,6 +29,8 @@
         <div class="alert">Укажите фамилию и имя.</div>
         {% elif error == 'server' %}
         <div class="alert">Произошла ошибка при регистрации. Попробуйте позже.</div>
+        {% elif error == 'message' and error_message %}
+        <div class="alert">{{ error_message }}</div>
         {% elif error %}
         <div class="alert">Произошла ошибка при регистрации.</div>
         {% endif %}
