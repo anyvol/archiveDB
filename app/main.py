@@ -83,6 +83,7 @@ from app.cert_scripts import (
     trust_windows_cmd,
 )
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
+from app.changelog import render_changelog_html
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
