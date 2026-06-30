@@ -15,6 +15,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
   - Change notifications (ИИ) stored in project `Извещения об изменении/` folder.
 - New tables: `document_change_events`, `change_notifications`, `file_revisions`.
 - Preview endpoints for documents and ИИ (inline PDF/images).
+- Alembic migration `a1b2c3d4e5f6` is idempotent (safe to re-run if tables were created by app startup).
 
 ## 0.9.3
 
