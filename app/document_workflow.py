@@ -12,6 +12,8 @@ from app.change_log import (
     archive_current_file,
     is_governed_document,
     log_change_event,
+    log_document_status_change,
+    log_file_upload,
     resolve_ii_storage_path,
 )
 from app.document_helpers import (
@@ -68,12 +70,16 @@ async def request_minor_correction(
 
     doc.status = DocumentStatus.correction_requested
     doc.correction_request_comment = comment.strip()
+    old_status = DocumentStatus.pending_review
     await log_change_event(
         session,
         doc,
         actor,
         DocumentChangeEventType.correction_request,
         comment=comment.strip(),
+    )
+    await log_document_status_change(
+        session, doc, actor, old_status, DocumentStatus.correction_requested
     )
     await notify_correction_request(session, doc, actor, comment.strip())
 
@@ -90,12 +96,14 @@ async def respond_correction_request(
         raise HTTPException(status_code=400, detail="Нет активного запроса на исправление.")
 
     request_comment = doc.correction_request_comment or ""
+    old_status = doc.status
     if approved:
         doc.status = DocumentStatus.requires_correction
         doc.review_comment = comment.strip() or "Одобрен запрос на незначительное исправление."
         doc.correction_request_comment = None
         event_type = DocumentChangeEventType.correction_request_approved
         log_comment = f"Запрос: «{request_comment}». {doc.review_comment}"
+        new_status = DocumentStatus.requires_correction
     else:
         if not comment.strip():
             raise HTTPException(status_code=400, detail="Укажите причину отклонения запроса.")
@@ -104,8 +112,10 @@ async def respond_correction_request(
         doc.review_comment = None
         event_type = DocumentChangeEventType.correction_request_rejected
         log_comment = f"Запрос: «{request_comment}». Отклонено: {comment.strip()}"
+        new_status = DocumentStatus.pending_review
 
     await log_change_event(session, doc, actor, event_type, comment=log_comment)
+    await log_document_status_change(session, doc, actor, old_status, new_status)
     await notify_correction_request_response(session, doc, actor, approved, comment.strip() or None)
 
 
@@ -139,6 +149,7 @@ async def apply_cosmetic_file_replace(
         designation=designation if (doc.design_document or doc.tech_document) else None,
     )
 
+    old_status = doc.status
     doc.file_path = file_path
     doc.file_name = unique_file_name
     doc.status = DocumentStatus.pending_review
@@ -152,6 +163,8 @@ async def apply_cosmetic_file_replace(
         comment=change_comment.strip(),
         file_revision=file_revision,
     )
+    await log_file_upload(session, doc, actor, unique_file_name, replacement=True)
+    await log_document_status_change(session, doc, actor, old_status, DocumentStatus.pending_review)
 
 
 async def apply_formal_document_change(
@@ -161,6 +174,7 @@ async def apply_formal_document_change(
     *,
     ii_file: UploadFile,
     new_doc_file: UploadFile,
+    ii_number: str,
     change_number: str,
     change_date: datetime,
     developer_signed: bool,
@@ -170,12 +184,17 @@ async def apply_formal_document_change(
 ) -> None:
     if doc.status != DocumentStatus.approved:
         raise HTTPException(status_code=400, detail="Формальное изменение доступно только для утверждённых документов.")
+    if not ii_number.strip():
+        raise HTTPException(status_code=400, detail="Укажите номер извещения об изменении (ИИ).")
     if not change_number.strip():
-        raise HTTPException(status_code=400, detail="Укажите номер изменения.")
+        raise HTTPException(status_code=400, detail="Укажите номер изменения (1, 2, 3…).")
     if not developer_signed or not reviewer_signed or not approver_signed:
         raise HTTPException(
             status_code=400,
-            detail="Отметьте подписи разработчика, проверяющего и утверждающего документ.",
+            detail=(
+                "Документ должен быть проверен всеми специалистами. "
+                "Отметьте подписи разработчика, проверяющего и утверждающего."
+            ),
         )
 
     validate_upload_file(ii_file)
@@ -184,6 +203,13 @@ async def apply_formal_document_change(
     await session.refresh(doc, ["project"])
     project_slug = doc.project.slug if doc.project else "_legacy"
     designation = get_document_designation(doc)
+
+    expected_name = compute_stored_file_name(designation, os.path.basename(new_doc_file.filename or ""))
+    if doc.file_name and expected_name != doc.file_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Имя файла должно совпадать с текущим документом: «{doc.file_name}».",
+        )
 
     ii_contents, ii_original = await _read_upload_contents(ii_file)
     ii_stored = compute_stored_file_name(None, ii_original)
@@ -207,7 +233,7 @@ async def apply_formal_document_change(
 
     ii_record = ChangeNotification(
         document_id=doc.id,
-        number=change_number.strip(),
+        number=ii_number.strip(),
         date=change_date,
         file_name=ii_stored,
         file_path=ii_path,
@@ -220,6 +246,7 @@ async def apply_formal_document_change(
     session.add(ii_record)
     await session.flush()
 
+    old_status = doc.status
     doc.file_path = file_path
     doc.file_name = unique_file_name
     doc.status = DocumentStatus.pending_review
@@ -236,7 +263,9 @@ async def apply_formal_document_change(
         change_notification=ii_record,
         file_revision=file_revision,
     )
-    await notify_formal_change(session, doc, actor, change_number.strip())
+    await log_file_upload(session, doc, actor, unique_file_name, replacement=True)
+    await log_document_status_change(session, doc, actor, old_status, DocumentStatus.pending_review)
+    await notify_formal_change(session, doc, actor, ii_number.strip(), change_number.strip())
 
 
 def preview_media_type(file_path: str) -> str | None:

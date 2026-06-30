@@ -13,7 +13,9 @@ from app.models import (
     ChangeNotification,
     DocumentChangeEvent,
     DocumentChangeEventType,
+    DocumentStatus,
     DOCUMENT_CHANGE_EVENT_LABELS,
+    DOCUMENT_STATUS_LABELS,
     FileRevision,
     GOVERNED_DOCUMENT_TYPES,
     II_FOLDER,
@@ -92,6 +94,47 @@ async def log_change_event(
     return event
 
 
+async def log_document_status_change(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User | None,
+    old_status: DocumentStatus,
+    new_status: DocumentStatus,
+    *,
+    comment: str | None = None,
+) -> None:
+    if old_status == new_status:
+        return
+    old_label = DOCUMENT_STATUS_LABELS[old_status]
+    new_label = DOCUMENT_STATUS_LABELS[new_status]
+    await log_change_event(
+        session,
+        doc,
+        actor,
+        DocumentChangeEventType.status_change,
+        comment=comment or f"{old_label} → {new_label}",
+        payload={"old_status": old_status.value, "new_status": new_status.value},
+    )
+
+
+async def log_file_upload(
+    session: AsyncSession,
+    doc: BaseDocument,
+    actor: User | None,
+    file_name: str,
+    *,
+    replacement: bool = False,
+) -> None:
+    action = "Замена файла" if replacement else "Загрузка файла"
+    await log_change_event(
+        session,
+        doc,
+        actor,
+        DocumentChangeEventType.file_upload,
+        comment=f"{action}: {file_name}",
+    )
+
+
 async def get_document_change_history(
     session: AsyncSession,
     document_id: int,
@@ -108,9 +151,25 @@ def format_change_event_summary(event: DocumentChangeEvent) -> str:
     label = DOCUMENT_CHANGE_EVENT_LABELS.get(event.event_type, event.event_type.value)
     parts = [label]
     if event.change_number:
-        parts.append(f"№ {event.change_number}")
-    if event.comment:
+        parts.append(f"изм. № {event.change_number}")
+    if event.change_notification and event.event_type == DocumentChangeEventType.file_replace_formal:
+        parts.append(f"ИИ № {event.change_notification.number}")
+    if event.event_type == DocumentChangeEventType.status_change and event.payload:
+        old_s = event.payload.get("old_status")
+        new_s = event.payload.get("new_status")
+        if old_s and new_s:
+            try:
+                parts.append(
+                    f"{DOCUMENT_STATUS_LABELS[DocumentStatus(old_s)]} → "
+                    f"{DOCUMENT_STATUS_LABELS[DocumentStatus(new_s)]}"
+                )
+            except ValueError:
+                pass
+    elif event.comment and event.event_type != DocumentChangeEventType.status_change:
         parts.append(event.comment)
+    elif event.comment and event.event_type == DocumentChangeEventType.status_change:
+        if not event.payload:
+            parts.append(event.comment)
     return " — ".join(parts)
 
 

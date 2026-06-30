@@ -211,13 +211,14 @@ async def notify_formal_change(
     session: AsyncSession,
     doc: BaseDocument,
     actor: User,
+    ii_number: str,
     change_number: str,
 ) -> None:
     await session.refresh(doc, ["design_document", "tech_document"])
     designation = get_document_designation(doc)
     message = (
         f"{_actor_name(actor)} внёс(ла) изменение №{change_number} в документ «{designation}» "
-        f"по извещению об изменении"
+        f"по извещению об изменении №{ii_number}"
     )
     await _notify_admin_reviewers(session, doc, message, NotificationEventType.formal_change)
 

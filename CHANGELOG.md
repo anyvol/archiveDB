@@ -19,6 +19,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Removed `create_all` on API startup — use Alembic only (`alembic upgrade head`).
 - Fixed PDF preview for files with non-ASCII names (Cyrillic in `Content-Disposition`).
 - Changelog page shows full history from `CHANGELOG.md`; header aligned with other pages.
+- Apply-change form: separate II number and change revision number (1, 2, 3…).
+- Change log records file uploads and all status transitions.
+- Filename must match current document on formal change; signature validation message improved.
+- Help section updated for 0.10.0 workflow.
 
 ## 0.9.3
 

@@ -167,6 +167,7 @@
                     {% if event.change_notification %}
                     <div class="history-ii">
                         ИИ № {{ event.change_notification.number }}
+                        {% if event.change_number %} · изменение № {{ event.change_number }}{% endif %}
                         от {{ event.change_notification.date.strftime('%Y-%m-%d') }}
                         · <a href="{{ url_path('/documents/' ~ doc.id ~ '/ii/' ~ event.change_notification.id ~ '/preview') }}" target="_blank">просмотр ИИ</a>
                     </div>

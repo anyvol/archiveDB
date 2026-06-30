@@ -34,6 +34,7 @@ class NotificationEventType(str, enum.Enum):
 
 class DocumentChangeEventType(str, enum.Enum):
     register = "register"
+    file_upload = "file_upload"
     file_replace_cosmetic = "file_replace_cosmetic"
     file_replace_formal = "file_replace_formal"
     metadata_edit = "metadata_edit"
@@ -44,7 +45,8 @@ class DocumentChangeEventType(str, enum.Enum):
 
 
 DOCUMENT_CHANGE_EVENT_LABELS = {
-    DocumentChangeEventType.register: "Регистрация",
+    DocumentChangeEventType.register: "Регистрация записи",
+    DocumentChangeEventType.file_upload: "Загрузка файла",
     DocumentChangeEventType.file_replace_cosmetic: "Косметическое исправление файла",
     DocumentChangeEventType.file_replace_formal: "Изменение по извещению",
     DocumentChangeEventType.metadata_edit: "Изменение метаданных",

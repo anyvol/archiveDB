@@ -65,6 +65,8 @@ from app.change_log import (
     format_change_event_summary,
     is_governed_document,
     log_change_event,
+    log_document_status_change,
+    log_file_upload,
 )
 from app.document_workflow import (
     fetch_document,
@@ -689,9 +691,12 @@ async def handle_upload(
 
     doc.file_path = file_path
     doc.file_name = unique_file_name
+    old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if not doc.registration_notified_at:
         doc.registration_notified_at = datetime.utcnow()
+    await log_file_upload(session, doc, user, unique_file_name, replacement=had_file_before)
+    await log_document_status_change(session, doc, user, old_status, DocumentStatus.pending_review)
     await notify_file_upload(
         session,
         doc,
@@ -862,6 +867,7 @@ async def edit_document(
 
     doc.doc_name = new_doc_name
     doc.developed_by = developed_by
+    old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if changes:
         await log_change_event(
@@ -871,6 +877,7 @@ async def edit_document(
             DocumentChangeEventType.metadata_edit,
             comment="; ".join(changes),
         )
+    await log_document_status_change(session, doc, user, old_status, DocumentStatus.pending_review)
     await notify_document_edit(session, doc, user, changes)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
@@ -912,13 +919,13 @@ async def set_document_status(
         doc.review_comment = comment.strip()
     elif status_enum == DocumentStatus.approved:
         doc.review_comment = None
-    await log_change_event(
+    await log_document_status_change(
         session,
         doc,
         user,
-        DocumentChangeEventType.status_change,
+        old_status,
+        status_enum,
         comment=comment.strip() or None,
-        payload={"old_status": old_status.value, "new_status": status_enum.value},
     )
     await notify_status_change(session, doc, user, status_enum, comment.strip() or None)
     await session.commit()
@@ -1010,6 +1017,7 @@ async def apply_change_submit(
     doc_id: int,
     ii_file: UploadFile = File(...),
     new_doc_file: UploadFile = File(...),
+    ii_number: str = Form(...),
     change_number: str = Form(...),
     change_date: str = Form(...),
     comment: str = Form(""),
@@ -1044,6 +1052,7 @@ async def apply_change_submit(
             user,
             ii_file=ii_file,
             new_doc_file=new_doc_file,
+            ii_number=ii_number,
             change_number=change_number,
             change_date=parsed_date,
             developer_signed=bool(developer_signed),
