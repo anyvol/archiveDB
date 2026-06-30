@@ -121,7 +121,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "Write-Host ('Downloading certificate from ' + $CertUrl + ' ...');" ^
   "{download_oneliner};" ^
   "Write-Host 'Installing certificate into Trusted Root...';" ^
-  "Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root ^| Out-Null;" ^
+  "$null = Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root;" ^
   "Remove-Item $TempCert -Force;" ^
   "Write-Host 'Done. Restart the browser.'"
 
