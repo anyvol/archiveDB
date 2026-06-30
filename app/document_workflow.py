@@ -191,10 +191,7 @@ async def apply_formal_document_change(
     if not developer_signed or not reviewer_signed or not approver_signed:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Документ должен быть проверен всеми специалистами. "
-                "Отметьте подписи разработчика, проверяющего и утверждающего."
-            ),
+            detail="Документ должен быть проверен всеми специалистами",
         )
 
     validate_upload_file(ii_file)

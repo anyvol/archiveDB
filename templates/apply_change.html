@@ -49,8 +49,7 @@
                 Формальное изменение утверждённого документа по ГОСТ 2.503-2013.
                 Номер извещения об изменении (ИИ) — основной идентификатор основания;
                 номер изменения — порядковый (1, 2, 3…).
-                Отметки подписей подтверждают, что чертёж проверен всеми специалистами
-                (разработчик, проверяющий, утверждающий документ — не путать с ролью ревьюера системы).
+                Отметки подписей подтверждают, что чертёж проверен всеми специалистами.
             </p>
 
             {% if error %}
@@ -60,36 +59,36 @@
             <form method="post" enctype="multipart/form-data" id="apply-change-form">
                 <div class="form-group">
                     <label for="ii_file">Извещение об изменении (ИИ), PDF *</label>
-                    <input type="file" id="ii_file" name="ii_file" accept=".pdf" required>
+                    <input type="file" id="ii_file" name="ii_file" accept=".pdf">
                 </div>
                 <div class="form-group">
                     <label for="new_doc_file">Новая версия документа *</label>
-                    <input type="file" id="new_doc_file" name="new_doc_file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf" required>
+                    <input type="file" id="new_doc_file" name="new_doc_file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
                     <small>Имя файла должно совпадать с текущим: {{ doc.file_name or designation }}</small>
                 </div>
                 <div id="filename-warning" class="warning"></div>
                 <div class="form-group">
                     <label for="ii_number">Номер извещения об изменении (ИИ) *</label>
-                    <input type="text" id="ii_number" name="ii_number" required maxlength="64" placeholder="например, ИИ-001 или 2026/012">
+                    <input type="text" id="ii_number" name="ii_number" required maxlength="64" placeholder="например, ИИ-001 или 2026/012" value="{{ form.ii_number|e }}">
                     <small>Главный номер основания изменения по ГОСТ</small>
                 </div>
                 <div class="form-group">
                     <label for="change_number">Номер изменения *</label>
-                    <input type="text" id="change_number" name="change_number" required maxlength="64" placeholder="1, 2, 3…">
+                    <input type="text" id="change_number" name="change_number" required maxlength="64" placeholder="1, 2, 3…" value="{{ form.change_number|e }}">
                     <small>Порядковый номер изменения документа</small>
                 </div>
                 <div class="form-group">
                     <label for="change_date">Дата изменения *</label>
-                    <input type="date" id="change_date" name="change_date" required>
+                    <input type="date" id="change_date" name="change_date" required value="{{ form.change_date|e }}">
                 </div>
                 <div class="form-group">
                     <label for="comment">Комментарий (содержание изменений)</label>
-                    <textarea id="comment" name="comment" rows="3" placeholder="Кратко: что изменено"></textarea>
+                    <textarea id="comment" name="comment" rows="3" placeholder="Кратко: что изменено">{{ form.comment|e }}</textarea>
                 </div>
                 <div class="checkbox-group">
-                    <label><input type="checkbox" name="developer_signed" value="true"> Подпись разработчика</label>
-                    <label><input type="checkbox" name="reviewer_signed" value="true"> Подпись проверяющего (листа)</label>
-                    <label><input type="checkbox" name="approver_signed" value="true"> Подпись утверждающего документ (конструктор / руководитель)</label>
+                    <label><input type="checkbox" name="developer_signed" value="true"{% if form.developer_signed %} checked{% endif %}> Подпись разработчика</label>
+                    <label><input type="checkbox" name="reviewer_signed" value="true"{% if form.reviewer_signed %} checked{% endif %}> Подпись Пров.</label>
+                    <label><input type="checkbox" name="approver_signed" value="true"{% if form.approver_signed %} checked{% endif %}> Подпись Утв.</label>
                 </div>
                 <div class="actions">
                     <button type="submit" class="btn">Внести изменение</button>

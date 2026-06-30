@@ -1006,20 +1006,72 @@ async def apply_change_page(
             "doc": doc,
             "designation": get_document_designation(doc),
             "error": request.query_params.get("error"),
+            "form": _empty_apply_change_form(),
             "service_version": SERVICE_VERSION,
             **ctx,
         },
     )
 
 
-@app.post("/documents/{doc_id}/apply-change", response_class=RedirectResponse)
+def _empty_apply_change_form() -> dict:
+    return {
+        "ii_number": "",
+        "change_number": "",
+        "change_date": "",
+        "comment": "",
+        "developer_signed": False,
+        "reviewer_signed": False,
+        "approver_signed": False,
+    }
+
+
+async def _render_apply_change_error(
+    request: Request,
+    session: AsyncSession,
+    user: User,
+    doc: BaseDocument,
+    *,
+    error: str,
+    ii_number: str = "",
+    change_number: str = "",
+    change_date: str = "",
+    comment: str = "",
+    developer_signed: bool = False,
+    reviewer_signed: bool = False,
+    approver_signed: bool = False,
+) -> HTMLResponse:
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "apply_change.html",
+        {
+            "request": request,
+            "doc": doc,
+            "designation": get_document_designation(doc),
+            "error": error,
+            "form": {
+                "ii_number": ii_number,
+                "change_number": change_number,
+                "change_date": change_date,
+                "comment": comment,
+                "developer_signed": developer_signed,
+                "reviewer_signed": reviewer_signed,
+                "approver_signed": approver_signed,
+            },
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.post("/documents/{doc_id}/apply-change")
 async def apply_change_submit(
     doc_id: int,
-    ii_file: UploadFile = File(...),
-    new_doc_file: UploadFile = File(...),
-    ii_number: str = Form(...),
-    change_number: str = Form(...),
-    change_date: str = Form(...),
+    request: Request,
+    ii_file: Optional[UploadFile] = File(None),
+    new_doc_file: Optional[UploadFile] = File(None),
+    ii_number: str = Form(""),
+    change_number: str = Form(""),
+    change_date: str = Form(""),
     comment: str = Form(""),
     developer_signed: Optional[str] = Form(None),
     reviewer_signed: Optional[str] = Form(None),
@@ -1037,13 +1089,30 @@ async def apply_change_submit(
     if not can_apply_formal_change(user, doc):
         raise HTTPException(status_code=403, detail="Формальное изменение недоступно.")
 
+    form_kwargs = dict(
+        ii_number=ii_number,
+        change_number=change_number,
+        change_date=change_date,
+        comment=comment,
+        developer_signed=bool(developer_signed),
+        reviewer_signed=bool(reviewer_signed),
+        approver_signed=bool(approver_signed),
+    )
+
+    async def form_error(message: str) -> HTMLResponse:
+        return await _render_apply_change_error(
+            request, session, user, doc, error=message, **form_kwargs
+        )
+
+    if not ii_file or not ii_file.filename:
+        return await form_error("Приложите файл извещения об изменении (ИИ).")
+    if not new_doc_file or not new_doc_file.filename:
+        return await form_error("Приложите новую версию документа.")
+
     try:
         parsed_date = datetime.strptime(change_date, "%Y-%m-%d")
     except ValueError:
-        return RedirectResponse(
-            url=url_path(f"/documents/{doc_id}/apply-change?error=invalid_date"),
-            status_code=303,
-        )
+        return await form_error("Укажите корректную дату изменения.")
 
     try:
         await apply_formal_document_change(
@@ -1061,11 +1130,7 @@ async def apply_change_submit(
             comment=comment,
         )
     except HTTPException as exc:
-        from urllib.parse import quote
-        return RedirectResponse(
-            url=url_path(f"/documents/{doc_id}/apply-change?error={quote(exc.detail)}"),
-            status_code=303,
-        )
+        return await form_error(exc.detail)
 
     await session.commit()
     return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
