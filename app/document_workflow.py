@@ -23,8 +23,7 @@ from app.document_helpers import (
     _read_upload_contents,
     _sanitize_storage_name,
     compose_display_file_name,
-    extract_stored_file_name,
-    resolve_record_display_name,
+    extract_original_file_name,
 )
 from app.models import (
     BaseDocument,
@@ -152,8 +151,8 @@ async def apply_cosmetic_file_replace(
         designation=designation if (doc.design_document or doc.tech_document) else None,
     )
 
-    record_name = resolve_record_display_name(doc.doc_name, designation)
-    display_file_name = compose_display_file_name(unique_file_name, record_name)
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
 
     old_status = doc.status
     doc.file_path = file_path
@@ -207,13 +206,12 @@ async def apply_formal_document_change(
     project_slug = doc.project.slug if doc.project else "_legacy"
     designation = get_document_designation(doc)
 
-    record_name = resolve_record_display_name(doc.doc_name, designation)
-    stored_file_name = extract_stored_file_name(doc.file_name or "", record_name)
-    expected_name = compute_stored_file_name(designation, os.path.basename(new_doc_file.filename or ""))
-    if stored_file_name and expected_name != stored_file_name:
+    new_original = os.path.basename(new_doc_file.filename or "")
+    current_original = extract_original_file_name(doc.file_name or "", designation)
+    if current_original and new_original.casefold() != current_original.casefold():
         raise HTTPException(
             status_code=400,
-            detail=f"Имя файла должно совпадать с текущим документом: «{stored_file_name}».",
+            detail=f"Имя файла должно совпадать с текущим документом: «{current_original}».",
         )
 
     ii_contents, ii_original = await _read_upload_contents(ii_file)
@@ -235,7 +233,7 @@ async def apply_formal_document_change(
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation,
     )
-    display_file_name = compose_display_file_name(unique_file_name, record_name)
+    display_file_name = compose_display_file_name(designation, new_original)
 
     ii_record = ChangeNotification(
         document_id=doc.id,

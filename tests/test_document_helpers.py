@@ -7,9 +7,8 @@ from app.document_helpers import (
     build_upload_rename_message,
     compute_stored_file_name,
     compose_display_file_name,
-    extract_stored_file_name,
+    extract_original_file_name,
     file_name_matches_designation,
-    resolve_record_display_name,
     _sanitize_storage_name,
     validate_approval_metadata,
 )
@@ -54,17 +53,11 @@ def test_sanitize_storage_name():
 
 
 def test_compose_display_file_name():
-    assert compose_display_file_name("doc.pdf", "Наименование") == "doc.pdf Наименование"
-    assert compose_display_file_name("doc.pdf", None) == "doc.pdf"
-    assert compose_display_file_name("doc.pdf", "  ") == "doc.pdf"
+    assert compose_display_file_name("ORG.123456.001", "other.pdf") == "ORG.123456.001 other.pdf"
+    assert compose_display_file_name("ORG.123456.001", "ORG.123456.001.pdf") == "ORG.123456.001 ORG.123456.001.pdf"
+    assert compose_display_file_name(None, "report.pdf") == "report.pdf"
 
 
-def test_extract_stored_file_name():
-    assert extract_stored_file_name("doc.pdf Наименование", "Наименование") == "doc.pdf"
-    assert extract_stored_file_name("doc.pdf", "Наименование") == "doc.pdf"
-
-
-def test_resolve_record_display_name():
-    assert resolve_record_display_name("Title", "ORG.001") == "Title"
-    assert resolve_record_display_name(None, "ORG.001") == "ORG.001"
-    assert resolve_record_display_name("", None) is None
+def test_extract_original_file_name():
+    assert extract_original_file_name("ORG.123456.001 other.pdf", "ORG.123456.001") == "other.pdf"
+    assert extract_original_file_name("other.pdf", "ORG.123456.001") == "other.pdf"

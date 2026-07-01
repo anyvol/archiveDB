@@ -5,7 +5,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.11.0
 
-- Record card: file name is stored with record title (space-separated) so long names wrap instead of overlapping other fields.
+- Record card: file name is stored as «{designation} {original file name}.{extension}» (one space) so long names wrap in the UI.
 - Record card: document preview height doubled (PDF iframe and images).
 - Documents: optional metadata fields for developer, reviewer, and approver (FIO + date); reviewer and approver FIO are required before status «Утверждено».
 - Create and edit forms: FIO/date grid for developer, reviewer, and approver; hint about approval requirements.

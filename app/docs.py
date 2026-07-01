@@ -21,7 +21,7 @@ from app.schemas import (
 )
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
-from app.document_helpers import save_upload_file, remove_file_if_exists, compose_display_file_name, resolve_record_display_name, validate_approval_metadata
+from app.document_helpers import save_upload_file, remove_file_if_exists, compose_display_file_name, validate_approval_metadata
 from app.notifications import (
     notify_file_upload,
     notify_status_change,
@@ -285,10 +285,8 @@ async def upload_file(
         designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
     )
     designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
-    display_file_name = compose_display_file_name(
-        file_name,
-        resolve_record_display_name(doc.doc_name, designation),
-    )
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
     doc.file_path = file_path
     doc.file_name = display_file_name
     doc.status = DocumentStatus.pending_review

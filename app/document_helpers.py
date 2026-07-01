@@ -62,30 +62,22 @@ def file_name_matches_designation(original_name: str, designation: str) -> bool:
     return filename_base.strip().casefold() == designation.strip().casefold()
 
 
-def compose_display_file_name(stored_name: str, record_name: Optional[str]) -> str:
-    name = (record_name or "").strip()
-    if name:
-        return f"{stored_name} {name}"
-    return stored_name
+def compose_display_file_name(designation: Optional[str], original_name: str) -> str:
+    """Build record file name: «{designation} {original_name}»."""
+    original_name = os.path.basename(original_name)
+    designation = (designation or "").strip()
+    if designation:
+        return f"{designation} {original_name}"
+    return original_name
 
 
-def extract_stored_file_name(display_name: str, record_name: Optional[str]) -> str:
-    name = (record_name or "").strip()
-    if name and display_name.endswith(f" {name}"):
-        return display_name[: -(len(name) + 1)]
+def extract_original_file_name(display_name: str, designation: Optional[str]) -> str:
+    """Return the uploaded file name part from a display file name."""
+    designation = (designation or "").strip()
+    prefix = f"{designation} "
+    if designation and display_name.startswith(prefix):
+        return display_name[len(prefix):]
     return display_name
-
-
-def resolve_record_display_name(
-    doc_name: Optional[str],
-    designation: Optional[str] = None,
-) -> Optional[str]:
-    if doc_name and doc_name.strip():
-        return doc_name.strip()
-    if designation and designation.strip():
-        return designation.strip()
-    return None
-
 
 def parse_optional_date(value: Optional[str]) -> Optional[date]:
     if not value or not str(value).strip():

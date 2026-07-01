@@ -46,8 +46,7 @@ from app.document_helpers import (
     remove_file_if_exists,
     save_development_order_file,
     compose_display_file_name,
-    extract_stored_file_name,
-    resolve_record_display_name,
+    extract_original_file_name,
     parse_optional_date,
     validate_approval_metadata,
 )
@@ -707,8 +706,8 @@ async def handle_upload(
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
 
     designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
-    record_name = resolve_record_display_name(doc.doc_name, designation)
-    display_file_name = compose_display_file_name(unique_file_name, record_name)
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
 
     doc.file_path = file_path
     doc.file_name = display_file_name
@@ -741,22 +740,7 @@ async def download_document(
     if not doc or not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(status_code=404, detail="Файл не найден")
 
-    result = await session.execute(
-        select(BaseDocument)
-        .options(
-            joinedload(BaseDocument.design_document),
-            joinedload(BaseDocument.tech_document),
-        )
-        .where(BaseDocument.id == doc_id)
-    )
-    doc_with_relations = result.scalar_one_or_none() or doc
-    designation = get_document_designation(doc_with_relations)
-    download_name = extract_stored_file_name(
-        doc.file_name or "",
-        resolve_record_display_name(doc.doc_name, designation),
-    )
-
-    return FileResponse(path=doc.file_path, filename=download_name, media_type="application/octet-stream")
+    return FileResponse(path=doc.file_path, filename=doc.file_name, media_type="application/octet-stream")
 
 
 @app.get("/documents/{doc_id}/preview")
@@ -951,21 +935,6 @@ async def edit_document(
     doc.developed_date = new_developed_date
     doc.reviewed_date = new_reviewed_date
     doc.approved_date = new_approved_date
-    if doc.file_name and doc.file_path:
-        result = await session.execute(
-            select(BaseDocument)
-            .options(
-                joinedload(BaseDocument.design_document),
-                joinedload(BaseDocument.tech_document),
-            )
-            .where(BaseDocument.id == doc_id)
-        )
-        doc_with_designation = result.scalar_one_or_none() or doc
-        designation = get_document_designation(doc_with_designation)
-        old_record_name = resolve_record_display_name(old_doc_name, designation)
-        stored_name = extract_stored_file_name(doc.file_name, old_record_name)
-        new_record_name = resolve_record_display_name(new_doc_name, designation)
-        doc.file_name = compose_display_file_name(stored_name, new_record_name)
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if changes:
