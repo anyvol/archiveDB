@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 import shutil
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile
@@ -60,6 +60,49 @@ def _sanitize_storage_name(name: str) -> str:
 def file_name_matches_designation(original_name: str, designation: str) -> bool:
     filename_base, _ = os.path.splitext(os.path.basename(original_name))
     return filename_base.strip().casefold() == designation.strip().casefold()
+
+
+def compose_display_file_name(designation: Optional[str], original_name: str) -> str:
+    """Build record file name: «{designation} {original_name}»."""
+    original_name = os.path.basename(original_name)
+    designation = (designation or "").strip()
+    if designation:
+        return f"{designation} {original_name}"
+    return original_name
+
+
+def extract_original_file_name(display_name: str, designation: Optional[str]) -> str:
+    """Return the uploaded file name part from a display file name."""
+    designation = (designation or "").strip()
+    prefix = f"{designation} "
+    if designation and display_name.startswith(prefix):
+        return display_name[len(prefix):]
+    return display_name
+
+def parse_optional_date(value: Optional[str]) -> Optional[date]:
+    if not value or not str(value).strip():
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Укажите корректную дату (ГГГГ-ММ-ДД).")
+
+
+def validate_approval_metadata(doc) -> None:
+    missing = []
+    if not (getattr(doc, "reviewed_by", None) or "").strip():
+        missing.append("ФИО проверяющего")
+    if not (getattr(doc, "approved_by", None) or "").strip():
+        missing.append("ФИО утверждающего")
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Перед утверждением заполните метаданные через «Изменить метаданные»: "
+                + ", ".join(missing)
+                + "."
+            ),
+        )
 
 
 def compute_stored_file_name(designation: Optional[str], original_name: str) -> str:

@@ -22,6 +22,8 @@ from app.document_helpers import (
     validate_upload_file,
     _read_upload_contents,
     _sanitize_storage_name,
+    compose_display_file_name,
+    extract_original_file_name,
 )
 from app.models import (
     BaseDocument,
@@ -149,9 +151,12 @@ async def apply_cosmetic_file_replace(
         designation=designation if (doc.design_document or doc.tech_document) else None,
     )
 
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
+
     old_status = doc.status
     doc.file_path = file_path
-    doc.file_name = unique_file_name
+    doc.file_name = display_file_name
     doc.status = DocumentStatus.pending_review
     doc.review_comment = None
 
@@ -163,7 +168,7 @@ async def apply_cosmetic_file_replace(
         comment=change_comment.strip(),
         file_revision=file_revision,
     )
-    await log_file_upload(session, doc, actor, unique_file_name, replacement=True)
+    await log_file_upload(session, doc, actor, display_file_name, replacement=True)
     await log_document_status_change(session, doc, actor, old_status, DocumentStatus.pending_review)
 
 
@@ -201,11 +206,12 @@ async def apply_formal_document_change(
     project_slug = doc.project.slug if doc.project else "_legacy"
     designation = get_document_designation(doc)
 
-    expected_name = compute_stored_file_name(designation, os.path.basename(new_doc_file.filename or ""))
-    if doc.file_name and expected_name != doc.file_name:
+    new_original = os.path.basename(new_doc_file.filename or "")
+    current_original = extract_original_file_name(doc.file_name or "", designation)
+    if current_original and new_original.casefold() != current_original.casefold():
         raise HTTPException(
             status_code=400,
-            detail=f"Имя файла должно совпадать с текущим документом: «{doc.file_name}».",
+            detail=f"Имя файла должно совпадать с текущим документом: «{current_original}».",
         )
 
     ii_contents, ii_original = await _read_upload_contents(ii_file)
@@ -227,6 +233,7 @@ async def apply_formal_document_change(
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation,
     )
+    display_file_name = compose_display_file_name(designation, new_original)
 
     ii_record = ChangeNotification(
         document_id=doc.id,
@@ -245,7 +252,7 @@ async def apply_formal_document_change(
 
     old_status = doc.status
     doc.file_path = file_path
-    doc.file_name = unique_file_name
+    doc.file_name = display_file_name
     doc.status = DocumentStatus.pending_review
     doc.review_comment = None
 
@@ -260,7 +267,7 @@ async def apply_formal_document_change(
         change_notification=ii_record,
         file_revision=file_revision,
     )
-    await log_file_upload(session, doc, actor, unique_file_name, replacement=True)
+    await log_file_upload(session, doc, actor, display_file_name, replacement=True)
     await log_document_status_change(session, doc, actor, old_status, DocumentStatus.pending_review)
     await notify_formal_change(session, doc, actor, ii_number.strip(), change_number.strip())
 

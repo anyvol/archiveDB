@@ -21,7 +21,7 @@ from app.schemas import (
 )
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
-from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.document_helpers import save_upload_file, remove_file_if_exists, compose_display_file_name, validate_approval_metadata
 from app.notifications import (
     notify_file_upload,
     notify_status_change,
@@ -219,6 +219,9 @@ async def update_document_status(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    if payload.status == DocumentStatus.approved:
+        validate_approval_metadata(doc)
+
     doc.status = payload.status
     if payload.status == DocumentStatus.requires_correction:
         doc.review_comment = (payload.comment or "").strip()
@@ -281,8 +284,11 @@ async def upload_file(
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
     )
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
     doc.file_path = file_path
-    doc.file_name = file_name
+    doc.file_name = display_file_name
     doc.status = DocumentStatus.pending_review
     if not doc.registration_notified_at:
         doc.registration_notified_at = datetime.utcnow()
@@ -294,7 +300,7 @@ async def upload_file(
         registration_already_notified=registration_already_notified,
     )
     await session.commit()
-    return {"filename": file_name}
+    return {"filename": display_file_name}
 
 
 @router.get("/documents/{doc_id}/download")

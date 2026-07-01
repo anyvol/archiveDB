@@ -41,7 +41,15 @@ from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.document_queries import fetch_documents
-from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
+from app.document_helpers import (
+    save_upload_file,
+    remove_file_if_exists,
+    save_development_order_file,
+    compose_display_file_name,
+    extract_original_file_name,
+    parse_optional_date,
+    validate_approval_metadata,
+)
 from app.project_helpers import get_project_by_id, create_new_project
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
 from app.permissions import (
@@ -449,7 +457,12 @@ async def create_document_record(
     class_code = form_data.get("class_code")
     reg_number = form_data.get("reg_number")
     doc_name = form_data.get("doc_name")
-    developed_by = form_data.get("developed_by")
+    developed_by = (form_data.get("developed_by") or "").strip() or None
+    reviewed_by = (form_data.get("reviewed_by") or "").strip() or None
+    approved_by = (form_data.get("approved_by") or "").strip() or None
+    developed_date = parse_optional_date(form_data.get("developed_date"))
+    reviewed_date = parse_optional_date(form_data.get("reviewed_date"))
+    approved_date = parse_optional_date(form_data.get("approved_date"))
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -458,8 +471,6 @@ async def create_document_record(
     new_project_cipher = (form_data.get("new_project_cipher") or "").strip()
     project_dev_order = form_data.get("project_dev_order")
 
-    if not developed_by:
-        raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
     if doc_type not in ("DD", "TD"):
         raise HTTPException(status_code=400, detail="Неверный тип документа.")
     if not all([org_code, class_code]):
@@ -482,6 +493,11 @@ async def create_document_record(
         type=doc_type,
         doc_name=doc_name,
         developed_by=developed_by,
+        reviewed_by=reviewed_by,
+        approved_by=approved_by,
+        developed_date=developed_date,
+        reviewed_date=reviewed_date,
+        approved_date=approved_date,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,
@@ -689,13 +705,17 @@ async def handle_upload(
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
 
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
+    original_name = os.path.basename(file.filename or "")
+    display_file_name = compose_display_file_name(designation, original_name)
+
     doc.file_path = file_path
-    doc.file_name = unique_file_name
+    doc.file_name = display_file_name
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if not doc.registration_notified_at:
         doc.registration_notified_at = datetime.utcnow()
-    await log_file_upload(session, doc, user, unique_file_name, replacement=had_file_before)
+    await log_file_upload(session, doc, user, display_file_name, replacement=had_file_before)
     await log_document_status_change(session, doc, user, old_status, DocumentStatus.pending_review)
     await notify_file_upload(
         session,
@@ -841,7 +861,12 @@ async def edit_document_page(
 async def edit_document(
     doc_id: int,
     doc_name: str = Form(""),
-    developed_by: str = Form(...),
+    developed_by: str = Form(""),
+    reviewed_by: str = Form(""),
+    approved_by: str = Form(""),
+    developed_date: str = Form(""),
+    reviewed_date: str = Form(""),
+    approved_date: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -856,17 +881,60 @@ async def edit_document(
     require_edit_metadata_permission(user, doc)
     old_doc_name = doc.doc_name
     old_developed_by = doc.developed_by
+    old_reviewed_by = doc.reviewed_by
+    old_approved_by = doc.approved_by
+    old_developed_date = doc.developed_date
+    old_reviewed_date = doc.reviewed_date
+    old_approved_date = doc.approved_date
     new_doc_name = doc_name or None
+    new_developed_by = developed_by.strip() or None
+    new_reviewed_by = reviewed_by.strip() or None
+    new_approved_by = approved_by.strip() or None
+    new_developed_date = parse_optional_date(developed_date)
+    new_reviewed_date = parse_optional_date(reviewed_date)
+    new_approved_date = parse_optional_date(approved_date)
     changes = []
     name_change = format_field_change("наименование", old_doc_name, new_doc_name)
     if name_change:
         changes.append(name_change)
-    dev_change = format_field_change("разработчик", old_developed_by, developed_by)
+    dev_change = format_field_change("разработчик", old_developed_by, new_developed_by)
     if dev_change:
         changes.append(dev_change)
+    reviewer_change = format_field_change("проверяющий", old_reviewed_by, new_reviewed_by)
+    if reviewer_change:
+        changes.append(reviewer_change)
+    approver_change = format_field_change("утверждающий", old_approved_by, new_approved_by)
+    if approver_change:
+        changes.append(approver_change)
+    developed_date_change = format_field_change(
+        "дата разработчика",
+        old_developed_date.isoformat() if old_developed_date else None,
+        new_developed_date.isoformat() if new_developed_date else None,
+    )
+    if developed_date_change:
+        changes.append(developed_date_change)
+    reviewed_date_change = format_field_change(
+        "дата проверяющего",
+        old_reviewed_date.isoformat() if old_reviewed_date else None,
+        new_reviewed_date.isoformat() if new_reviewed_date else None,
+    )
+    if reviewed_date_change:
+        changes.append(reviewed_date_change)
+    approved_date_change = format_field_change(
+        "дата утверждающего",
+        old_approved_date.isoformat() if old_approved_date else None,
+        new_approved_date.isoformat() if new_approved_date else None,
+    )
+    if approved_date_change:
+        changes.append(approved_date_change)
 
     doc.doc_name = new_doc_name
-    doc.developed_by = developed_by
+    doc.developed_by = new_developed_by
+    doc.reviewed_by = new_reviewed_by
+    doc.approved_by = new_approved_by
+    doc.developed_date = new_developed_date
+    doc.reviewed_date = new_reviewed_date
+    doc.approved_date = new_approved_date
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if changes:
@@ -912,6 +980,24 @@ async def set_document_status(
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    if status_enum == DocumentStatus.approved:
+        try:
+            validate_approval_metadata(doc)
+        except HTTPException as exc:
+            from urllib.parse import quote
+
+            error_msg = quote(str(exc.detail), safe="")
+            redirect_to = request.headers.get("referer") or url_path("/documents")
+            if f"/documents/{doc_id}" in (redirect_to or ""):
+                return RedirectResponse(
+                    url=url_path(f"/documents/{doc_id}?error={error_msg}"),
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+            return RedirectResponse(
+                url=url_path(f"/documents?error={error_msg}"),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
 
     old_status = doc.status
     doc.status = status_enum
