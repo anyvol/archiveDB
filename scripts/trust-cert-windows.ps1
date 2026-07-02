@@ -8,24 +8,59 @@
 # Local file (on the server):
 #   .\scripts\trust-cert-windows.ps1 -CertPath C:\archiveDB\nginx\certs\fullchain.pem
 #
-# Run as Administrator.
+# Double-click is not supported for .ps1 — run trust-windows.cmd or use:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\trust-cert-windows.ps1 -ServerBaseUrl https://SERVER:8443/archive
 
 param(
     [string]$ServerBaseUrl = "",
     [string]$ServerHost = "",
     [int]$HttpsPort = 8443,
     [string]$RootPath = "/archive",
-    [string]$CertPath = ""
+    [string]$CertPath = "",
+    [switch]$Elevated
 )
 
 $ErrorActionPreference = "Stop"
 
-function Assert-Administrator {
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator
+function Test-Administrator {
+    $current = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($current)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not (Test-Administrator)) {
+    Write-Host "Requesting administrator privileges..."
+    $argList = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $PSCommandPath,
+        "-Elevated"
     )
-    if (-not $isAdmin) {
-        throw "Run this script as Administrator."
+    if ($ServerBaseUrl) { $argList += "-ServerBaseUrl"; $argList += $ServerBaseUrl }
+    if ($ServerHost) { $argList += "-ServerHost"; $argList += $ServerHost }
+    if ($HttpsPort -ne 8443) { $argList += "-HttpsPort"; $argList += "$HttpsPort" }
+    if ($RootPath -ne "/archive") { $argList += "-RootPath"; $argList += $RootPath }
+    if ($CertPath) { $argList += "-CertPath"; $argList += $CertPath }
+    $proc = Start-Process powershell.exe -ArgumentList $argList -Verb RunAs -PassThru -Wait
+    exit $proc.ExitCode
+}
+
+function Install-TrustedRootCertificate {
+    param([string]$Path)
+    $certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
+    if ($certutil) {
+        & certutil.exe -addstore -f Root $Path | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "certutil failed with exit code $LASTEXITCODE"
+        }
+        return
+    }
+    Import-Certificate -FilePath $Path -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+}
+
+function Assert-Administrator {
+    if (-not (Test-Administrator)) {
+        throw "Administrator privileges are required."
     }
 }
 
@@ -147,7 +182,7 @@ if ($CertPath) {
 
 Write-Host "Installing trusted root certificate:"
 Write-Host "  $sourcePath"
-Import-Certificate -FilePath $sourcePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+Install-TrustedRootCertificate -Path $sourcePath
 
 if (-not $CertPath) {
     Remove-Item $sourcePath -Force

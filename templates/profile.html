@@ -172,14 +172,15 @@
                 {% if cert_available %}
                 <p><strong>1. Скачайте скрипт для вашей ОС</strong> (адрес этого сервера уже прописан внутри)</p>
                 <ul class="cert-download-list">
-                    <li><a href="{{ url_path('/cert/scripts/trust-windows.cmd') }}" download>Windows — trust-windows.cmd</a> (один запуск от администратора)</li>
+                    <li><a href="{{ url_path('/cert/scripts/trust-windows.cmd') }}" download>Windows — trust-windows.cmd</a> (двойной щелчок, запросит права администратора)</li>
+                    <li><a href="{{ url_path('/cert/scripts/trust-windows.ps1') }}" download>Windows — trust-windows.ps1</a> (сгенерирован для этого сервера)</li>
                     <li><a href="{{ url_path('/cert/scripts/trust-cert-windows.ps1') }}" download>Windows — trust-cert-windows.ps1</a> (универсальный, с параметром сервера)</li>
                     <li><a href="{{ url_path('/cert/scripts/trust-linux.sh') }}" download>Linux — trust-linux.sh</a></li>
                     <li><a href="{{ url_path('/cert/scripts/trust-macos.sh') }}" download>macOS — trust-macos.sh</a></li>
                 </ul>
                 <p class="cert-note">Универсально с любого ПК: <code>trust-cert-windows.ps1 -ServerBaseUrl {{ cert_base_url }}</code></p>
-                <p><strong>2. Запустите один раз от администратора</strong></p>
-                <p class="cert-note">Windows (запуск от администратора — двойной щелчок или из cmd):</p>
+                <p><strong>2. Запустите скрипт</strong></p>
+                <p class="cert-note">Windows: двойной щелчок по <code>trust-windows.cmd</code> — UAC запросит права администратора автоматически.</p>
                 <div class="cert-script-block">trust-windows.cmd</div>
                 <p class="cert-note">Linux:</p>
                 <div class="cert-script-block">chmod +x trust-linux.sh

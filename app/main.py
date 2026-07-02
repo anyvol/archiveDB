@@ -116,6 +116,7 @@ from app.cert_scripts import (
     trust_linux_script,
     trust_macos_script,
     trust_windows_cmd,
+    trust_windows_ps1,
 )
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
 from app.changelog import render_changelog_html
@@ -167,6 +168,7 @@ _CERT_SCRIPT_FILES = {
 }
 _GENERATED_CERT_SCRIPTS = {
     "trust-windows.cmd": ("trust-windows.cmd", trust_windows_cmd),
+    "trust-windows.ps1": ("trust-windows.ps1", trust_windows_ps1),
     "trust-linux.sh": ("trust-linux.sh", trust_linux_script),
     "trust-macos.sh": ("trust-macos.sh", trust_macos_script),
 }

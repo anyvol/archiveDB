@@ -112,7 +112,15 @@ def test_generated_scripts_embed_server_candidates(monkeypatch):
     request = _FakeRequest(scheme="http", host="localhost:8080")
     info = cert_scripts_module.server_site_info(request)
     win_cmd = cert_scripts_module.trust_windows_cmd(info)
-    assert "ExecutionPolicy Bypass" in win_cmd
+    win_ps1 = cert_scripts_module.trust_windows_ps1(info)
+    assert "EncodedCommand" not in win_cmd
+    assert "certutil -addstore -f Root" in win_cmd
+    assert "curl.exe -fsSk" in win_cmd
+    assert "Start-Process" in win_cmd
+    assert "certutil.exe -addstore -f Root" in win_ps1
+    assert "Start-Process powershell.exe" in win_ps1
+    assert info["cert_urls"][0] in win_cmd
+    assert info["cert_urls"][0] in win_ps1
     assert "curl.exe -fsSk" in cert_scripts_module._trust_windows_powershell_body(info)
     assert info["cert_urls"][0] in cert_scripts_module.trust_linux_script(info)
     assert "Trying" in cert_scripts_module.trust_linux_script(info)

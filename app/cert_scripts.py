@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 from typing import Any
@@ -172,37 +171,110 @@ function Download-Certificate-FromCandidates {
 def _trust_windows_powershell_body(site_info: dict[str, Any]) -> str:
     cert_urls = site_info["cert_urls"]
     base_url = site_info["base_url"]
-    return f"""$ErrorActionPreference = "Stop"
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {{ throw "Run this file as Administrator." }}
+    return f"""# Archive site certificate trust (auto-generated for this server)
+# Double-click trust-windows.cmd or run:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\\trust-windows.ps1
+
+param([switch]$Elevated)
+
+function Test-Administrator {{
+    $current = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($current)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}}
+
+if (-not (Test-Administrator)) {{
+    Write-Host "Requesting administrator privileges..."
+    $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath, "-Elevated")
+    $proc = Start-Process powershell.exe -ArgumentList $args -Verb RunAs -PassThru -Wait
+    exit $proc.ExitCode
+}}
+
+$ErrorActionPreference = "Stop"
 $CertUrls = {_powershell_cert_urls_literal(cert_urls)}
 $TempCert = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n')).pem"
 {_powershell_download_snippet()}
+
+function Install-TrustedRootCertificate {{
+    param([string]$Path)
+    $certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
+    if ($certutil) {{
+        & certutil.exe -addstore -f Root $Path | Out-Host
+        if ($LASTEXITCODE -ne 0) {{
+            throw "certutil failed with exit code $LASTEXITCODE"
+        }}
+        return
+    }}
+    Import-Certificate -FilePath $Path -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
+}}
+
 Download-Certificate-FromCandidates -Urls $CertUrls -Destination $TempCert
 Write-Host "Installing certificate into Trusted Root..."
-Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
+Install-TrustedRootCertificate -Path $TempCert
 Remove-Item $TempCert -Force
 Write-Host "Done. Restart the browser and open:"
 Write-Host "  {base_url}/"
 """
 
 
+def trust_windows_ps1(site_info: dict[str, Any]) -> str:
+    return _trust_windows_powershell_body(site_info) + "\n"
+
+
 def trust_windows_cmd(site_info: dict[str, Any]) -> str:
-    encoded = base64.b64encode(_trust_windows_powershell_body(site_info).encode("utf-16-le")).decode("ascii")
+    cert_urls = site_info["cert_urls"]
+    base_url = site_info["base_url"]
+    url_lines = "\n".join(f"set \"CERT_URL_{idx}={url}\"" for idx, url in enumerate(cert_urls, start=1))
+    try_blocks = []
+    for idx in range(1, len(cert_urls) + 1):
+        try_blocks.append(
+            f"""echo Trying %CERT_URL_{idx}% ...
+curl.exe -fsSk "%CERT_URL_{idx}%" -o "%CERT%" >nul 2>&1
+if not errorlevel 1 goto :install"""
+        )
+    try_section = "\n".join(try_blocks)
     return f"""@echo off
+setlocal EnableExtensions
 REM Archive site certificate trust (auto-generated for this server)
-REM Right-click and "Run as administrator", or run from elevated cmd.
+REM Launches elevated automatically when needed.
+
+net session >nul 2>&1
+if errorlevel 1 (
+    echo Requesting administrator privileges...
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
 
 echo Installing archive site certificate...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}
+set "CERT=%TEMP%\\archive-site-%RANDOM%.pem"
+{url_lines}
+
+{try_section}
+
+echo.
+echo Could not download certificate from server.
+del "%CERT%" >nul 2>&1
+pause
+exit /b 1
+
+:install
+echo Downloaded certificate.
+echo Installing into Trusted Root...
+certutil -addstore -f Root "%CERT%" >nul
 if errorlevel 1 (
-    echo.
-    echo Failed. Run this file as Administrator.
+    echo Failed to install certificate into Trusted Root store.
+    del "%CERT%" >nul 2>&1
     pause
     exit /b 1
 )
+
+del "%CERT%" >nul 2>&1
+echo.
+echo Done. Restart the browser and open:
+echo   {base_url}/
 echo.
 pause
+exit /b 0
 """
 
 
