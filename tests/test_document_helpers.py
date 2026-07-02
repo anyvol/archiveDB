@@ -29,21 +29,21 @@ def test_resolve_upload_subdirectory_misc_documents():
 
 
 def test_compute_stored_file_name_renames_when_designation_differs():
-    assert compute_stored_file_name("ORG.123456.001", "other.pdf") == "ORG.123456.001 other.pdf"
+    assert compute_stored_file_name("ORG.123456.001", "other.pdf") == "ORG.123456.001 (other).pdf"
     assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001.pdf") == "ORG.123456.001.pdf"
-    assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001 other.pdf") == "ORG.123456.001 other.pdf"
+    assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001 (other).pdf") == "ORG.123456.001 (other).pdf"
     assert compute_stored_file_name(None, "report.pdf") == "report.pdf"
 
 
 def test_file_name_matches_designation():
     assert file_name_matches_designation("ORG.123456.001.pdf", "ORG.123456.001")
-    assert file_name_matches_designation("ORG.123456.001 other.pdf", "ORG.123456.001")
+    assert file_name_matches_designation("ORG.123456.001 (other).pdf", "ORG.123456.001")
     assert not file_name_matches_designation("other.pdf", "ORG.123456.001")
 
 
 def test_build_upload_rename_message():
     assert build_upload_rename_message("ORG.123456.001", "other.pdf") == (
-        "Файл будет переименован в ORG.123456.001 other.pdf"
+        "Файл будет переименован в ORG.123456.001 (other).pdf"
     )
 
 

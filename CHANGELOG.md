@@ -23,7 +23,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Name picker tooltip on hover instead of visible «Выбрать из существующих» label.
 - Signature date fields use hover tooltips instead of visible labels.
 - Header: «Проекты» link placed after «Уведомления».
-- Uploaded file rename rule: `{designation} {original_name}.{ext}` (single space, no parentheses).
+- Uploaded file rename rule: `{designation} ({original_name}).{ext}` (space before parentheses).
 
 ## 0.10.0
 
