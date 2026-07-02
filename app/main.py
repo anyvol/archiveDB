@@ -48,7 +48,7 @@ from app.project_helpers import get_project_by_id, create_new_project
 from app.project_files import save_project_file, save_project_images, remove_project_file_from_disk
 from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS, is_valid_document_format
 from app.metadata_helpers import detect_document_format_from_bytes
-from app.name_helpers import fetch_known_person_names
+from app.name_helpers import fetch_known_person_names, normalize_person_name
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
 from app.permissions import (
     can_create_document,
@@ -459,7 +459,10 @@ async def create_document_record(
     class_code = form_data.get("class_code")
     reg_number = form_data.get("reg_number")
     doc_name = form_data.get("doc_name")
-    developed_by = form_data.get("developed_by")
+    developed_by = normalize_person_name(form_data.get("developed_by") or "")
+    reviewed_by = normalize_person_name(form_data.get("reviewed_by") or "") or None
+    approved_by = normalize_person_name(form_data.get("approved_by") or "") or None
+    doc_date = (form_data.get("doc_date") or "").strip() or None
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -492,6 +495,9 @@ async def create_document_record(
         type=doc_type,
         doc_name=doc_name,
         developed_by=developed_by,
+        reviewed_by=reviewed_by,
+        approved_by=approved_by,
+        doc_date=doc_date,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,

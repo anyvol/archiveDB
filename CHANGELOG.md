@@ -16,6 +16,10 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Database: `documents.document_format`, `projects.description`, `projects.created_at`, tables `project_files` and `project_images`.
 - Alembic migration `c3d4e5f6a7b8` (idempotent).
 - Docker: API container applies migrations automatically on startup (`scripts/docker-entrypoint.sh`).
+- Schema repair script `scripts/ensure_schema.py` fixes missing 0.12.0 columns when Alembic reports head without applying DDL.
+- Document registration metadata: separate fields for developer, date, reviewer, and approver; compact inputs with «choose from existing» per field (single FIO, replaces value).
+- Normalized FIO suggestions from the database (empty name parts trimmed; surname-only allowed).
+- Create-record form shows JSON API responses as inline messages instead of browser alerts.
 
 ## 0.10.0
 

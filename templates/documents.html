@@ -34,12 +34,20 @@
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
-        .form-group textarea.metadata-input { width: 100%; min-height: 5rem; padding: 0.75rem; font-size: 1rem; line-height: 1.45; box-sizing: border-box; resize: vertical; }
+        .form-messages { margin-bottom: 1rem; }
+        .form-message { padding: 0.55rem 0.75rem; border-radius: 4px; margin-bottom: 0.35rem; font-size: 0.9rem; line-height: 1.4; }
+        .form-message.info { background: #e7f3ff; color: #004085; }
+        .form-message.error { background: #f8d7da; color: #721c24; }
+        .form-message.success { background: #d4edda; color: #155724; }
         .metadata-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; display: block; }
-        .metadata-row { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
-        .metadata-row .metadata-input-wrap { flex: 2; min-width: 280px; }
-        .metadata-row .metadata-select-wrap { flex: 1; min-width: 220px; }
-        .metadata-row .metadata-select-wrap label { font-size: 0.85rem; color: #6c757d; }
+        .metadata-grid { display: flex; flex-direction: column; gap: 0.65rem; }
+        .metadata-person-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .metadata-person-row > label { flex: 0 0 130px; margin: 0; font-size: 0.9rem; }
+        .metadata-person-row .metadata-field { flex: 1; min-width: 180px; }
+        .metadata-person-row .metadata-select-wrap { flex: 1; min-width: 180px; max-width: 280px; }
+        .metadata-person-row .metadata-select-wrap label { flex: none; width: 100%; font-size: 0.8rem; color: #6c757d; margin-bottom: 0.25rem; display: block; }
+        .metadata-input { width: 100%; padding: 0.5rem; box-sizing: border-box; height: 2.5rem; font-size: 0.95rem; }
+        .metadata-person-row select.metadata-input { height: 2.5rem; }
         .create-submit-wrap { text-align: center; margin-top: 1.5rem; }
         .btn-create-record { padding: 0.85rem 2rem; font-size: 1.05rem; font-weight: 600; }
         .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; justify-content: center; margin-bottom: 1rem; }
@@ -135,6 +143,7 @@
         <div class="create-section">
         <h2>Добавить новый документ</h2>
         <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container" enctype="multipart/form-data">
+            <div id="create-form-messages" class="form-messages" aria-live="polite"></div>
             <div class="form-group">
                 <label>Тип документа:</label>
                 <input type="hidden" id="doc_type" name="doc_type" value="">
@@ -215,19 +224,59 @@
                     <small id="org-name-hint"></small>
                 </div>
                 <div class="form-group metadata-section">
-                    <label class="section-label" for="developed_by">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
-                    <div class="metadata-row">
-                        <div class="metadata-input-wrap">
-                            <textarea id="developed_by" name="developed_by" class="metadata-input" required placeholder="Например: Иванов И.И., 01.07.2026">{{ default_developed_by }}</textarea>
+                    <label class="section-label">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
+                    <div class="metadata-grid">
+                        <div class="metadata-person-row">
+                            <label for="developed_by">Разработчик *</label>
+                            <div class="metadata-field">
+                                <input type="text" id="developed_by" name="developed_by" class="metadata-input" required value="{{ default_developed_by }}" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <label for="known_name_select_developed">Выбрать из существующих</label>
+                                <select id="known_name_select_developed" class="metadata-input known-name-select" data-target="developed_by">
+                                    <option value="">—</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
-                        <div class="metadata-select-wrap">
-                            <label for="known_name_select">Выбрать из существующих:</label>
-                            <select id="known_name_select">
-                                <option value="">— выберите ФИО или фамилию —</option>
-                                {% for name in known_person_names %}
-                                <option value="{{ name }}">{{ name }}</option>
-                                {% endfor %}
-                            </select>
+                        <div class="metadata-person-row">
+                            <label for="doc_date">Дата документа</label>
+                            <div class="metadata-field">
+                                <input type="date" id="doc_date" name="doc_date" class="metadata-input">
+                            </div>
+                            <div class="metadata-select-wrap" aria-hidden="true"></div>
+                        </div>
+                        <div class="metadata-person-row">
+                            <label for="reviewed_by">Проверяющий</label>
+                            <div class="metadata-field">
+                                <input type="text" id="reviewed_by" name="reviewed_by" class="metadata-input" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <label for="known_name_select_reviewed">Выбрать из существующих</label>
+                                <select id="known_name_select_reviewed" class="metadata-input known-name-select" data-target="reviewed_by">
+                                    <option value="">—</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="metadata-person-row">
+                            <label for="approved_by">Утверждающий</label>
+                            <div class="metadata-field">
+                                <input type="text" id="approved_by" name="approved_by" class="metadata-input" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <label for="known_name_select_approved">Выбрать из существующих</label>
+                                <select id="known_name_select_approved" class="metadata-input known-name-select" data-target="approved_by">
+                                    <option value="">—</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -436,18 +485,50 @@
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
         const createForm = document.getElementById('create-doc-form');
-        const knownNameSelect = document.getElementById('known_name_select');
-        const developedByInput = document.getElementById('developed_by');
+        const createFormMessages = document.getElementById('create-form-messages');
 
-        if (knownNameSelect && developedByInput) {
-            knownNameSelect.addEventListener('change', function() {
-                if (!this.value) return;
-                const current = developedByInput.value.trim();
-                developedByInput.value = current ? current + ', ' + this.value : this.value;
-                this.value = '';
-                developedByInput.focus();
-            });
+        function clearFormMessages() {
+            if (createFormMessages) createFormMessages.innerHTML = '';
         }
+
+        function showFormMessage(text, type) {
+            if (!createFormMessages || !text) return;
+            const item = document.createElement('div');
+            item.className = 'form-message ' + (type || 'info');
+            item.textContent = text;
+            createFormMessages.appendChild(item);
+        }
+
+        function showJsonMessages(data, type) {
+            if (data == null) return;
+            if (typeof data === 'string') {
+                showFormMessage(data, type);
+                return;
+            }
+            if (Array.isArray(data)) {
+                data.forEach(entry => showJsonMessages(entry, type));
+                return;
+            }
+            if (typeof data === 'object') {
+                Object.entries(data).forEach(([key, value]) => {
+                    if (value != null && typeof value === 'object') {
+                        showFormMessage(key + ': ' + JSON.stringify(value), type);
+                    } else if (value != null && String(value).trim()) {
+                        showFormMessage(key + ': ' + value, type);
+                    }
+                });
+            }
+        }
+
+        document.querySelectorAll('.known-name-select').forEach(select => {
+            select.addEventListener('change', function() {
+                if (!this.value) return;
+                const target = document.getElementById(this.dataset.target);
+                if (target) target.value = this.value;
+                this.value = '';
+                target && target.focus();
+            });
+        });
 
         const designationFields = [orgCodeInput, classCodeInput, regNumberInput, docKindSelect].filter(Boolean);
 
@@ -482,6 +563,7 @@
             try {
                 const response = await fetch('{{ url_path('/api/check_org') }}', { method: 'POST', body: formData });
                 const data = await response.json();
+                showJsonMessages(data, response.ok ? 'info' : 'error');
                 if (data.exists) {
                     orgNameInput.value = data.name;
                     orgNameInput.readOnly = true;
@@ -495,7 +577,7 @@
                 }
                 orgNameGroup.style.display = 'block';
             } catch (e) {
-                alert('Ошибка проверки организации.');
+                showFormMessage('Ошибка проверки организации.', 'error');
             }
         }
 
@@ -673,20 +755,22 @@
         if (createForm) {
             createForm.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    createForm.submit();
+                    e.preventDefault();
+                    createForm.requestSubmit();
                 }
             });
-            createForm.addEventListener('submit', function(e) {
+            createForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                clearFormMessages();
+
                 const hasExisting = existingProjectSelect && existingProjectSelect.value;
                 const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
                 if (!hasExisting && !hasNew) {
-                    e.preventDefault();
-                    alert('Выберите существующий проект или укажите новый.');
+                    showFormMessage('Выберите существующий проект или укажите новый.', 'error');
                     return;
                 }
                 if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
-                    e.preventDefault();
-                    alert('Для нового проекта необходимо указать шифр проекта.');
+                    showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
                     return;
                 }
                 if (hasExisting) {
@@ -697,6 +781,45 @@
                 const type = docTypeSelect.value;
                 if (classCodeInput && classCodeInput.value.trim()) {
                     localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
+                }
+
+                const submitBtn = document.getElementById('create-submit');
+                if (submitBtn) submitBtn.disabled = true;
+
+                try {
+                    const formData = new FormData(createForm);
+                    const response = await fetch(createForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        redirect: 'manual',
+                    });
+
+                    if (response.status >= 300 && response.status < 400) {
+                        const location = response.headers.get('Location');
+                        if (location) {
+                            window.location.href = location;
+                            return;
+                        }
+                    }
+
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        const detail = data.detail;
+                        if (typeof detail === 'string') {
+                            showFormMessage(detail, 'error');
+                        } else {
+                            showJsonMessages(data, 'error');
+                        }
+                    } else if (!response.ok) {
+                        showFormMessage('Не удалось создать запись (код ' + response.status + ').', 'error');
+                    } else {
+                        window.location.reload();
+                    }
+                } catch (err) {
+                    showFormMessage('Ошибка сети при создании записи.', 'error');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
                 }
             });
         }

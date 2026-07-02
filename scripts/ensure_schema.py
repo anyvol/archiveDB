@@ -52,6 +52,15 @@ def _apply_v1200_schema(engine) -> list[str]:
                     text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_format VARCHAR(32)")
                 )
                 applied.append("documents.document_format")
+            if "reviewed_by" not in doc_columns:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR"))
+                applied.append("documents.reviewed_by")
+            if "approved_by" not in doc_columns:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS approved_by VARCHAR"))
+                applied.append("documents.approved_by")
+            if "doc_date" not in doc_columns:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_date VARCHAR(32)"))
+                applied.append("documents.doc_date")
 
         if "projects" in tables:
             project_columns = _column_names(inspector, "projects")
@@ -121,6 +130,12 @@ def _verify_schema(engine) -> None:
     if "documents" in tables:
         if "document_format" not in _column_names(inspector, "documents"):
             missing.append("documents.document_format")
+        if "reviewed_by" not in _column_names(inspector, "documents"):
+            missing.append("documents.reviewed_by")
+        if "approved_by" not in _column_names(inspector, "documents"):
+            missing.append("documents.approved_by")
+        if "doc_date" not in _column_names(inspector, "documents"):
+            missing.append("documents.doc_date")
     if "projects" in tables:
         project_columns = _column_names(inspector, "projects")
         if "description" not in project_columns:

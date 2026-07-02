@@ -87,6 +87,15 @@
                 <div class="meta-item"><label>Тип</label><div>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div></div>
                 <div class="meta-item"><label>Наименование</label><div>{{ doc.doc_name or '—' }}</div></div>
                 <div class="meta-item"><label>Разработчик</label><div>{{ doc.developed_by or '—' }}</div></div>
+                {% if doc.doc_date %}
+                <div class="meta-item"><label>Дата документа</label><div>{{ doc.doc_date }}</div></div>
+                {% endif %}
+                {% if doc.reviewed_by %}
+                <div class="meta-item"><label>Проверяющий</label><div>{{ doc.reviewed_by }}</div></div>
+                {% endif %}
+                {% if doc.approved_by %}
+                <div class="meta-item"><label>Утверждающий</label><div>{{ doc.approved_by }}</div></div>
+                {% endif %}
                 <div class="meta-item"><label>Проект</label><div>{{ doc.project.name if doc.project else '—' }}</div></div>
                 <div class="meta-item"><label>Файл</label><div>{{ doc.file_name or 'не загружен' }}</div></div>
                 {% if doc.document_format %}
