@@ -99,6 +99,7 @@ from app.notifications import (
     notify_document_edit,
     clear_document_references,
     notify_document_delete,
+    send_document_delete_push,
     get_document_designation,
 )
 from app.document_display import get_document_display_status, format_field_change
@@ -531,7 +532,7 @@ async def create_document_record(
         if reg_number:
             prni_to_save = int(reg_number)
             if not await check_prni_unique(session, org_id, class_code_id, prni_to_save):
-                raise HTTPException(status_code=400, detail="Указанный ПРНИ уже используется.")
+                raise HTTPException(status_code=400, detail="Указанный порядковый номер уже используется.")
         else:
             prni_to_save = await get_next_prni(session, org_id, class_code_id)
 
@@ -1200,11 +1201,14 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
-    await notify_document_delete(session, doc, user, comment.strip())
+    push_info = await notify_document_delete(session, doc, user, comment.strip())
     await clear_document_references(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
     await session.commit()
+    if push_info:
+        recipients, message = push_info
+        await send_document_delete_push(session, recipients, message)
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
 
 

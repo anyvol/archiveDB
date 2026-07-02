@@ -47,6 +47,8 @@ async def _create_notifications(
     message: str,
     document_id: int | None,
     event_type: NotificationEventType,
+    *,
+    send_push: bool = True,
 ) -> None:
     if not recipient_ids:
         return
@@ -61,7 +63,8 @@ async def _create_notifications(
                 is_read=False,
             )
         )
-    await send_push_to_users(session, recipient_ids, message, event_type)
+    if send_push:
+        await send_push_to_users(session, recipient_ids, message, event_type)
 
 
 async def _notify_admin_reviewers(
@@ -157,7 +160,7 @@ async def notify_document_delete(
     doc: BaseDocument,
     actor: User,
     comment: str,
-) -> None:
+) -> tuple[set[int], str] | None:
     await session.refresh(doc, ["design_document", "tech_document"])
     designation = get_document_designation(doc)
     message = (
@@ -167,8 +170,26 @@ async def notify_document_delete(
 
     recipients: set[int] = set(await _get_all_user_ids(session))
     recipients.discard(actor.id)
+    if not recipients:
+        return None
     await _create_notifications(
-        session, recipients, message, None, NotificationEventType.document_delete
+        session,
+        recipients,
+        message,
+        None,
+        NotificationEventType.document_delete,
+        send_push=False,
+    )
+    return recipients, message
+
+
+async def send_document_delete_push(
+    session: AsyncSession,
+    recipients: set[int],
+    message: str,
+) -> None:
+    await send_push_to_users(
+        session, recipients, message, NotificationEventType.document_delete
     )
 
 

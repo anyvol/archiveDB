@@ -27,6 +27,7 @@ from app.notifications import (
     notify_status_change,
     clear_document_references,
     notify_document_delete,
+    send_document_delete_push,
     get_document_designation,
 )
 from app.permissions import require_upload_permission
@@ -251,11 +252,14 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await notify_document_delete(session, doc, current_user, comment.strip())
+    push_info = await notify_document_delete(session, doc, current_user, comment.strip())
     remove_file_if_exists(doc.file_path)
     await clear_document_references(session, doc_id)
     await session.delete(doc)
     await session.commit()
+    if push_info:
+        recipients, message = push_info
+        await send_document_delete_push(session, recipients, message)
 
 
 @router.post("/documents/{doc_id}/upload", status_code=status.HTTP_200_OK)
