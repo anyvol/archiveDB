@@ -47,9 +47,7 @@ def can_edit_document_metadata(user: User, doc: BaseDocument) -> bool:
 def can_upload_file(user: User, doc: BaseDocument) -> bool:
     """Replace or first upload. For КД/ТД governed docs, replace only when requires_correction."""
     if not doc.file_name:
-        if is_admin(user):
-            return True
-        return is_owner(user, doc)
+        return True
 
     if is_governed_document(doc):
         return doc.status == DocumentStatus.requires_correction

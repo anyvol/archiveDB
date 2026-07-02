@@ -1,0 +1,148 @@
+<!-- templates/project_detail.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Проект — {{ project.name }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+        .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem 1.5rem; margin-bottom: 1rem; }
+        .meta-item label { display: block; font-size: 0.8rem; color: #6c757d; margin-bottom: 0.15rem; }
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .gallery img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
+        th, td { padding: 0.65rem; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.35rem; }
+        .form-group input, .form-group textarea { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-group textarea { min-height: 120px; resize: vertical; }
+        .btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .hint { font-size: 0.875rem; color: #6c757d; line-height: 1.45; }
+        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Проект {% include "_version_tag.html" %}</h1>
+        {% set nav_context = 'projects' %}
+        {% include "_header_nav.html" %}
+    </div>
+
+    <div class="container">
+        <p><a href="{{ url_path('/projects') }}">← К списку проектов</a></p>
+
+        {% if success %}
+        <div class="success">Изменения сохранены.</div>
+        {% endif %}
+        {% if error %}
+        <div class="error">Не удалось выполнить операцию. Проверьте данные и повторите попытку.</div>
+        {% endif %}
+
+        <div class="card">
+            <h2>{{ project.name }}</h2>
+            <div class="meta-grid">
+                <div class="meta-item"><label>Slug (папка на сервере)</label><div>{{ project.slug }}</div></div>
+                <div class="meta-item"><label>Дата создания</label><div>{{ project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else '—' }}</div></div>
+                <div class="meta-item"><label>Записей в архиве</label><div>{{ project.documents|length }}</div></div>
+            </div>
+            {% if project.description %}
+            <p>{{ project.description }}</p>
+            {% else %}
+            <p class="hint">Описание проекта не указано.</p>
+            {% endif %}
+        </div>
+
+        {% if project.project_images %}
+        <div class="card">
+            <h2>Фото проекта</h2>
+            <div class="gallery">
+                {% for image in project.project_images %}
+                <a href="{{ url_path('/projects/' ~ project.id ~ '/images/' ~ image.id) }}" target="_blank" rel="noopener noreferrer">
+                    <img src="{{ url_path('/projects/' ~ project.id ~ '/images/' ~ image.id) }}" alt="{{ image.file_name }}">
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h2>Документы проекта</h2>
+            <p class="hint">Документы хранятся в папке «Прочие документы» проекта на сервере.</p>
+            {% if project.project_files %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Файл</th>
+                        <th>Дата</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pf in project.project_files %}
+                    <tr>
+                        <td>{{ pf.title }}</td>
+                        <td>{{ pf.file_name }}</td>
+                        <td>{{ pf.created_at.strftime('%Y-%m-%d %H:%M') if pf.created_at else '—' }}</td>
+                        <td><a class="btn btn-secondary" href="{{ url_path('/projects/' ~ project.id ~ '/files/' ~ pf.id ~ '/download') }}">Скачать</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="hint">Документы проекта пока не добавлены.</p>
+            {% endif %}
+        </div>
+
+        {% if can_manage %}
+        <div class="card">
+            <h2>Редактирование проекта</h2>
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/update') }}">
+                <div class="form-group">
+                    <label for="description">Описание проекта</label>
+                    <textarea id="description" name="description">{{ project.description or '' }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Сохранить описание</button>
+            </form>
+
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/upload-images') }}" enctype="multipart/form-data" style="margin-top: 1.5rem;">
+                <div class="form-group">
+                    <label for="project_images">Добавить фото</label>
+                    <input type="file" id="project_images" name="project_images" accept="image/*" multiple>
+                </div>
+                <button type="submit" class="btn btn-secondary">Загрузить фото</button>
+            </form>
+
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/upload-file') }}" enctype="multipart/form-data" style="margin-top: 1.5rem;">
+                <div class="form-group">
+                    <label for="title">Название документа</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="file">Файл</label>
+                    <input type="file" id="file" name="file" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Добавить документ</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="actions">
+            <a class="btn btn-secondary" href="{{ url_path('/documents') }}?project_id={{ project.id }}">Архив документов проекта</a>
+        </div>
+    </div>
+</body>
+</html>

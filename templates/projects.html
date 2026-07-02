@@ -1,0 +1,109 @@
+<!-- templates/projects.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Проекты</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
+        .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
+        .container { padding: 2rem; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1rem; font-size: 0.9rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
+        th { background-color: #f8f9fa; }
+        tbody tr.project-row { cursor: pointer; }
+        tbody tr.project-row:hover { background-color: #f0f7ff; }
+        .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 800px; margin-bottom: 2rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; }
+        .form-group input, .form-group textarea { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Проекты {% include "_version_tag.html" %}</h1>
+        {% set nav_context = 'projects' %}
+        {% include "_header_nav.html" %}
+    </div>
+
+    <div class="container">
+        {% if error == 'name_required' %}
+        <div class="error">Укажите название и шифр проекта.</div>
+        {% endif %}
+
+        {% if can_create %}
+        <h2>Добавить проект</h2>
+        <form action="{{ url_path('/projects/create') }}" method="post" enctype="multipart/form-data" class="form-container">
+            <div class="form-group">
+                <label for="new_project_name">Название проекта:</label>
+                <input type="text" id="new_project_name" name="new_project_name" required>
+            </div>
+            <div class="form-group">
+                <label for="new_project_cipher">Шифр проекта:</label>
+                <input type="text" id="new_project_cipher" name="new_project_cipher" required>
+            </div>
+            <div class="form-group">
+                <label for="description">Описание проекта:</label>
+                <textarea id="description" name="description" placeholder="Краткое описание проекта"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="project_dev_order">Документ (приказ на разработку):</label>
+                <input type="file" id="project_dev_order" name="project_dev_order" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
+                <small>Необязательно. Файл будет сохранён в папку «Прочие документы» проекта.</small>
+            </div>
+            <div class="form-group">
+                <label for="project_images">Фото проекта:</label>
+                <input type="file" id="project_images" name="project_images" accept="image/*" multiple>
+                <small>Можно выбрать несколько изображений. Файлы сохраняются в папку «изображения» проекта.</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Создать проект</button>
+        </form>
+        {% endif %}
+
+        <h2>Список проектов</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Шифр / slug</th>
+                    <th>Описание</th>
+                    <th>Дата создания</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for project in projects %}
+                <tr class="project-row" data-href="{{ url_path('/projects/' ~ project.id) }}">
+                    <td>{{ project.name }}</td>
+                    <td>{{ project.slug }}</td>
+                    <td>{{ (project.description or '—')[:120] }}{% if project.description and project.description|length > 120 %}…{% endif %}</td>
+                    <td>{{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center;">Проекты не найдены.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.querySelectorAll('.project-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const href = row.dataset.href;
+                if (href) window.location.href = href;
+            });
+            row.addEventListener('dblclick', () => {
+                const href = row.dataset.href;
+                if (href) window.location.href = href;
+            });
+        });
+    </script>
+</body>
+</html>

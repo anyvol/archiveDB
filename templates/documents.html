@@ -34,6 +34,14 @@
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-group textarea.metadata-input { width: 100%; min-height: 5rem; padding: 0.75rem; font-size: 1rem; line-height: 1.45; box-sizing: border-box; resize: vertical; }
+        .metadata-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; display: block; }
+        .metadata-row { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+        .metadata-row .metadata-input-wrap { flex: 2; min-width: 280px; }
+        .metadata-row .metadata-select-wrap { flex: 1; min-width: 220px; }
+        .metadata-row .metadata-select-wrap label { font-size: 0.85rem; color: #6c757d; }
+        .create-submit-wrap { text-align: center; margin-top: 1.5rem; }
+        .btn-create-record { padding: 0.85rem 2rem; font-size: 1.05rem; font-weight: 600; }
         .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; justify-content: center; margin-bottom: 1rem; }
         .designation-row .form-group { margin-bottom: 0; flex: 0 0 auto; }
         .designation-row .form-group label { font-size: 0.8rem; white-space: nowrap; }
@@ -206,12 +214,27 @@
                     <input type="text" id="org_name" name="org_name">
                     <small id="org-name-hint"></small>
                 </div>
-                <div class="form-group">
-                    <label for="developed_by">ФИО разработчика:</label>
-                    <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}" required>
+                <div class="form-group metadata-section">
+                    <label class="section-label" for="developed_by">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
+                    <div class="metadata-row">
+                        <div class="metadata-input-wrap">
+                            <textarea id="developed_by" name="developed_by" class="metadata-input" required placeholder="Например: Иванов И.И., 01.07.2026">{{ default_developed_by }}</textarea>
+                        </div>
+                        <div class="metadata-select-wrap">
+                            <label for="known_name_select">Выбрать из существующих:</label>
+                            <select id="known_name_select">
+                                <option value="">— выберите ФИО или фамилию —</option>
+                                {% for name in known_person_names %}
+                                <option value="{{ name }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary" id="create-submit" style="display: none;">Создать запись и перейти к загрузке</button>
+            <div class="create-submit-wrap">
+                <button type="submit" class="btn btn-primary btn-create-record" id="create-submit" style="display: none;">Создать запись и перейти к загрузке файла ЭД</button>
+            </div>
         </form>
         </div>
         {% endif %}
@@ -301,6 +324,7 @@
                     {% if can_apply_formal_change(user, doc) %}data-action-apply-change="{{ url_path('/documents/' ~ doc.id ~ '/apply-change') }}"{% endif %}
                     {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
                     {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
+                    {% if can_request_minor_correction(user, doc) %}data-action-request-correction="{{ doc.id }}"{% endif %}
                     {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
                     {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
                     {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
@@ -359,6 +383,18 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="request-correction-modal">
+        <div class="modal-box">
+            <h3>Запрос на исправление</h3>
+            <p>Укажите, что именно нужно исправить (только незначительные правки):</p>
+            <form method="post" id="request-correction-form" action="">
+                <textarea name="comment" required minlength="10" placeholder="Опишите незначительные правки (опечатки, линии, штриховки…)"></textarea>
+                <button type="submit" class="btn btn-warning">Отправить запрос</button>
+                <button type="button" class="btn btn-secondary" id="request-correction-cancel">Отмена</button>
+            </form>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="delete-modal">
         <div class="modal-box">
             <h3>Удаление документа</h3>
@@ -400,6 +436,18 @@
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
         const createForm = document.getElementById('create-doc-form');
+        const knownNameSelect = document.getElementById('known_name_select');
+        const developedByInput = document.getElementById('developed_by');
+
+        if (knownNameSelect && developedByInput) {
+            knownNameSelect.addEventListener('change', function() {
+                if (!this.value) return;
+                const current = developedByInput.value.trim();
+                developedByInput.value = current ? current + ', ' + this.value : this.value;
+                this.value = '';
+                developedByInput.focus();
+            });
+        }
 
         const designationFields = [orgCodeInput, classCodeInput, regNumberInput, docKindSelect].filter(Boolean);
 
@@ -660,6 +708,9 @@
         const correctionModal = document.getElementById('correction-modal');
         const correctionForm = document.getElementById('correction-form');
         const correctionCancel = document.getElementById('correction-cancel');
+        const requestCorrectionModal = document.getElementById('request-correction-modal');
+        const requestCorrectionForm = document.getElementById('request-correction-form');
+        const requestCorrectionCancel = document.getElementById('request-correction-cancel');
         const contextMenu = document.getElementById('doc-context-menu');
         const statusBaseUrl = '{{ url_path('/documents') }}';
         let activeRow = null;
@@ -680,6 +731,12 @@
             correctionForm.action = statusBaseUrl + '/' + docId + '/status';
             correctionForm.querySelector('textarea').value = '';
             correctionModal.classList.add('active');
+        }
+
+        function openRequestCorrectionModal(docId) {
+            requestCorrectionForm.action = statusBaseUrl + '/' + docId + '/request-correction';
+            requestCorrectionForm.querySelector('textarea').value = '';
+            requestCorrectionModal.classList.add('active');
         }
 
         function submitVerified(docId) {
@@ -706,6 +763,7 @@
             const editUrl = row.dataset.actionEdit;
             const verifyId = row.dataset.actionVerify;
             const correctionId = row.dataset.actionCorrection;
+            const requestCorrectionId = row.dataset.actionRequestCorrection;
             const deleteId = row.dataset.actionDelete;
             const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
 
@@ -717,6 +775,7 @@
             if (editUrl) items.push({ label: 'Изменить метаданные', href: editUrl });
             if (verifyId) items.push({ label: 'Утвердить', action: 'verify', docId: verifyId });
             if (correctionId) items.push({ label: 'Требуется исправление', action: 'correction', docId: correctionId });
+            if (requestCorrectionId) items.push({ label: 'Запрос на исправление', action: 'request-correction', docId: requestCorrectionId });
             if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, danger: true });
 
             if (!items.length) return;
@@ -738,6 +797,7 @@
                         hideContextMenu();
                         if (item.action === 'verify') submitVerified(item.docId);
                         else if (item.action === 'correction') openCorrectionModal(item.docId);
+                        else if (item.action === 'request-correction') openRequestCorrectionModal(item.docId);
                         else if (item.action === 'delete') openDeleteModal(item.docId, item.docLabel);
                     });
                     contextMenu.appendChild(btn);
@@ -795,6 +855,15 @@
         if (correctionModal) {
             correctionModal.addEventListener('click', (e) => {
                 if (e.target === correctionModal) correctionModal.classList.remove('active');
+            });
+        }
+
+        if (requestCorrectionCancel) {
+            requestCorrectionCancel.addEventListener('click', () => requestCorrectionModal.classList.remove('active'));
+        }
+        if (requestCorrectionModal) {
+            requestCorrectionModal.addEventListener('click', (e) => {
+                if (e.target === requestCorrectionModal) requestCorrectionModal.classList.remove('active');
             });
         }
 

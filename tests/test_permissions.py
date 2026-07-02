@@ -51,6 +51,11 @@ def test_user_first_upload_allowed():
     assert can_upload_file(_user(UserRole.user, 1), doc)
 
 
+def test_any_user_can_first_upload_without_file():
+    doc = _doc(uploaded_by=99, file_name=None)
+    assert can_upload_file(_user(UserRole.user, 1), doc)
+
+
 def test_user_cannot_replace_while_pending():
     doc = _doc(uploaded_by=1, file_name="file.pdf", status=DocumentStatus.pending_review)
     assert not can_upload_file(_user(UserRole.user, 1), doc)

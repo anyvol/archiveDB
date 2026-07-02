@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.12.0
+
+- Any authenticated user can upload a file to a record that has no file yet.
+- Context menu: «Запрос на исправление» for documents «На проверке» with an uploaded file.
+- Document registration form: expanded metadata section (ФИО and dates), larger input, picker for existing names/surnames from the database.
+- Create button centered, enlarged, renamed to «Создать запись и перейти к загрузке файла ЭД».
+- Upload page: drag-and-drop area height doubled; required «Формат документа» field (A0–A5 and composite formats).
+- On file selection, page size is read from PDF/image metadata when possible and the format is auto-filled with a notice.
+- New «Проекты» section in the header: list projects, add projects with description and photos, attach project documents, download files.
+- Project photos stored under `{project_slug}/изображения/` on the server.
+- Database: `documents.document_format`, `projects.description`, `projects.created_at`, tables `project_files` and `project_images`.
+- Alembic migration `c3d4e5f6a7b8`.
+
 ## 0.10.0
 
 - Status «Проверено» renamed to «Утверждено» (`approved`).

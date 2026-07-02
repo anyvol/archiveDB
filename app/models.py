@@ -78,6 +78,7 @@ GOVERNED_DOCUMENT_TYPES = ("DD", "TD")
 MISC_DOCS_FOLDER = "Прочие документы"
 II_FOLDER = "Извещения об изменении"
 VERSIONS_FOLDER = "versions"
+IMAGES_FOLDER = "изображения"
 
 DEPARTMENTS = [
     "Конструкторский отдел",
@@ -124,7 +125,46 @@ class Project(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
     slug = Column(String(255), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     documents = relationship("BaseDocument", back_populates="project")
+    project_files = relationship(
+        "ProjectFile",
+        back_populates="project",
+        order_by="ProjectFile.created_at.desc()",
+    )
+    project_images = relationship(
+        "ProjectImage",
+        back_populates="project",
+        order_by="ProjectImage.created_at.desc()",
+    )
+
+
+class ProjectFile(Base):
+    __tablename__ = "project_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="project_files")
+    uploader = relationship("User")
+
+
+class ProjectImage(Base):
+    __tablename__ = "project_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="project_images")
 
 
 class Organization(Base):
@@ -168,6 +208,7 @@ class BaseDocument(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
+    document_format = Column(String(32), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     status = Column(
         SAEnum(DocumentStatus),

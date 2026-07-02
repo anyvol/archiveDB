@@ -28,3 +28,5 @@ uvicorn==0.35.0
 pytest==8.4.1
 pytest-asyncio==1.1.0
 pywebpush==2.0.1
+pypdf==5.9.0
+Pillow==11.3.0

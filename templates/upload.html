@@ -12,7 +12,7 @@
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
         .container { max-width: 560px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .drop-zone { border: 2px dashed #ccc; padding: 2rem; text-align: center; border-radius: 8px; cursor: pointer; background: #fafafa; margin: 1rem 0; }
+        .drop-zone { border: 2px dashed #ccc; padding: 4rem 2rem; min-height: 200px; text-align: center; border-radius: 8px; cursor: pointer; background: #fafafa; margin: 1rem 0; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .drop-zone.ready { border-color: #28a745; background: #d4edda; }
         .drop-zone.dragover { border-color: #007bff; background: #f0f8ff; }
         input[type="file"] { display: none; }
@@ -22,10 +22,11 @@
         .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
         .error, .info { padding: 0.75rem; border-radius: 4px; margin-top: 1rem; }
         .error { background: #f8d7da; color: #721c24; }
+        .info { background: #e7f3ff; color: #004085; }
         .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.45; }
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.35rem; }
-        .form-group textarea { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-group textarea, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -63,6 +64,17 @@
                 <label for="change_comment">Что изменено в файле *</label>
                 <textarea id="change_comment" name="change_comment" rows="3" required placeholder="Опишите внесённые правки"></textarea>
             </div>
+            {% else %}
+            <div class="form-group">
+                <label for="document_format">Укажите формат документа *</label>
+                <select id="document_format" name="document_format" required>
+                    <option value="">— выберите формат —</option>
+                    {% for fmt in document_formats %}
+                    <option value="{{ fmt.code }}" {% if doc.document_format == fmt.code %}selected{% endif %}>{{ fmt.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="info" id="format-detect-info" style="display:none;"></div>
             {% endif %}
             <input type="file" id="file" name="file" required>
             <div class="drop-zone" id="drop-zone">
@@ -86,18 +98,24 @@
         <div class="error">Не удалось загрузить файл. Проверьте формат и размер (макс. 10 МБ).</div>
         {% elif error == 'comment_required' %}
         <div class="error">Укажите комментарий: что было изменено в файле.</div>
+        {% elif error == 'format_required' %}
+        <div class="error">Укажите формат документа перед загрузкой.</div>
         {% endif %}
     </div>
 
     {% if can_upload %}
     <script>
         const DESIGNATION = {{ (designation or '')|tojson }};
+        const IS_REPLACE = {{ is_replace|tojson }};
+        const DETECT_FORMAT_URL = {{ url_path('/api/detect-document-format')|tojson }};
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file');
         const fileInfo = document.getElementById('file-info');
         const submitBtn = document.getElementById('submit-btn');
         const dropText = document.getElementById('drop-text');
         const renameWarning = document.getElementById('rename-warning');
+        const formatSelect = document.getElementById('document_format');
+        const formatDetectInfo = document.getElementById('format-detect-info');
 
         function fileBaseName(name) {
             const lastDot = name.lastIndexOf('.');
@@ -107,6 +125,28 @@
         function namesMatch(fileName, designation) {
             if (!designation) return true;
             return fileBaseName(fileName).trim().toLowerCase() === designation.trim().toLowerCase();
+        }
+
+        async function detectFormatFromFile(file) {
+            if (IS_REPLACE || !formatSelect || !formatDetectInfo) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const response = await fetch(DETECT_FORMAT_URL, { method: 'POST', body: formData });
+                const data = await response.json();
+                formatDetectInfo.style.display = 'block';
+                formatDetectInfo.textContent = data.message || '';
+                if (data.detected && data.format) {
+                    formatSelect.value = data.format;
+                    formatDetectInfo.className = 'info';
+                } else {
+                    formatDetectInfo.className = 'warning';
+                }
+            } catch (e) {
+                formatDetectInfo.style.display = 'block';
+                formatDetectInfo.className = 'warning';
+                formatDetectInfo.textContent = 'Не удалось прочитать метаданные файла. Выберите формат вручную.';
+            }
         }
 
         dropZone.addEventListener('click', () => fileInput.click());
@@ -139,6 +179,7 @@
             dropText.style.display = 'none';
             dropZone.classList.add('ready');
             submitBtn.disabled = false;
+            detectFormatFromFile(file);
 
             if (DESIGNATION && !namesMatch(file.name, DESIGNATION)) {
                 const lastDot = file.name.lastIndexOf('.');
@@ -149,6 +190,15 @@
             } else {
                 renameWarning.style.display = 'none';
             }
+        }
+
+        if (formatSelect) {
+            document.getElementById('upload-form').addEventListener('submit', function(e) {
+                if (!IS_REPLACE && !formatSelect.value) {
+                    e.preventDefault();
+                    alert('Укажите формат документа.');
+                }
+            });
         }
     </script>
     {% endif %}
