@@ -111,6 +111,8 @@ from app.notifications import (
 from app.document_display import get_document_display_status, format_field_change
 from app.cert_scripts import (
     cert_download_url,
+    external_base_url,
+    server_site_info,
     trust_linux_script,
     trust_macos_script,
     trust_windows_cmd,
@@ -161,6 +163,7 @@ _CERT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nginx", "
 _SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts")
 _CERT_SCRIPT_FILES = {
     "windows-forward-ports.ps1": ("windows-forward-ports.ps1", "application/octet-stream"),
+    "trust-cert-windows.ps1": ("trust-cert-windows.ps1", "application/octet-stream"),
 }
 _GENERATED_CERT_SCRIPTS = {
     "trust-windows.cmd": ("trust-windows.cmd", trust_windows_cmd),
@@ -1536,6 +1539,7 @@ async def profile_page(
             "vapid_public_key": VAPID_PUBLIC_KEY,
             "has_push_subscription": bool(user.push_subscription),
             "cert_available": os.path.isfile(_CERT_FILE),
+            "cert_base_url": external_base_url(request, https=True),
             "sw_scope": app_scope(),
             **ctx,
         },
@@ -1727,6 +1731,12 @@ async def download_site_certificate():
     )
 
 
+@app.get("/cert/site-info.json")
+async def download_site_info(request: Request):
+    """Public server connection info for universal client trust scripts."""
+    return server_site_info(request)
+
+
 @app.get("/cert/scripts/{script_key}")
 async def download_cert_script(
     script_key: str,
@@ -1738,8 +1748,8 @@ async def download_cert_script(
 
     if script_key in _GENERATED_CERT_SCRIPTS:
         filename, builder = _GENERATED_CERT_SCRIPTS[script_key]
-        cert_url = cert_download_url(request)
-        content = builder(cert_url)
+        info = server_site_info(request)
+        content = builder(info)
         media_type = "application/x-sh" if filename.endswith(".sh") else "application/octet-stream"
         return Response(
             content=content,

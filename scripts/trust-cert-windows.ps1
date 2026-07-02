@@ -1,36 +1,163 @@
-# Install the archive self-signed certificate into Windows Trusted Root store.
-# After this, Chrome/Edge will show a normal padlock for https://SERVER-PDM:8443/
+# Download and install the archive site certificate into Windows Trusted Root store.
 #
-# Run as Administrator:
+# Universal usage (from any client PC):
 #   Set-ExecutionPolicy -Scope Process Bypass
-#   .\scripts\trust-cert-windows.ps1
-#   .\scripts\trust-cert-windows.ps1 -CertPath C:\path\to\fullchain.pem
+#   .\scripts\trust-cert-windows.ps1 -ServerBaseUrl https://192.168.2.136:8443/archive
+#   .\scripts\trust-cert-windows.ps1 -ServerHost 192.168.2.136 -HttpsPort 8443
+#
+# Local file (on the server):
+#   .\scripts\trust-cert-windows.ps1 -CertPath C:\archiveDB\nginx\certs\fullchain.pem
+#
+# Run as Administrator.
 
 param(
+    [string]$ServerBaseUrl = "",
+    [string]$ServerHost = "",
+    [int]$HttpsPort = 8443,
+    [string]$RootPath = "/archive",
     [string]$CertPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 
+function Assert-Administrator {
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator
+    )
+    if (-not $isAdmin) {
+        throw "Run this script as Administrator."
+    }
+}
+
+function Download-Certificate {
+    param([string]$Url, [string]$Destination)
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        & curl.exe -fsSk $Url -o $Destination
+        return
+    }
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -SkipCertificateCheck
+        return
+    }
+    $tls12 = [Net.SecurityProtocolType]::Tls12
+    if ([Enum]::IsDefined([Net.SecurityProtocolType], 'Tls13')) {
+        $tls13 = [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = $tls12 -bor $tls13
+    } else {
+        [Net.ServicePointManager]::SecurityProtocol = $tls12
+    }
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    try {
+        (New-Object System.Net.WebClient).DownloadFile($Url, $Destination)
+    } finally {
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+    }
+}
+
+function Download-Certificate-FromCandidates {
+    param([string[]]$Urls, [string]$Destination)
+    $errors = @()
+    foreach ($url in $Urls) {
+        try {
+            Write-Host "Trying $url ..."
+            Download-Certificate -Url $url -Destination $Destination
+            Write-Host "Downloaded from $url"
+            return
+        } catch {
+            $errors += "$url -> $($_.Exception.Message)"
+        }
+    }
+    throw "Could not download certificate. Tried:`n$($errors -join "`n")"
+}
+
+function Normalize-BaseUrl {
+    param([string]$Url)
+    $normalized = $Url.Trim().TrimEnd('/')
+    if (-not $normalized) {
+        throw "ServerBaseUrl is empty."
+    }
+    return $normalized
+}
+
+function Build-CertUrl {
+    param(
+        [string]$HostName,
+        [int]$Port,
+        [string]$Root
+    )
+    $root = $Root.Trim()
+    if (-not $root.StartsWith("/")) {
+        $root = "/$root"
+    }
+    $root = $root.TrimEnd('/')
+    if ($Port -in 443, 80) {
+        return "https://${HostName}${root}/cert/fullchain.pem"
+    }
+    return "https://${HostName}:${Port}${root}/cert/fullchain.pem"
+}
+
+function Get-CertUrlCandidates {
+    if ($ServerBaseUrl) {
+        $baseUrl = Normalize-BaseUrl -Url $ServerBaseUrl
+        $infoUrl = "$baseUrl/site-info.json"
+        Write-Host "Fetching server info from $infoUrl ..."
+        $tempInfo = Join-Path $env:TEMP "archive-site-info-$([Guid]::NewGuid().ToString('n')).json"
+        try {
+            Download-Certificate -Url $infoUrl -Destination $tempInfo
+            $info = Get-Content $tempInfo -Raw | ConvertFrom-Json
+            if ($info.cert_urls) {
+                return @($info.cert_urls)
+            }
+            if ($info.cert_url) {
+                return @($info.cert_url)
+            }
+        } catch {
+            Write-Host "site-info.json unavailable, using ServerBaseUrl directly."
+        } finally {
+            Remove-Item $tempInfo -Force -ErrorAction SilentlyContinue
+        }
+        return @("$baseUrl/cert/fullchain.pem")
+    }
+
+    if ($ServerHost) {
+        return @(Build-CertUrl -HostName $ServerHost -Port $HttpsPort -Root $RootPath)
+    }
+
+    throw @"
+Specify how to reach the archive server:
+  -ServerBaseUrl https://SERVER:8443/archive
+  -ServerHost 192.168.2.136 -HttpsPort 8443
+  -CertPath C:\path\to\fullchain.pem
+"@
+}
+
+Assert-Administrator
+
+if ($CertPath) {
+    if (-not (Test-Path $CertPath)) {
+        throw "Certificate not found: $CertPath"
+    }
+    $sourcePath = (Resolve-Path $CertPath).Path
+} else {
+    $certUrls = Get-CertUrlCandidates
+    $sourcePath = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n')).pem"
+    Download-Certificate-FromCandidates -Urls $certUrls -Destination $sourcePath
+}
+
+Write-Host "Installing trusted root certificate:"
+Write-Host "  $sourcePath"
+Import-Certificate -FilePath $sourcePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+
 if (-not $CertPath) {
-    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $CertPath = Join-Path $scriptDir "..\nginx\certs\fullchain.pem"
-    $CertPath = (Resolve-Path $CertPath -ErrorAction SilentlyContinue).Path
+    Remove-Item $sourcePath -Force
 }
 
-if (-not $CertPath -or -not (Test-Path $CertPath)) {
-    Write-Error "Certificate not found. Copy nginx/certs/fullchain.pem from the server or pass -CertPath."
+Write-Host ""
+Write-Host "Done. Restart the browser."
+if ($ServerBaseUrl) {
+    Write-Host "Open: $(Normalize-BaseUrl -Url $ServerBaseUrl)/"
+} elseif ($ServerHost) {
+  $suffix = if ($HttpsPort -in 443, 80) { "" } else { ":$HttpsPort" }
+  Write-Host "Open: https://${ServerHost}${suffix}$($RootPath.TrimEnd('/'))/"
 }
-
-Write-Host "Importing trusted root certificate:"
-Write-Host "  $CertPath"
-
-Import-Certificate -FilePath $CertPath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-
-Write-Host ""
-Write-Host "Done. Restart the browser and open:"
-Write-Host "  https://SERVER-PDM:8443/archive/"
-Write-Host "  https://192.168.4.108:8443/archive/   (only if IP is in certificate SAN)"
-Write-Host ""
-Write-Host "To remove:"
-Write-Host "  Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -match 'SERVER-PDM' | Remove-Item"
