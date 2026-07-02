@@ -34,6 +34,24 @@
         .form-group { margin-bottom: 1rem; }
         .form-group label { display: block; margin-bottom: 0.5rem; }
         .form-group input, .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .form-messages { margin-bottom: 1rem; }
+        .form-message { padding: 0.55rem 0.75rem; border-radius: 4px; margin-bottom: 0.35rem; font-size: 0.9rem; line-height: 1.4; }
+        .form-message.info { background: #e7f3ff; color: #004085; }
+        .form-message.error { background: #f8d7da; color: #721c24; }
+        .form-message.success { background: #d4edda; color: #155724; }
+        .metadata-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; display: block; }
+        .metadata-grid { display: flex; flex-direction: column; gap: 0.65rem; }
+        .metadata-person-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .metadata-person-row > label { flex: 0 0 130px; margin: 0; font-size: 0.9rem; }
+        .metadata-person-row .metadata-field { flex: 1 1 140px; min-width: 120px; max-width: 220px; }
+        .metadata-person-row .metadata-select-wrap { flex: 0 0 52px; min-width: 52px; max-width: 52px; }
+        .metadata-person-row .metadata-date-wrap { flex: 0 0 168px; min-width: 168px; max-width: 168px; }
+        .metadata-person-row input[type="date"].metadata-input { cursor: help; width: 100%; min-width: 0; color: #212529; padding: 0.5rem 0.35rem; }
+        .metadata-person-row select.known-name-select { cursor: help; padding-left: 0.35rem; padding-right: 0.35rem; text-align: center; color: #6c757d; }
+        .metadata-input { width: 100%; padding: 0.5rem; box-sizing: border-box; height: 2.5rem; font-size: 0.95rem; }
+        .metadata-person-row select.metadata-input { height: 2.5rem; }
+        .create-submit-wrap { text-align: center; margin-top: 1.5rem; }
+        .btn-create-record { padding: 0.85rem 2rem; font-size: 1.05rem; font-weight: 600; }
         .designation-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; justify-content: center; margin-bottom: 1rem; }
         .designation-row .form-group { margin-bottom: 0; flex: 0 0 auto; }
         .designation-row .form-group label { font-size: 0.8rem; white-space: nowrap; }
@@ -127,6 +145,7 @@
         <div class="create-section">
         <h2>Добавить новый документ</h2>
         <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container" enctype="multipart/form-data">
+            <div id="create-form-messages" class="form-messages" aria-live="polite"></div>
             <div class="form-group">
                 <label>Тип документа:</label>
                 <input type="hidden" id="doc_type" name="doc_type" value="">
@@ -206,12 +225,66 @@
                     <input type="text" id="org_name" name="org_name">
                     <small id="org-name-hint"></small>
                 </div>
-                <div class="form-group">
-                    <label for="developed_by">ФИО разработчика:</label>
-                    <input type="text" id="developed_by" name="developed_by" value="{{ default_developed_by }}" required>
+                <div class="form-group metadata-section">
+                    <label class="section-label">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
+                    <div class="metadata-grid">
+                        <div class="metadata-person-row">
+                            <label for="developed_by">Разработчик *</label>
+                            <div class="metadata-field">
+                                <input type="text" id="developed_by" name="developed_by" class="metadata-input" required value="{{ default_developed_by }}" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <select id="known_name_select_developed" class="metadata-input known-name-select" data-target="developed_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                    <option value="">…</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="metadata-date-wrap">
+                                <input type="date" id="developer_signed_date" name="developer_signed_date" class="metadata-input" title="Дата подписи разработчика" aria-label="Дата подписи разработчика">
+                            </div>
+                        </div>
+                        <div class="metadata-person-row">
+                            <label for="reviewed_by">Проверяющий</label>
+                            <div class="metadata-field">
+                                <input type="text" id="reviewed_by" name="reviewed_by" class="metadata-input" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <select id="known_name_select_reviewed" class="metadata-input known-name-select" data-target="reviewed_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                    <option value="">…</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="metadata-date-wrap">
+                                <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" class="metadata-input" title="Дата подписи проверяющего" aria-label="Дата подписи проверяющего">
+                            </div>
+                        </div>
+                        <div class="metadata-person-row">
+                            <label for="approved_by">Утверждающий</label>
+                            <div class="metadata-field">
+                                <input type="text" id="approved_by" name="approved_by" class="metadata-input" placeholder="Фамилия И.О.">
+                            </div>
+                            <div class="metadata-select-wrap">
+                                <select id="known_name_select_approved" class="metadata-input known-name-select" data-target="approved_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                    <option value="">…</option>
+                                    {% for name in known_person_names %}
+                                    <option value="{{ name }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="metadata-date-wrap">
+                                <input type="date" id="approver_signed_date" name="approver_signed_date" class="metadata-input" title="Дата подписи утвердившего" aria-label="Дата подписи утвердившего">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary" id="create-submit" style="display: none;">Создать запись и перейти к загрузке</button>
+            <div class="create-submit-wrap">
+                <button type="submit" class="btn btn-primary btn-create-record" id="create-submit" style="display: none;">Создать запись и перейти к загрузке файла ЭД</button>
+            </div>
         </form>
         </div>
         {% endif %}
@@ -301,6 +374,7 @@
                     {% if can_apply_formal_change(user, doc) %}data-action-apply-change="{{ url_path('/documents/' ~ doc.id ~ '/apply-change') }}"{% endif %}
                     {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
                     {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
+                    {% if can_request_minor_correction(user, doc) %}data-action-request-correction="{{ doc.id }}"{% endif %}
                     {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
                     {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
                     {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
@@ -359,6 +433,18 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="request-correction-modal">
+        <div class="modal-box">
+            <h3>Запрос на исправление</h3>
+            <p>Укажите, что именно нужно исправить (только незначительные правки):</p>
+            <form method="post" id="request-correction-form" action="">
+                <textarea name="comment" required minlength="10" placeholder="Опишите незначительные правки (опечатки, линии, штриховки…)"></textarea>
+                <button type="submit" class="btn btn-warning">Отправить запрос</button>
+                <button type="button" class="btn btn-secondary" id="request-correction-cancel">Отмена</button>
+            </form>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="delete-modal">
         <div class="modal-box">
             <h3>Удаление документа</h3>
@@ -400,6 +486,50 @@
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
         const createForm = document.getElementById('create-doc-form');
+        const createFormMessages = document.getElementById('create-form-messages');
+
+        function clearFormMessages() {
+            if (createFormMessages) createFormMessages.innerHTML = '';
+        }
+
+        function showFormMessage(text, type) {
+            if (!createFormMessages || !text) return;
+            const item = document.createElement('div');
+            item.className = 'form-message ' + (type || 'info');
+            item.textContent = text;
+            createFormMessages.appendChild(item);
+        }
+
+        function showJsonMessages(data, type) {
+            if (data == null) return;
+            if (typeof data === 'string') {
+                showFormMessage(data, type);
+                return;
+            }
+            if (Array.isArray(data)) {
+                data.forEach(entry => showJsonMessages(entry, type));
+                return;
+            }
+            if (typeof data === 'object') {
+                Object.entries(data).forEach(([key, value]) => {
+                    if (value != null && typeof value === 'object') {
+                        showFormMessage(key + ': ' + JSON.stringify(value), type);
+                    } else if (value != null && String(value).trim()) {
+                        showFormMessage(key + ': ' + value, type);
+                    }
+                });
+            }
+        }
+
+        document.querySelectorAll('.known-name-select').forEach(select => {
+            select.addEventListener('change', function() {
+                if (!this.value) return;
+                const target = document.getElementById(this.dataset.target);
+                if (target) target.value = this.value;
+                this.value = '';
+                target && target.focus();
+            });
+        });
 
         const designationFields = [orgCodeInput, classCodeInput, regNumberInput, docKindSelect].filter(Boolean);
 
@@ -447,7 +577,7 @@
                 }
                 orgNameGroup.style.display = 'block';
             } catch (e) {
-                alert('Ошибка проверки организации.');
+                showFormMessage('Ошибка проверки организации.', 'error');
             }
         }
 
@@ -625,20 +755,22 @@
         if (createForm) {
             createForm.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    createForm.submit();
+                    e.preventDefault();
+                    createForm.requestSubmit();
                 }
             });
-            createForm.addEventListener('submit', function(e) {
+            createForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                clearFormMessages();
+
                 const hasExisting = existingProjectSelect && existingProjectSelect.value;
                 const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
                 if (!hasExisting && !hasNew) {
-                    e.preventDefault();
-                    alert('Выберите существующий проект или укажите новый.');
+                    showFormMessage('Выберите существующий проект или укажите новый.', 'error');
                     return;
                 }
                 if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
-                    e.preventDefault();
-                    alert('Для нового проекта необходимо указать шифр проекта.');
+                    showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
                     return;
                 }
                 if (hasExisting) {
@@ -650,6 +782,49 @@
                 if (classCodeInput && classCodeInput.value.trim()) {
                     localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
                 }
+
+                const submitBtn = document.getElementById('create-submit');
+                if (submitBtn) submitBtn.disabled = true;
+
+                try {
+                    const formData = new FormData(createForm);
+                    formData.append('_ajax', '1');
+                    const response = await fetch(createForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'Accept': 'application/json' },
+                    });
+
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (response.ok && data.redirect) {
+                            window.location.href = data.redirect;
+                            return;
+                        }
+                        const detail = data.detail;
+                        if (typeof detail === 'string') {
+                            showFormMessage(detail, 'error');
+                        } else if (detail) {
+                            showJsonMessages(detail, 'error');
+                        } else if (data.message) {
+                            showFormMessage(data.message, 'error');
+                        } else if (!response.ok) {
+                            showFormMessage('Не удалось создать запись.', 'error');
+                        }
+                        return;
+                    }
+
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        showFormMessage('Не удалось создать запись (код ' + response.status + ').', 'error');
+                    }
+                } catch (err) {
+                    showFormMessage('Ошибка сети при создании записи.', 'error');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
+                }
             });
         }
 
@@ -660,6 +835,9 @@
         const correctionModal = document.getElementById('correction-modal');
         const correctionForm = document.getElementById('correction-form');
         const correctionCancel = document.getElementById('correction-cancel');
+        const requestCorrectionModal = document.getElementById('request-correction-modal');
+        const requestCorrectionForm = document.getElementById('request-correction-form');
+        const requestCorrectionCancel = document.getElementById('request-correction-cancel');
         const contextMenu = document.getElementById('doc-context-menu');
         const statusBaseUrl = '{{ url_path('/documents') }}';
         let activeRow = null;
@@ -680,6 +858,12 @@
             correctionForm.action = statusBaseUrl + '/' + docId + '/status';
             correctionForm.querySelector('textarea').value = '';
             correctionModal.classList.add('active');
+        }
+
+        function openRequestCorrectionModal(docId) {
+            requestCorrectionForm.action = statusBaseUrl + '/' + docId + '/request-correction';
+            requestCorrectionForm.querySelector('textarea').value = '';
+            requestCorrectionModal.classList.add('active');
         }
 
         function submitVerified(docId) {
@@ -706,6 +890,7 @@
             const editUrl = row.dataset.actionEdit;
             const verifyId = row.dataset.actionVerify;
             const correctionId = row.dataset.actionCorrection;
+            const requestCorrectionId = row.dataset.actionRequestCorrection;
             const deleteId = row.dataset.actionDelete;
             const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
 
@@ -717,6 +902,7 @@
             if (editUrl) items.push({ label: 'Изменить метаданные', href: editUrl });
             if (verifyId) items.push({ label: 'Утвердить', action: 'verify', docId: verifyId });
             if (correctionId) items.push({ label: 'Требуется исправление', action: 'correction', docId: correctionId });
+            if (requestCorrectionId) items.push({ label: 'Запрос на исправление', action: 'request-correction', docId: requestCorrectionId });
             if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, danger: true });
 
             if (!items.length) return;
@@ -738,6 +924,7 @@
                         hideContextMenu();
                         if (item.action === 'verify') submitVerified(item.docId);
                         else if (item.action === 'correction') openCorrectionModal(item.docId);
+                        else if (item.action === 'request-correction') openRequestCorrectionModal(item.docId);
                         else if (item.action === 'delete') openDeleteModal(item.docId, item.docLabel);
                     });
                     contextMenu.appendChild(btn);
@@ -795,6 +982,15 @@
         if (correctionModal) {
             correctionModal.addEventListener('click', (e) => {
                 if (e.target === correctionModal) correctionModal.classList.remove('active');
+            });
+        }
+
+        if (requestCorrectionCancel) {
+            requestCorrectionCancel.addEventListener('click', () => requestCorrectionModal.classList.remove('active'));
+        }
+        if (requestCorrectionModal) {
+            requestCorrectionModal.addEventListener('click', (e) => {
+                if (e.target === requestCorrectionModal) requestCorrectionModal.classList.remove('active');
             });
         }
 

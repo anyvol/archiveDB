@@ -1,7 +1,7 @@
 # app/main.py
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -35,6 +35,8 @@ from app.models import (
     DOCUMENT_TYPE_LABELS,
     DEPARTMENTS,
     Project,
+    ProjectFile,
+    ProjectImage,
     DOC_KIND_CODES,
 )
 from app.routers import router as user_router
@@ -43,6 +45,10 @@ from app.auth import get_current_user_from_token, authenticate_user, get_passwor
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
 from app.project_helpers import get_project_by_id, create_new_project
+from app.project_files import save_project_file, save_project_images, remove_project_file_from_disk
+from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS, is_valid_document_format
+from app.metadata_helpers import detect_document_format_from_bytes
+from app.name_helpers import fetch_known_person_names, normalize_person_name
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
 from app.permissions import (
     can_create_document,
@@ -129,12 +135,14 @@ templates.env.globals["can_set_document_status"] = can_set_document_status
 templates.env.globals["can_delete_document"] = can_delete_document
 templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
 templates.env.globals["can_apply_formal_change"] = can_apply_formal_change
+templates.env.globals["get_document_display_status"] = get_document_display_status
 templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
 templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
 templates.env.globals["is_governed_document"] = is_governed_document
 templates.env.globals["service_version"] = SERVICE_VERSION
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
-templates.env.globals["get_document_display_status"] = get_document_display_status
+templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
+templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -410,6 +418,7 @@ async def documents_page(
     documents_from_db = await fetch_documents(session, **filters)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
+    known_person_names = await fetch_known_person_names(session)
     ctx = await _page_context(session, user)
 
     return templates.TemplateResponse(
@@ -419,6 +428,7 @@ async def documents_page(
             "documents": documents_from_db,
             "filters": filters,
             "projects": projects,
+            "known_person_names": known_person_names,
             "can_create": can_create_document(user),
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
@@ -449,7 +459,13 @@ async def create_document_record(
     class_code = form_data.get("class_code")
     reg_number = form_data.get("reg_number")
     doc_name = form_data.get("doc_name")
-    developed_by = form_data.get("developed_by")
+    developed_by = normalize_person_name(form_data.get("developed_by") or "")
+    reviewed_by = normalize_person_name(form_data.get("reviewed_by") or "") or None
+    approved_by = normalize_person_name(form_data.get("approved_by") or "") or None
+    developer_signed_date = (form_data.get("developer_signed_date") or "").strip() or None
+    reviewer_signed_date = (form_data.get("reviewer_signed_date") or "").strip() or None
+    approver_signed_date = (form_data.get("approver_signed_date") or "").strip() or None
+    is_ajax = form_data.get("_ajax") == "1"
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -482,6 +498,11 @@ async def create_document_record(
         type=doc_type,
         doc_name=doc_name,
         developed_by=developed_by,
+        reviewed_by=reviewed_by,
+        approved_by=approved_by,
+        developer_signed_date=developer_signed_date,
+        reviewer_signed_date=reviewer_signed_date,
+        approver_signed_date=approver_signed_date,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,
@@ -550,7 +571,10 @@ async def create_document_record(
         )
 
     await session.commit()
-    return RedirectResponse(url=url_path(f"/documents/{base_doc.id}/upload"), status_code=status.HTTP_303_SEE_OTHER)
+    redirect_url = url_path(f"/documents/{base_doc.id}/upload")
+    if is_ajax:
+        return JSONResponse({"ok": True, "redirect": redirect_url})
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/documents/{doc_id}/skip-upload", response_class=RedirectResponse)
@@ -628,6 +652,8 @@ async def upload_page(
             "doc": doc,
             "can_upload": can_upload,
             "is_replace": is_replace,
+            "document_formats": DOCUMENT_FORMATS,
+            "detected_format": request.query_params.get("detected_format"),
             "error": request.query_params.get("error"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -640,6 +666,7 @@ async def handle_upload(
     doc_id: int,
     file: Optional[UploadFile] = File(None),
     change_comment: str = Form(""),
+    document_format: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -678,6 +705,12 @@ async def handle_upload(
         await session.commit()
         return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
 
+    if not document_format or not is_valid_document_format(document_format):
+        return RedirectResponse(
+            url=url_path(f"/documents/{doc_id}/upload?error=format_required"),
+            status_code=303,
+        )
+
     try:
         file_path, unique_file_name = await save_upload_file(
             file,
@@ -691,6 +724,7 @@ async def handle_upload(
 
     doc.file_path = file_path
     doc.file_name = unique_file_name
+    doc.document_format = document_format
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if not doc.registration_notified_at:
@@ -1170,6 +1204,246 @@ async def delete_document(
     await session.delete(doc)
     await session.commit()
     return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/api/detect-document-format", response_model=dict)
+async def detect_document_format_endpoint(
+    file: UploadFile = File(...),
+    access_token: Optional[str] = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    await _require_user(access_token, session)
+    if not file or not file.filename:
+        return {"detected": False, "format": None, "message": "Файл не выбран."}
+
+    contents = await file.read()
+    detected = detect_document_format_from_bytes(contents, file.filename)
+    if detected:
+        return {
+            "detected": True,
+            "format": detected,
+            "label": DOCUMENT_FORMAT_LABELS.get(detected, detected),
+            "message": f"Формат определён из метаданных файла: {DOCUMENT_FORMAT_LABELS.get(detected, detected)}",
+        }
+    return {
+        "detected": False,
+        "format": None,
+        "message": "Не удалось определить формат из метаданных файла. Выберите формат вручную.",
+    }
+
+
+@app.get("/projects", response_class=HTMLResponse)
+async def projects_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    result = await session.execute(select(Project).order_by(Project.name))
+    projects = result.scalars().all()
+    ctx = await _page_context(session, user)
+
+    return templates.TemplateResponse(
+        "projects.html",
+        {
+            "request": request,
+            "projects": projects,
+            "can_create": can_create_document(user),
+            "error": request.query_params.get("error"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.post("/projects/create", response_class=RedirectResponse)
+async def create_project_record(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if not can_create_document(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    form_data = await request.form()
+    new_project_name = (form_data.get("new_project_name") or "").strip()
+    new_project_cipher = (form_data.get("new_project_cipher") or "").strip()
+    description = (form_data.get("description") or "").strip()
+    project_dev_order = form_data.get("project_dev_order")
+    image_files = [f for f in form_data.getlist("project_images") if getattr(f, "filename", None)]
+
+    if not new_project_name or not new_project_cipher:
+        return RedirectResponse(url=url_path("/projects?error=name_required"), status_code=303)
+
+    project = await create_new_project(session, new_project_name, new_project_cipher)
+    project.description = description or None
+    project.created_at = datetime.utcnow()
+
+    if project_dev_order and getattr(project_dev_order, "filename", None):
+        await save_development_order_file(project_dev_order, project.slug)
+
+    if image_files:
+        await save_project_images(session, project, image_files)
+
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/projects/{project.id}"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/projects/{project_id}", response_class=HTMLResponse)
+async def project_detail_page(
+    project_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    result = await session.execute(
+        select(Project)
+        .options(
+            joinedload(Project.project_files),
+            joinedload(Project.project_images),
+            joinedload(Project.documents),
+        )
+        .where(Project.id == project_id)
+    )
+    project = result.unique().scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Проект не найден.")
+
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "project_detail.html",
+        {
+            "request": request,
+            "project": project,
+            "can_manage": can_create_document(user),
+            "error": request.query_params.get("error"),
+            "success": request.query_params.get("success"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.post("/projects/{project_id}/update", response_class=RedirectResponse)
+async def update_project(
+    project_id: int,
+    description: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if not can_create_document(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    project = await get_project_by_id(session, project_id)
+    project.description = description.strip() or None
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/projects/{project_id}?success=updated"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/projects/{project_id}/upload-file", response_class=RedirectResponse)
+async def upload_project_file(
+    project_id: int,
+    title: str = Form(...),
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if not can_create_document(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    project = await get_project_by_id(session, project_id)
+    try:
+        await save_project_file(session, project, title, file, user)
+    except HTTPException:
+        return RedirectResponse(url=url_path(f"/projects/{project_id}?error=upload"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/projects/{project_id}?success=file"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/projects/{project_id}/upload-images", response_class=RedirectResponse)
+async def upload_project_images(
+    project_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if not can_create_document(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    form_data = await request.form()
+    image_files = [f for f in form_data.getlist("project_images") if getattr(f, "filename", None)]
+    if not image_files:
+        return RedirectResponse(url=url_path(f"/projects/{project_id}?error=images"), status_code=303)
+
+    project = await get_project_by_id(session, project_id)
+    try:
+        await save_project_images(session, project, image_files)
+    except HTTPException:
+        return RedirectResponse(url=url_path(f"/projects/{project_id}?error=images"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/projects/{project_id}?success=images"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/projects/{project_id}/files/{file_id}/download")
+async def download_project_file(
+    project_id: int,
+    file_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await session.get(ProjectFile, file_id)
+    if not record or record.project_id != project_id or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    return FileResponse(path=record.file_path, filename=record.file_name, media_type="application/octet-stream")
+
+
+@app.get("/projects/{project_id}/images/{image_id}")
+async def serve_project_image(
+    project_id: int,
+    image_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    image = await session.get(ProjectImage, image_id)
+    if not image or image.project_id != project_id or not os.path.exists(image.file_path):
+        raise HTTPException(status_code=404, detail="Изображение не найдено.")
+    return FileResponse(path=image.file_path, filename=image.file_name)
 
 
 @app.post("/api/check_org", response_model=dict)

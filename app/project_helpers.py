@@ -2,14 +2,14 @@
 
 import os
 import re
-from typing import Optional
+from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import UPLOAD_DIR
-from app.models import Project
+from app.models import IMAGES_FOLDER, Project
 
 _INVALID_CHARS = re.compile(r'[/\\:*?"<>|]+')
 _MULTI_SPACE = re.compile(r"\s+")
@@ -37,6 +37,12 @@ def ensure_project_directory(project_slug: str) -> str:
     project_dir = os.path.join(UPLOAD_DIR, project_slug)
     os.makedirs(project_dir, exist_ok=True)
     return project_dir
+
+
+def ensure_project_images_directory(project_slug: str) -> str:
+    images_dir = os.path.join(UPLOAD_DIR, project_slug, IMAGES_FOLDER)
+    os.makedirs(images_dir, exist_ok=True)
+    return images_dir
 
 
 def format_project_name(name: str, cipher: str) -> str:
@@ -67,7 +73,7 @@ async def create_new_project(session: AsyncSession, name: str, cipher: str) -> P
 
     base_slug = slugify_project_name(full_name)
     slug = await _unique_slug(session, base_slug)
-    project = Project(name=full_name, slug=slug)
+    project = Project(name=full_name, slug=slug, created_at=datetime.utcnow())
     session.add(project)
     await session.flush()
     ensure_project_directory(slug)

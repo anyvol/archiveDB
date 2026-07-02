@@ -105,7 +105,30 @@ uvicorn app.main:app --reload
 ## Migrations
 
 Schema is managed **only** by Alembic (the app does not call `create_all` on startup).
-Run migrations after the first `docker compose up` and after every upgrade:
+
+On Docker startup the API container runs `alembic upgrade head` and then `scripts/ensure_schema.py`
+(which adds any missing 0.12.0 columns/tables if Alembic reported head but DDL was not applied).
+After pulling a new version, restart the API service:
+
+```bash
+docker compose up -d api
+```
+
+If `/documents` returns 500 with `column documents.document_format does not exist`, repair the schema manually:
+
+```bash
+docker compose exec api python3 scripts/ensure_schema.py
+docker compose restart api
+```
+
+Check Alembic state:
+
+```bash
+docker compose exec api alembic current
+docker compose exec api alembic heads
+```
+
+To run migrations manually (e.g. local dev without Docker entrypoint):
 
 ```bash
 docker compose exec api alembic upgrade head

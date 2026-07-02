@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.12.0
+
+- Any authenticated user can upload a file to a record that has no file yet.
+- Context menu: «Запрос на исправление» for documents «На проверке» with an uploaded file.
+- Document registration form: expanded metadata section (ФИО and dates), larger input, picker for existing names/surnames from the database.
+- Create button centered, enlarged, renamed to «Создать запись и перейти к загрузке файла ЭД».
+- Upload page: drag-and-drop area height doubled; required «Формат документа» field (A0–A5 and composite formats).
+- On file selection, page size is read from PDF/image metadata when possible and the format is auto-filled with a notice.
+- New «Проекты» section in the header: list projects, add projects with description and photos, attach project documents, download files.
+- Project photos stored under `{project_slug}/изображения/` on the server.
+- Database: `documents.document_format`, `projects.description`, `projects.created_at`, tables `project_files` and `project_images`.
+- Alembic migration `c3d4e5f6a7b8` (idempotent).
+- Docker: API container applies migrations automatically on startup (`scripts/docker-entrypoint.sh`).
+- Schema repair script `scripts/ensure_schema.py` fixes missing 0.12.0 columns when Alembic reports head without applying DDL.
+- Document registration metadata: separate fields for developer, date, reviewer, and approver; compact inputs with «choose from existing» per field (single FIO, replaces value).
+- Signature dates: developer, reviewer, and approver (`developer_signed_date`, `reviewer_signed_date`, `approver_signed_date`).
+- Create form returns JSON redirect for reliable navigation to upload page; org check no longer shows raw JSON messages.
+- Name picker tooltip on hover instead of visible «Выбрать из существующих» label.
+- Signature date fields use hover tooltips instead of visible labels.
+- Header: «Проекты» link placed after «Уведомления».
+- Uploaded file rename rule: `{designation} ({original_name}).{ext}` (space before parentheses).
+
 ## 0.10.0
 
 - Status «Проверено» renamed to «Утверждено» (`approved`).

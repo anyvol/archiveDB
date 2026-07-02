@@ -2,12 +2,16 @@
     {% if user %}
         {% if nav_context in ('profile', 'notifications', 'help') %}
         <a href="{{ url_path('/documents') }}">Архив документов</a>
+        {% elif nav_context == 'projects' %}
+        <a href="{{ url_path('/documents') }}">Архив документов</a>
+        <a href="{{ url_path('/profile') }}">Личный кабинет</a>
         {% else %}
         <a href="{{ url_path('/profile') }}">Личный кабинет</a>
         {% endif %}
         <a href="{{ url_path('/notifications') }}" id="notifications-link">
             Уведомления{% if unread_count %} ({{ unread_count }}){% endif %}
         </a>
+        <a href="{{ url_path('/projects') }}">Проекты</a>
     {% else %}
         <a href="{{ url_path('/login') }}">Вход</a>
         <a href="{{ url_path('/register') }}">Регистрация</a>
