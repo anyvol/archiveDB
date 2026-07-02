@@ -6,6 +6,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 ## 0.12.1
 
 - Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
+- Document deletion now sends a notification to all users (except the person who deleted the record).
 
 ## 0.12.0
 

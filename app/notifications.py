@@ -36,6 +36,11 @@ async def _get_admin_reviewer_ids(session: AsyncSession) -> list[int]:
     return list(result.scalars().all())
 
 
+async def _get_all_user_ids(session: AsyncSession) -> list[int]:
+    result = await session.execute(select(User.id))
+    return list(result.scalars().all())
+
+
 async def _create_notifications(
     session: AsyncSession,
     recipient_ids: set[int],
@@ -160,9 +165,7 @@ async def notify_document_delete(
         f"с комментарием «{comment}»"
     )
 
-    recipients: set[int] = set(await _get_admin_reviewer_ids(session))
-    if doc.uploaded_by:
-        recipients.add(doc.uploaded_by)
+    recipients: set[int] = set(await _get_all_user_ids(session))
     recipients.discard(actor.id)
     await _create_notifications(
         session, recipients, message, None, NotificationEventType.document_delete
