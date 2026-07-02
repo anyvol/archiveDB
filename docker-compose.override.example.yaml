@@ -1,0 +1,11 @@
+# Optional local overrides (copy to docker-compose.override.yaml).
+# Git ignores docker-compose.override.yaml so machine-specific settings stay local.
+#
+# Example: Windows often has port 80 taken by IIS/HTTP.sys — map HTTP to 8080
+# but keep HTTPS on 8443. The !override tag replaces the entire ports list.
+#
+# services:
+#   proxy:
+#     ports: !override
+#       - "0.0.0.0:8080:80"
+#       - "0.0.0.0:8443:443"

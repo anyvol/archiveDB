@@ -31,6 +31,17 @@ def test_cert_download_url_no_double_root_path(monkeypatch):
     assert "/archive/archive/" not in url
 
 
+def test_cert_download_url_uses_https_even_when_profile_opened_over_http(monkeypatch):
+    monkeypatch.setenv("ROOT_PATH", "/archive")
+    monkeypatch.setenv("HTTPS_PORT", "8443")
+    reload(config_module)
+    reload(cert_scripts_module)
+
+    request = _FakeRequest(scheme="http", host="192.168.2.136:8080")
+    url = cert_scripts_module.cert_download_url(request)
+    assert url == "https://192.168.2.136:8443/archive/cert/fullchain.pem"
+
+
 def test_request_host_adds_https_port_when_missing(monkeypatch):
     monkeypatch.setenv("ROOT_PATH", "/archive")
     monkeypatch.setenv("HTTPS_PORT", "8443")
@@ -45,5 +56,6 @@ def test_generated_scripts_embed_cert_url():
     cert_url = "https://example.com/archive/cert/fullchain.pem"
     win_cmd = cert_scripts_module.trust_windows_cmd(cert_url)
     assert "ExecutionPolicy Bypass" in win_cmd
+    assert "curl.exe -fsSk" in cert_scripts_module._trust_windows_powershell_body(cert_url)
     assert cert_url in cert_scripts_module.trust_linux_script(cert_url)
     assert cert_url in cert_scripts_module.trust_macos_script(cert_url)
