@@ -105,7 +105,15 @@ uvicorn app.main:app --reload
 ## Migrations
 
 Schema is managed **only** by Alembic (the app does not call `create_all` on startup).
-Run migrations after the first `docker compose up` and after every upgrade:
+
+On Docker startup the API container runs `alembic upgrade head` automatically before Uvicorn starts.
+After pulling a new version, restart the API service:
+
+```bash
+docker compose up -d api
+```
+
+To run migrations manually (e.g. local dev without Docker entrypoint):
 
 ```bash
 docker compose exec api alembic upgrade head

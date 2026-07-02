@@ -14,7 +14,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - New «Проекты» section in the header: list projects, add projects with description and photos, attach project documents, download files.
 - Project photos stored under `{project_slug}/изображения/` on the server.
 - Database: `documents.document_format`, `projects.description`, `projects.created_at`, tables `project_files` and `project_images`.
-- Alembic migration `c3d4e5f6a7b8`.
+- Alembic migration `c3d4e5f6a7b8` (idempotent).
+- Docker: API container applies migrations automatically on startup (`scripts/docker-entrypoint.sh`).
 
 ## 0.10.0
 
