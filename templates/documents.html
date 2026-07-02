@@ -45,8 +45,8 @@
         .metadata-person-row > label { flex: 0 0 130px; margin: 0; font-size: 0.9rem; }
         .metadata-person-row .metadata-field { flex: 1; min-width: 180px; }
         .metadata-person-row .metadata-select-wrap { flex: 0 0 52px; min-width: 52px; max-width: 52px; }
-        .metadata-person-row .metadata-date-wrap { flex: 0 0 190px; min-width: 170px; }
-        .metadata-person-row .metadata-date-wrap label.date-label { font-size: 0.75rem; color: #6c757d; margin-bottom: 0.2rem; display: block; }
+        .metadata-person-row .metadata-date-wrap { flex: 0 0 52px; min-width: 52px; max-width: 52px; }
+        .metadata-person-row input[type="date"].metadata-input { cursor: help; color: #6c757d; padding-left: 0.35rem; padding-right: 0.35rem; }
         .metadata-person-row select.known-name-select { cursor: help; padding-left: 0.35rem; padding-right: 0.35rem; text-align: center; color: #6c757d; }
         .metadata-input { width: 100%; padding: 0.5rem; box-sizing: border-box; height: 2.5rem; font-size: 0.95rem; }
         .metadata-person-row select.metadata-input { height: 2.5rem; }
@@ -242,8 +242,7 @@
                                 </select>
                             </div>
                             <div class="metadata-date-wrap">
-                                <label for="developer_signed_date" class="date-label">Дата подписи разработчика</label>
-                                <input type="date" id="developer_signed_date" name="developer_signed_date" class="metadata-input">
+                                <input type="date" id="developer_signed_date" name="developer_signed_date" class="metadata-input" title="Дата подписи разработчика" aria-label="Дата подписи разработчика">
                             </div>
                         </div>
                         <div class="metadata-person-row">
@@ -260,8 +259,7 @@
                                 </select>
                             </div>
                             <div class="metadata-date-wrap">
-                                <label for="reviewer_signed_date" class="date-label">Дата подписи проверяющего</label>
-                                <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" class="metadata-input">
+                                <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" class="metadata-input" title="Дата подписи проверяющего" aria-label="Дата подписи проверяющего">
                             </div>
                         </div>
                         <div class="metadata-person-row">
@@ -278,8 +276,7 @@
                                 </select>
                             </div>
                             <div class="metadata-date-wrap">
-                                <label for="approver_signed_date" class="date-label">Дата подписи утвердившего</label>
-                                <input type="date" id="approver_signed_date" name="approver_signed_date" class="metadata-input">
+                                <input type="date" id="approver_signed_date" name="approver_signed_date" class="metadata-input" title="Дата подписи утвердившего" aria-label="Дата подписи утвердившего">
                             </div>
                         </div>
                     </div>

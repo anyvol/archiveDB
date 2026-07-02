@@ -18,8 +18,12 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Docker: API container applies migrations automatically on startup (`scripts/docker-entrypoint.sh`).
 - Schema repair script `scripts/ensure_schema.py` fixes missing 0.12.0 columns when Alembic reports head without applying DDL.
 - Document registration metadata: separate fields for developer, date, reviewer, and approver; compact inputs with «choose from existing» per field (single FIO, replaces value).
-- Normalized FIO suggestions from the database (empty name parts trimmed; surname-only allowed).
-- Create-record form shows JSON API responses as inline messages instead of browser alerts.
+- Signature dates: developer, reviewer, and approver (`developer_signed_date`, `reviewer_signed_date`, `approver_signed_date`).
+- Create form returns JSON redirect for reliable navigation to upload page; org check no longer shows raw JSON messages.
+- Name picker tooltip on hover instead of visible «Выбрать из существующих» label.
+- Signature date fields use hover tooltips instead of visible labels.
+- Header: «Проекты» link placed after «Уведомления».
+- Uploaded file rename rule: `{designation} {original_name}.{ext}` (single space, no parentheses).
 
 ## 0.10.0
 
