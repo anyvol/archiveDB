@@ -113,22 +113,6 @@ async def save_upload_file(
     return file_path, stored_name
 
 
-async def save_development_order_file(
-    file: UploadFile,
-    project_slug: str,
-) -> tuple[str, str]:
-    contents, safe_name = await _read_upload_contents(file)
-    upload_dir = _resolve_upload_subdirectory(project_slug, misc_document=True)
-    os.makedirs(upload_dir, exist_ok=True)
-    unique_code = uuid.uuid4().hex[:8]
-    filename_base, extension = os.path.splitext(safe_name)
-    stored_name = f"{unique_code}_{filename_base}{extension}"
-    file_path = os.path.join(upload_dir, stored_name)
-    with open(file_path, "wb") as buffer:
-        buffer.write(contents)
-    return file_path, stored_name
-
-
 def remove_file_if_exists(file_path: Optional[str]) -> None:
     if file_path and os.path.exists(file_path):
         os.remove(file_path)
