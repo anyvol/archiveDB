@@ -115,6 +115,7 @@ def test_generated_scripts_embed_server_candidates(monkeypatch):
     win_ps1 = cert_scripts_module.trust_windows_ps1(info)
     assert "EncodedCommand" not in win_cmd
     assert "certutil -addstore -f Root" in win_cmd
+    assert "certutil -user -addstore -f Root" in win_cmd
     assert "curl.exe -fsSk" in win_cmd
     assert "Start-Process" in win_cmd
     assert "certutil.exe -addstore -f Root" in win_ps1

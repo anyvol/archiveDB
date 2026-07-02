@@ -51,11 +51,16 @@ function Install-TrustedRootCertificate {
     if ($certutil) {
         & certutil.exe -addstore -f Root $Path | Out-Host
         if ($LASTEXITCODE -ne 0) {
-            throw "certutil failed with exit code $LASTEXITCODE"
+            throw "certutil (machine store) failed with exit code $LASTEXITCODE"
+        }
+        & certutil.exe -user -addstore -f Root $Path | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "certutil (user store) failed with exit code $LASTEXITCODE"
         }
         return
     }
     Import-Certificate -FilePath $Path -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+    Import-Certificate -FilePath $Path -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
 }
 
 function Assert-Administrator {

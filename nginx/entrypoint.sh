@@ -23,13 +23,34 @@ _build_san() {
     printf '%s' "${san}"
 }
 
-if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; then
-    echo "TLS certificate not found — generating self-signed certificate (CN=${CN})..."
-    mkdir -p "${CERT_DIR}"
+_ensure_openssl() {
     if ! command -v openssl >/dev/null 2>&1; then
         echo "Installing openssl..."
         apk add --no-cache openssl
     fi
+}
+
+_cert_text() {
+    if [ ! -f "${CERT_DIR}/fullchain.pem" ]; then
+        return 1
+    fi
+    openssl x509 -in "${CERT_DIR}/fullchain.pem" -noout -text 2>/dev/null
+}
+
+_cert_matches_env() {
+    cert_text="$(_cert_text)" || return 1
+    printf '%s\n' "${cert_text}" | grep -Fq "DNS:${CN}" || return 1
+    if [ -n "${SSL_CERT_IP}" ]; then
+        printf '%s\n' "${cert_text}" | grep -Fq "IP Address:${SSL_CERT_IP}" || return 1
+    fi
+    return 0
+}
+
+_generate_certificate() {
+    reason="$1"
+    echo "${reason}"
+    mkdir -p "${CERT_DIR}"
+    _ensure_openssl
     SAN="$(_build_san)"
     openssl req -x509 -nodes -newkey rsa:2048 \
         -keyout "${CERT_DIR}/privkey.pem" \
@@ -38,7 +59,15 @@ if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; t
         -subj "/CN=${CN}" \
         -addext "subjectAltName=${SAN}"
     echo "Certificate created (SAN=${SAN})."
-    echo "Open ${PUBLIC_URL} (accept browser security warning for self-signed cert)."
+    echo "Open ${PUBLIC_URL} (run trust-windows.cmd on client PCs after regenerating)."
+}
+
+if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; then
+    _generate_certificate "TLS certificate not found — generating self-signed certificate (CN=${CN})..."
+elif ! _cert_matches_env; then
+    echo "Existing certificate does not match SSL_CERT_CN=${CN} / SSL_CERT_IP=${SSL_CERT_IP}."
+    rm -f "${CERT_DIR}/fullchain.pem" "${CERT_DIR}/privkey.pem"
+    _generate_certificate "Regenerating self-signed certificate with updated SAN..."
 fi
 
 envsubst '${REDIRECT_PORT}' \
@@ -48,5 +77,8 @@ envsubst '${REDIRECT_PORT}' \
 echo "nginx listening:"
 echo "  http://localhost/archive/          (push works on this PC)"
 echo "  https://${CN}${REDIRECT_PORT}/archive/  (LAN — run scripts/windows-forward-ports.ps1 on Windows+WSL)"
+if [ -n "${SSL_CERT_IP}" ]; then
+    echo "  https://${SSL_CERT_IP}${REDIRECT_PORT}/archive/"
+fi
 
 exec nginx -g 'daemon off;'

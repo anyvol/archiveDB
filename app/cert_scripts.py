@@ -201,18 +201,23 @@ function Install-TrustedRootCertificate {{
     if ($certutil) {{
         & certutil.exe -addstore -f Root $Path | Out-Host
         if ($LASTEXITCODE -ne 0) {{
-            throw "certutil failed with exit code $LASTEXITCODE"
+            throw "certutil (machine store) failed with exit code $LASTEXITCODE"
+        }}
+        & certutil.exe -user -addstore -f Root $Path | Out-Host
+        if ($LASTEXITCODE -ne 0) {{
+            throw "certutil (user store) failed with exit code $LASTEXITCODE"
         }}
         return
     }}
     Import-Certificate -FilePath $Path -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
+    Import-Certificate -FilePath $Path -CertStoreLocation Cert:\\CurrentUser\\Root | Out-Null
 }}
 
 Download-Certificate-FromCandidates -Urls $CertUrls -Destination $TempCert
-Write-Host "Installing certificate into Trusted Root..."
+Write-Host "Installing certificate into Trusted Root (machine + current user)..."
 Install-TrustedRootCertificate -Path $TempCert
 Remove-Item $TempCert -Force
-Write-Host "Done. Restart the browser and open:"
+Write-Host "Done. Fully close the browser (all windows), then open:"
 Write-Host "  {base_url}/"
 """
 
@@ -259,22 +264,25 @@ exit /b 1
 
 :install
 echo Downloaded certificate.
-echo Installing into Trusted Root...
+echo Installing into Trusted Root (machine + current user)...
 certutil -addstore -f Root "%CERT%" >nul
-if errorlevel 1 (
-    echo Failed to install certificate into Trusted Root store.
-    del "%CERT%" >nul 2>&1
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto :install_failed
+certutil -user -addstore -f Root "%CERT%" >nul
+if errorlevel 1 goto :install_failed
 
 del "%CERT%" >nul 2>&1
 echo.
-echo Done. Restart the browser and open:
+echo Done. Fully close the browser (all windows), then open:
 echo   {base_url}/
+echo.
+echo If the warning remains, regenerate the server certificate:
+echo   delete nginx/certs/*.pem and restart proxy with SSL_CERT_IP in .env
 echo.
 pause
 exit /b 0
+
+:install_failed
+echo Failed to install certificate into Trusted Root store.
 """
 
 
