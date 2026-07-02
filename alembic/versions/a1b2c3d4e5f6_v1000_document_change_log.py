@@ -10,6 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect
+from sqlalchemy.dialects.postgresql import ENUM
 
 
 revision: str = "a1b2c3d4e5f6"
@@ -17,7 +18,7 @@ down_revision: Union[str, Sequence[str], None] = "f5a6b7c8d9e0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-document_change_event_type = sa.Enum(
+DOCUMENT_CHANGE_EVENT_VALUES = (
     "register",
     "file_replace_cosmetic",
     "file_replace_formal",
@@ -26,7 +27,14 @@ document_change_event_type = sa.Enum(
     "correction_request",
     "correction_request_approved",
     "correction_request_rejected",
-    name="documentchangeeventtype",
+)
+DOCUMENT_CHANGE_EVENT_TYPE_NAME = "documentchangeeventtype"
+
+document_change_event_type = ENUM(*DOCUMENT_CHANGE_EVENT_VALUES, name=DOCUMENT_CHANGE_EVENT_TYPE_NAME)
+document_change_event_type_no_create = ENUM(
+    *DOCUMENT_CHANGE_EVENT_VALUES,
+    name=DOCUMENT_CHANGE_EVENT_TYPE_NAME,
+    create_type=False,
 )
 
 notification_event_type_new = (
@@ -134,7 +142,7 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column("document_id", sa.Integer(), sa.ForeignKey("documents.id"), nullable=False),
             sa.Column("actor_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
-            sa.Column("event_type", document_change_event_type, nullable=False),
+            sa.Column("event_type", document_change_event_type_no_create, nullable=False),
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.Column("comment", sa.Text(), nullable=True),
             sa.Column("change_number", sa.String(length=64), nullable=True),

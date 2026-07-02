@@ -31,7 +31,7 @@ services:
     expose:
       - "8000"
     working_dir: /app
-    command: ["sh", "scripts/docker-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["sh", "/usr/local/bin/docker-entrypoint.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   proxy:
     build:

@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ENUM
 
 
 revision: str = "8a7eb69bb820"
@@ -16,13 +17,13 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-document_status = sa.Enum(
-    "pending_review",
-    "verified",
-    "requires_correction",
-    name="documentstatus",
-)
-user_role = sa.Enum("admin", "user", "reviewer", name="userrole")
+DOCUMENT_STATUS_VALUES = ("pending_review", "verified", "requires_correction")
+USER_ROLE_VALUES = ("admin", "user", "reviewer")
+
+document_status = ENUM(*DOCUMENT_STATUS_VALUES, name="documentstatus")
+document_status_no_create = ENUM(*DOCUMENT_STATUS_VALUES, name="documentstatus", create_type=False)
+user_role = ENUM(*USER_ROLE_VALUES, name="userrole")
+user_role_no_create = ENUM(*USER_ROLE_VALUES, name="userrole", create_type=False)
 
 
 def upgrade() -> None:
@@ -38,7 +39,7 @@ def upgrade() -> None:
         sa.Column("full_name", sa.String(), nullable=True),
         sa.Column("position", sa.String(), nullable=True),
         sa.Column("department", sa.String(), nullable=True),
-        sa.Column("role", user_role, nullable=False, server_default="user"),
+        sa.Column("role", user_role_no_create, nullable=False, server_default="user"),
         sa.Column("email", sa.String(length=100), nullable=True),
     )
     op.create_index("ix_users_id", "users", ["id"])
@@ -86,7 +87,7 @@ def upgrade() -> None:
         sa.Column("doc_name", sa.String(), nullable=True),
         sa.Column(
             "status",
-            document_status,
+            document_status_no_create,
             nullable=False,
             server_default="pending_review",
         ),

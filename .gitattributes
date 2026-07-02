@@ -1,0 +1,17 @@
+# Shell scripts must use LF so /bin/sh inside Linux containers accepts `set -e`.
+*.sh text eol=lf
+
+# Docker entrypoints are invoked directly by container runtime.
+scripts/docker-entrypoint.sh text eol=lf
+nginx/entrypoint.sh text eol=lf
+
+# Normalize common text files across Windows/macOS/Linux checkouts.
+*.py text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.ini text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+Dockerfile text eol=lf
