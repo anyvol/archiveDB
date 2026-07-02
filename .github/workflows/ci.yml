@@ -36,6 +36,20 @@ jobs:
             echo "Invalid version format in VERSION file. Use MAJOR.MINOR.PATCH (e.g. 0.8.0)"
             exit 1
           fi
+      - name: Verify shell scripts use LF line endings
+        run: |
+          set -e
+          for file in scripts/*.sh nginx/entrypoint.sh; do
+            if grep -q $'\r' "$file"; then
+              echo "CRLF line endings are not allowed in $file"
+              exit 1
+            fi
+          done
+      - name: Run Alembic migrations on fresh database
+        run: alembic upgrade head
+        env:
+          SECRET_KEY: test-secret-key-for-ci-only-32-characters!!
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
       - name: Run tests
         run: python -m pytest -q
         env:
