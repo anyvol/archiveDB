@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.12.1
+
+- Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
+- Document deletion now sends a notification to all users (except the person who deleted the record); delete notifications are saved to the «Уведомления» list and browser push is sent only after a successful delete.
+- Registration error for duplicate serial number renamed to «Указанный порядковый номер уже используется».
+- Added departments «Отдел интеграции и сопровождения» and «Сервисный отдел» to registration and profile forms.
+- Personal cabinet shows the user's role in the system (read-only).
+
 ## 0.12.0
 
 - Any authenticated user can upload a file to a record that has no file yet.
