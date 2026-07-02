@@ -14,6 +14,13 @@ class UserRole(str, enum.Enum):
     reviewer = "reviewer"
 
 
+USER_ROLE_LABELS = {
+    UserRole.admin: "Администратор",
+    UserRole.user: "Обычный пользователь",
+    UserRole.reviewer: "Ревьюер",
+}
+
+
 class DocumentStatus(str, enum.Enum):
     pending_review = "pending_review"
     approved = "approved"
@@ -84,6 +91,8 @@ DEPARTMENTS = [
     "Конструкторский отдел",
     "Технологический отдел",
     "Отдел НИОКР",
+    "Отдел интеграции и сопровождения",
+    "Сервисный отдел",
 ]
 
 

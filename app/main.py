@@ -34,6 +34,7 @@ from app.models import (
     DOCUMENT_STATUS_LABELS,
     DOCUMENT_TYPE_LABELS,
     DEPARTMENTS,
+    USER_ROLE_LABELS,
     Project,
     ProjectFile,
     ProjectImage,
@@ -126,6 +127,7 @@ templates.env.globals["DOCUMENT_STATUS_LABELS"] = DOCUMENT_STATUS_LABELS
 templates.env.globals["DOCUMENT_TYPE_LABELS"] = DOCUMENT_TYPE_LABELS
 templates.env.globals["DOC_KIND_CODES"] = DOC_KIND_CODES
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
+templates.env.globals["USER_ROLE_LABELS"] = USER_ROLE_LABELS
 templates.env.globals["url_path"] = url_path
 templates.env.globals["app_scope"] = app_scope
 templates.env.globals["DocumentStatus"] = DocumentStatus

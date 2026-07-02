@@ -7,6 +7,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 - Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
 - Document deletion now sends a notification to all users (except the person who deleted the record).
+- Added departments «Отдел интеграции и сопровождения» and «Сервисный отдел» to registration and profile forms.
+- Personal cabinet shows the user's role in the system (read-only).
 
 ## 0.12.0
 
