@@ -229,16 +229,19 @@ class BaseDocument(Base):
         "DocumentChangeEvent",
         back_populates="document",
         order_by="DocumentChangeEvent.created_at.desc()",
+        cascade="all, delete-orphan",
     )
     file_revisions = relationship(
         "FileRevision",
         back_populates="document",
         order_by="FileRevision.archived_at.desc()",
+        cascade="all, delete-orphan",
     )
     change_notifications = relationship(
         "ChangeNotification",
         back_populates="document",
         order_by="ChangeNotification.created_at.desc()",
+        cascade="all, delete-orphan",
     )
     design_document = relationship(
         "DesignDocument",

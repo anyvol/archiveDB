@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.12.1
+
+- Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
+
 ## 0.12.0
 
 - Any authenticated user can upload a file to a record that has no file yet.
