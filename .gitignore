@@ -3,6 +3,7 @@ uploaded_files/*
 __pycache__/
 *.pyc
 .env
+docker-compose.override.yaml
 *.pem
 nginx/certs/*.pem
 !nginx/certs/.gitkeep

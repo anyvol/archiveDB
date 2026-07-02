@@ -9,26 +9,37 @@ from fastapi import Request
 from app.config import PUBLIC_HTTPS_PORT, ROOT_PATH
 
 
-def _request_host(request: Request) -> str:
+def _request_host(request: Request, *, https: bool = False) -> str:
     forwarded_host = request.headers.get("x-forwarded-host")
     if forwarded_host:
-        return forwarded_host.split(",")[0].strip()
+        host = forwarded_host.split(",")[0].strip()
+    else:
+        host = request.headers.get("host", request.url.netloc)
 
-    host = request.headers.get("host", request.url.netloc)
+    if https and PUBLIC_HTTPS_PORT and PUBLIC_HTTPS_PORT not in ("443", "80"):
+        hostname = host.split(":")[0]
+        return f"{hostname}:{PUBLIC_HTTPS_PORT}"
+
     if PUBLIC_HTTPS_PORT and PUBLIC_HTTPS_PORT not in ("443", "80") and ":" not in host:
         host = f"{host}:{PUBLIC_HTTPS_PORT}"
     return host
 
 
-def external_base_url(request: Request) -> str:
-    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = _request_host(request)
+def external_base_url(request: Request, *, https: bool = False) -> str:
+    if https:
+        scheme = "https"
+        host = _request_host(request, https=True)
+    else:
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = _request_host(request)
     root = ROOT_PATH.rstrip("/") if ROOT_PATH else ""
     return f"{scheme}://{host}{root}"
 
 
 def cert_download_url(request: Request) -> str:
-    return f"{external_base_url(request)}/cert/fullchain.pem"
+    # Client trust scripts must always fetch the cert over HTTPS, even when the
+    # profile page was opened via HTTP (e.g. http://server:8080/archive/).
+    return f"{external_base_url(request, https=True)}/cert/fullchain.pem"
 
 
 def _trust_windows_powershell_body(cert_url: str) -> str:
@@ -38,16 +49,34 @@ if (-not $isAdmin) {{ throw "Run this file as Administrator." }}
 $CertUrl = "{cert_url}"
 $TempCert = Join-Path $env:TEMP "archive-site-$([Guid]::NewGuid().ToString('n')).pem"
 Write-Host "Downloading certificate from $CertUrl ..."
-if ($PSVersionTable.PSVersion.Major -ge 6) {{
-    Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert -SkipCertificateCheck
-}} else {{
+
+function Download-Certificate {{
+    param([string]$Url, [string]$Destination)
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {{
+        & curl.exe -fsSk $Url -o $Destination
+        return
+    }}
+    if ($PSVersionTable.PSVersion.Major -ge 6) {{
+        Invoke-WebRequest -Uri $Url -OutFile $Destination -SkipCertificateCheck
+        return
+    }}
+    $tls12 = [Net.SecurityProtocolType]::Tls12
+    if ([Enum]::IsDefined([Net.SecurityProtocolType], 'Tls13')) {{
+        $tls13 = [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = $tls12 -bor $tls13
+    }} else {{
+        [Net.ServicePointManager]::SecurityProtocol = $tls12
+    }}
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {{ $true }}
     try {{
-        Invoke-WebRequest -Uri $CertUrl -OutFile $TempCert
+        (New-Object System.Net.WebClient).DownloadFile($Url, $Destination)
     }} finally {{
         [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
     }}
 }}
+
+Download-Certificate -Url $CertUrl -Destination $TempCert
 Write-Host "Installing certificate into Trusted Root..."
 Import-Certificate -FilePath $TempCert -CertStoreLocation Cert:\\LocalMachine\\Root | Out-Null
 Remove-Item $TempCert -Force

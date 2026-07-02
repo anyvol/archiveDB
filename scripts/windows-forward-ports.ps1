@@ -1,74 +1,151 @@
-# Windows: forward ports to WSL when Docker runs inside WSL2.
-# Required for LAN access (e.g. https://192.168.x.x:8443/) — WSL does not
-# publish Docker ports on the Windows LAN interface by default.
+# Windows network setup for archiveDB.
+# - Docker Desktop on Windows: opens firewall only (ports are published directly).
+# - Docker inside WSL2: forwards Windows ports to the WSL VM + opens firewall.
 #
 # Run in PowerShell **as Administrator**:
 #   Set-ExecutionPolicy -Scope Process Bypass
 #   .\scripts\windows-forward-ports.ps1
+#
+# Optional custom ports (must match .env / docker-compose.override.yaml):
+#   .\scripts\windows-forward-ports.ps1 -HttpPort 8080 -HttpsPort 8443
+
+param(
+    [int]$HttpPort = 80,
+    [int]$HttpsPort = 8443
+)
 
 $ErrorActionPreference = "Stop"
 
-$ports = @(80, 8443)
+$ports = @($HttpPort, $HttpsPort) | Select-Object -Unique
 
-try {
-    $wslIp = (wsl.exe hostname -I).Trim().Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)[0]
-} catch {
-    Write-Error "Cannot get WSL IP. Is WSL running?"
+function Get-WslIpAddress {
+    $commands = @(
+        { wsl.exe -e sh -c "ip -4 route get 1.1.1.1 2>/dev/null | awk '{print `$7; exit}'" },
+        { wsl.exe hostname -i },
+        { wsl.exe hostname -I }
+    )
+
+    foreach ($command in $commands) {
+        try {
+            $raw = (& $command 2>$null | Out-String).Trim()
+            if (-not $raw) { continue }
+            $candidate = $raw.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)[0]
+            if ($candidate -match '^\d{1,3}(\.\d{1,3}){3}$') {
+                return $candidate
+            }
+        } catch {
+            continue
+        }
+    }
+
+    return $null
 }
 
-if (-not $wslIp) {
-    Write-Error "WSL IP is empty."
+function Test-DockerRunsInWsl {
+    try {
+        $context = (docker context show 2>$null).Trim()
+        if ($context -match 'wsl') {
+            return $true
+        }
+    } catch {
+        # Docker CLI not available — fall back to WSL IP probing below.
+    }
+
+    return [bool](Get-WslIpAddress)
 }
 
-Write-Host "WSL IP: $wslIp"
+function Enable-ArchiveFirewallRules {
+    param([int[]]$TcpPorts)
 
-# Listen on localhost and every Windows IPv4 address (LAN access).
-$listenAddresses = @("127.0.0.1")
-Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-    Where-Object {
-        $_.IPAddress -notmatch '^127\.' -and
-        $_.PrefixOrigin -ne 'WellKnown' -and
-        $_.IPAddress -notmatch '^169\.254\.'
-    } |
-    ForEach-Object { $listenAddresses += $_.IPAddress }
-
-$listenAddresses = $listenAddresses | Select-Object -Unique
-Write-Host "Forward targets: $($listenAddresses -join ', ')"
-
-foreach ($addr in $listenAddresses) {
-    foreach ($port in $ports) {
-        netsh interface portproxy delete v4tov4 listenport=$port listenaddress=$addr 2>$null | Out-Null
-        netsh interface portproxy add v4tov4 listenport=$port listenaddress=$addr connectport=$port connectaddress=$wslIp
-        Write-Host "  ${addr}:${port} -> ${wslIp}:${port}"
+    foreach ($port in $TcpPorts) {
+        Remove-NetFirewallRule -DisplayName "archive-app TCP $port" -ErrorAction SilentlyContinue | Out-Null
+        New-NetFirewallRule `
+            -DisplayName "archive-app TCP $port" `
+            -Direction Inbound `
+            -Protocol TCP `
+            -LocalPort $port `
+            -Action Allow `
+            -Profile Any | Out-Null
+        Write-Host "Firewall: allow inbound TCP $port"
     }
 }
 
-foreach ($port in $ports) {
-    Remove-NetFirewallRule -DisplayName "archive-app TCP $port" -ErrorAction SilentlyContinue | Out-Null
-    New-NetFirewallRule -DisplayName "archive-app TCP $port" -Direction Inbound -Protocol TCP -LocalPort $port -Action Allow -Profile Any | Out-Null
-    Write-Host "Firewall: allow inbound TCP $port"
+function Get-ListenAddresses {
+    $listenAddresses = @("127.0.0.1")
+    Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.IPAddress -notmatch '^127\.' -and
+            $_.PrefixOrigin -ne 'WellKnown' -and
+            $_.IPAddress -notmatch '^169\.254\.'
+        } |
+        ForEach-Object { $listenAddresses += $_.IPAddress }
+
+    return $listenAddresses | Select-Object -Unique
 }
 
-Write-Host ""
-Write-Host "Current portproxy rules:"
-netsh interface portproxy show all
+$dockerInWsl = Test-DockerRunsInWsl
+
+if ($dockerInWsl) {
+    $wslIp = Get-WslIpAddress
+    if (-not $wslIp) {
+        Write-Error "Docker appears to run in WSL, but WSL IP could not be detected. Is WSL running?"
+    }
+
+    Write-Host "Mode: Docker in WSL2 (port forwarding required)"
+    Write-Host "WSL IP: $wslIp"
+
+    $listenAddresses = Get-ListenAddresses
+    Write-Host "Forward targets: $($listenAddresses -join ', ')"
+
+    foreach ($addr in $listenAddresses) {
+        foreach ($port in $ports) {
+            netsh interface portproxy delete v4tov4 listenport=$port listenaddress=$addr 2>$null | Out-Null
+            netsh interface portproxy add v4tov4 listenport=$port listenaddress=$addr connectport=$port connectaddress=$wslIp
+            Write-Host "  ${addr}:${port} -> ${wslIp}:${port}"
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Current portproxy rules:"
+    netsh interface portproxy show all
+} else {
+    Write-Host "Mode: Docker Desktop / native Windows (portproxy skipped)"
+}
+
+Enable-ArchiveFirewallRules -TcpPorts $ports
 
 Write-Host ""
 Write-Host "Test from this PC:"
-Write-Host "  http://localhost/archive/"
-Write-Host "  https://localhost:8443/archive/"
+if ($HttpPort -eq 80) {
+    Write-Host "  http://localhost/archive/"
+} else {
+    Write-Host "  http://localhost:${HttpPort}/archive/"
+}
+if ($HttpsPort -eq 443) {
+    Write-Host "  https://localhost/archive/"
+} else {
+    Write-Host "  https://localhost:${HttpsPort}/archive/"
+}
+
 Write-Host ""
 Write-Host "Test from another PC on LAN (use this server's IP):"
 Get-NetIPAddress -AddressFamily IPv4 |
     Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.PrefixOrigin -ne 'WellKnown' } |
     ForEach-Object {
-        Write-Host "  https://$($_.IPAddress):8443/archive/"
+        if ($HttpsPort -eq 443) {
+            Write-Host "  https://$($_.IPAddress)/archive/"
+        } else {
+            Write-Host "  https://$($_.IPAddress):${HttpsPort}/archive/"
+        }
     }
-Write-Host ""
-Write-Host "Permanent alternative: enable mirrored networking in %UserProfile%\.wslconfig :"
-Write-Host "  [wsl2]"
-Write-Host "  networkingMode=mirrored"
-Write-Host "Then: wsl --shutdown"
-Write-Host ""
-Write-Host "To remove forwarding:"
-Write-Host "  netsh interface portproxy reset"
+
+if ($dockerInWsl) {
+    Write-Host ""
+    Write-Host "Permanent alternative: enable mirrored networking in %UserProfile%\.wslconfig :"
+    Write-Host "  [wsl2]"
+    Write-Host "  networkingMode=mirrored"
+    Write-Host "Then: wsl --shutdown"
+    Write-Host ""
+    Write-Host "To remove forwarding:"
+    Write-Host "  netsh interface portproxy reset"
+}
