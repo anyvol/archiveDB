@@ -44,9 +44,15 @@ from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
 from app.document_queries import fetch_documents
-from app.document_helpers import save_upload_file, remove_file_if_exists, save_development_order_file
+from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_project_by_id, create_new_project
-from app.project_files import save_project_file, save_project_images, remove_project_file_from_disk
+from app.project_files import (
+    save_development_order_file,
+    save_project_file,
+    save_project_images,
+    remove_project_file_from_disk,
+    sync_project_misc_files,
+)
 from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS, is_valid_document_format
 from app.metadata_helpers import detect_document_format_from_bytes
 from app.name_helpers import fetch_known_person_names, normalize_person_name
@@ -493,7 +499,7 @@ async def create_document_record(
     elif new_project_name:
         project = await create_new_project(session, new_project_name, new_project_cipher)
         if project_dev_order and getattr(project_dev_order, "filename", None):
-            await save_development_order_file(project_dev_order, project.slug)
+            await save_development_order_file(session, project, project_dev_order, user)
     else:
         raise HTTPException(status_code=400, detail="Необходимо выбрать или указать проект.")
 
@@ -1293,7 +1299,7 @@ async def create_project_record(
     project.created_at = datetime.utcnow()
 
     if project_dev_order and getattr(project_dev_order, "filename", None):
-        await save_development_order_file(project_dev_order, project.slug)
+        await save_development_order_file(session, project, project_dev_order, user)
 
     if image_files:
         await save_project_images(session, project, image_files)
@@ -1325,6 +1331,10 @@ async def project_detail_page(
     project = result.unique().scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Проект не найден.")
+
+    await sync_project_misc_files(session, project, user)
+    await session.commit()
+    await session.refresh(project, ["project_files", "project_images", "documents"])
 
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(

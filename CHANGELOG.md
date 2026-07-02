@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.12.2
+
+- Fixed project documents not appearing in «Проекты» when a development order was uploaded at project creation: the file was saved to «Прочие документы» on disk but not registered in `project_files`.
+- Opening a project page now syncs existing files from the «Прочие документы» folder into the project documents list (repairs projects created before this fix).
+
 ## 0.12.1
 
 - Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
