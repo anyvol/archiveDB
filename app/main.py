@@ -1,7 +1,7 @@
 # app/main.py
 
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode
 from contextlib import asynccontextmanager
@@ -462,7 +462,10 @@ async def create_document_record(
     developed_by = normalize_person_name(form_data.get("developed_by") or "")
     reviewed_by = normalize_person_name(form_data.get("reviewed_by") or "") or None
     approved_by = normalize_person_name(form_data.get("approved_by") or "") or None
-    doc_date = (form_data.get("doc_date") or "").strip() or None
+    developer_signed_date = (form_data.get("developer_signed_date") or "").strip() or None
+    reviewer_signed_date = (form_data.get("reviewer_signed_date") or "").strip() or None
+    approver_signed_date = (form_data.get("approver_signed_date") or "").strip() or None
+    is_ajax = form_data.get("_ajax") == "1"
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -497,7 +500,9 @@ async def create_document_record(
         developed_by=developed_by,
         reviewed_by=reviewed_by,
         approved_by=approved_by,
-        doc_date=doc_date,
+        developer_signed_date=developer_signed_date,
+        reviewer_signed_date=reviewer_signed_date,
+        approver_signed_date=approver_signed_date,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,
@@ -566,7 +571,10 @@ async def create_document_record(
         )
 
     await session.commit()
-    return RedirectResponse(url=url_path(f"/documents/{base_doc.id}/upload"), status_code=status.HTTP_303_SEE_OTHER)
+    redirect_url = url_path(f"/documents/{base_doc.id}/upload")
+    if is_ajax:
+        return JSONResponse({"ok": True, "redirect": redirect_url})
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/documents/{doc_id}/skip-upload", response_class=RedirectResponse)

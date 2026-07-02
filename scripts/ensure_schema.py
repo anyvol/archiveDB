@@ -58,9 +58,26 @@ def _apply_v1200_schema(engine) -> list[str]:
             if "approved_by" not in doc_columns:
                 conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS approved_by VARCHAR"))
                 applied.append("documents.approved_by")
-            if "doc_date" not in doc_columns:
-                conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_date VARCHAR(32)"))
-                applied.append("documents.doc_date")
+            if "doc_date" in doc_columns and "developer_signed_date" not in doc_columns:
+                conn.execute(
+                    text("ALTER TABLE documents RENAME COLUMN doc_date TO developer_signed_date")
+                )
+                applied.append("documents.doc_date -> developer_signed_date")
+            elif "developer_signed_date" not in doc_columns:
+                conn.execute(
+                    text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS developer_signed_date VARCHAR(32)")
+                )
+                applied.append("documents.developer_signed_date")
+            if "reviewer_signed_date" not in doc_columns:
+                conn.execute(
+                    text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS reviewer_signed_date VARCHAR(32)")
+                )
+                applied.append("documents.reviewer_signed_date")
+            if "approver_signed_date" not in doc_columns:
+                conn.execute(
+                    text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS approver_signed_date VARCHAR(32)")
+                )
+                applied.append("documents.approver_signed_date")
 
         if "projects" in tables:
             project_columns = _column_names(inspector, "projects")
@@ -134,8 +151,12 @@ def _verify_schema(engine) -> None:
             missing.append("documents.reviewed_by")
         if "approved_by" not in _column_names(inspector, "documents"):
             missing.append("documents.approved_by")
-        if "doc_date" not in _column_names(inspector, "documents"):
-            missing.append("documents.doc_date")
+        if "developer_signed_date" not in _column_names(inspector, "documents"):
+            missing.append("documents.developer_signed_date")
+        if "reviewer_signed_date" not in _column_names(inspector, "documents"):
+            missing.append("documents.reviewer_signed_date")
+        if "approver_signed_date" not in _column_names(inspector, "documents"):
+            missing.append("documents.approver_signed_date")
     if "projects" in tables:
         project_columns = _column_names(inspector, "projects")
         if "description" not in project_columns:
