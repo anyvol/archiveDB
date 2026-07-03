@@ -57,26 +57,73 @@ def _sanitize_storage_name(name: str) -> str:
     return sanitized or "file"
 
 
-def file_name_matches_designation(original_name: str, designation: str) -> bool:
-    filename_base, _ = os.path.splitext(os.path.basename(original_name))
-    base = filename_base.strip()
+def _format_doc_title(doc_name: Optional[str]) -> Optional[str]:
+    if not doc_name or not doc_name.strip():
+        return None
+    title = _UNSAFE_FILENAME_CHARS.sub("_", doc_name.strip())
+    return title or None
+
+
+def file_name_matches_designation(
+    original_name: str,
+    designation: str,
+    *,
+    doc_name: Optional[str] = None,
+) -> bool:
+    stored = os.path.basename(original_name)
+    filename_base, _ = os.path.splitext(stored)
     des = designation.strip()
+    title = _format_doc_title(doc_name)
+
+    if title:
+        if filename_base == f"{des} - {title}":
+            return True
+        prefix = f"{des} ("
+        suffix = f") - {title}"
+        return filename_base.startswith(prefix) and filename_base.endswith(suffix)
+
+    base = filename_base.strip()
     if base.casefold() == des.casefold():
         return True
     prefix = f"{des} ("
     return base.casefold().startswith(prefix.casefold()) and base.endswith(")")
 
 
-def compute_stored_file_name(designation: Optional[str], original_name: str) -> str:
+def compute_stored_file_name(
+    designation: Optional[str],
+    original_name: str,
+    *,
+    doc_name: Optional[str] = None,
+) -> str:
     original_name = os.path.basename(original_name)
-    if designation and not file_name_matches_designation(original_name, designation):
-        filename_base, extension = os.path.splitext(original_name)
-        return f"{designation} ({filename_base}){extension}"
-    return original_name
+    if not designation:
+        return original_name
+
+    if file_name_matches_designation(original_name, designation, doc_name=doc_name):
+        return original_name
+
+    filename_base, extension = os.path.splitext(original_name)
+    des = designation.strip()
+    base = filename_base.strip()
+    title = _format_doc_title(doc_name)
+
+    if title:
+        if base.casefold() == des.casefold():
+            return f"{des} - {title}{extension}"
+        return f"{des} ({filename_base}) - {title}{extension}"
+
+    if base.casefold() == des.casefold():
+        return original_name
+    return f"{des} ({filename_base}){extension}"
 
 
-def build_upload_rename_message(designation: str, original_name: str) -> str:
-    stored_name = compute_stored_file_name(designation, original_name)
+def build_upload_rename_message(
+    designation: str,
+    original_name: str,
+    *,
+    doc_name: Optional[str] = None,
+) -> str:
+    stored_name = compute_stored_file_name(designation, original_name, doc_name=doc_name)
     return f"Файл будет переименован в {stored_name}"
 
 
@@ -87,6 +134,7 @@ async def save_upload_file(
     *,
     doc_kind_code: Optional[str] = None,
     designation: Optional[str] = None,
+    doc_name: Optional[str] = None,
     archive_old: bool = False,
     archive_dest_dir: Optional[str] = None,
 ) -> tuple[str, str]:
@@ -100,7 +148,7 @@ async def save_upload_file(
     elif old_path and os.path.exists(old_path) and not archive_old:
         os.remove(old_path)
 
-    stored_name = compute_stored_file_name(designation, safe_name)
+    stored_name = compute_stored_file_name(designation, safe_name, doc_name=doc_name)
     disk_name = _sanitize_storage_name(stored_name)
 
     upload_dir = _resolve_upload_subdirectory(project_slug, doc_kind_code=doc_kind_code)

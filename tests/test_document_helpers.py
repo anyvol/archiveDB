@@ -28,23 +28,56 @@ def test_resolve_upload_subdirectory_misc_documents():
     assert path.endswith(os.path.join("my-project", MISC_DOCS_FOLDER))
 
 
-def test_compute_stored_file_name_renames_when_designation_differs():
+def test_compute_stored_file_name_with_doc_name_when_designation_differs():
+    assert compute_stored_file_name(
+        "ORG.123456.001",
+        "other.pdf",
+        doc_name="Корпус",
+    ) == "ORG.123456.001 (other) - Корпус.pdf"
+
+
+def test_compute_stored_file_name_with_doc_name_when_designation_matches():
+    assert compute_stored_file_name(
+        "ORG.123456.001",
+        "ORG.123456.001.pdf",
+        doc_name="Корпус",
+    ) == "ORG.123456.001 - Корпус.pdf"
+
+
+def test_compute_stored_file_name_keeps_already_renamed_file():
+    stored = "ORG.123456.001 (other) - Корпус.pdf"
+    assert compute_stored_file_name("ORG.123456.001", stored, doc_name="Корпус") == stored
+    assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001 - Корпус.pdf", doc_name="Корпус") == (
+        "ORG.123456.001 - Корпус.pdf"
+    )
+
+
+def test_compute_stored_file_name_without_doc_name():
     assert compute_stored_file_name("ORG.123456.001", "other.pdf") == "ORG.123456.001 (other).pdf"
     assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001.pdf") == "ORG.123456.001.pdf"
-    assert compute_stored_file_name("ORG.123456.001", "ORG.123456.001 (other).pdf") == "ORG.123456.001 (other).pdf"
     assert compute_stored_file_name(None, "report.pdf") == "report.pdf"
 
 
 def test_file_name_matches_designation():
-    assert file_name_matches_designation("ORG.123456.001.pdf", "ORG.123456.001")
-    assert file_name_matches_designation("ORG.123456.001 (other).pdf", "ORG.123456.001")
-    assert not file_name_matches_designation("other.pdf", "ORG.123456.001")
+    assert file_name_matches_designation(
+        "ORG.123456.001 - Корпус.pdf",
+        "ORG.123456.001",
+        doc_name="Корпус",
+    )
+    assert file_name_matches_designation(
+        "ORG.123456.001 (other) - Корпус.pdf",
+        "ORG.123456.001",
+        doc_name="Корпус",
+    )
+    assert not file_name_matches_designation("other.pdf", "ORG.123456.001", doc_name="Корпус")
 
 
 def test_build_upload_rename_message():
-    assert build_upload_rename_message("ORG.123456.001", "other.pdf") == (
-        "Файл будет переименован в ORG.123456.001 (other).pdf"
-    )
+    assert build_upload_rename_message(
+        "ORG.123456.001",
+        "other.pdf",
+        doc_name="Корпус",
+    ) == "Файл будет переименован в ORG.123456.001 (other) - Корпус.pdf"
 
 
 def test_sanitize_storage_name():

@@ -9,6 +9,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Date filters on the documents list interpret filter values in the configured timezone.
 - Document metadata editing now includes all FIO fields and signature dates, not only document name and developer.
 - Document creation form remembers the last entered FIO and signature dates for the current browser session to speed up batch entry.
+- Uploaded document files are renamed to include the registration title: `{designation} ({original name}) - {title}.{ext}`, or `{designation} - {title}.{ext}` when the uploaded file base name matches the designation.
 
 ## 0.13.0
 
