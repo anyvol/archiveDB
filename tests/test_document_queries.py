@@ -1,6 +1,10 @@
 """Tests for document query filter params."""
 
-from app.document_queries import build_documents_query, SORTABLE_COLUMNS
+from app.document_queries import DOCUMENTS_PAGE_SIZE, SORTABLE_COLUMNS, build_documents_query
+
+
+def test_documents_page_size_is_twenty():
+    assert DOCUMENTS_PAGE_SIZE == 20
 
 
 def test_sortable_columns_include_org_and_project():

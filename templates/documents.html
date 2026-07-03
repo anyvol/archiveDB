@@ -128,6 +128,7 @@
         .context-menu-item:hover { background: #f0f7ff; }
         .context-menu-item--danger { color: #dc3545; }
         .context-menu-item--danger:hover { background: #fff5f5; }
+        .load-more-wrap { margin-top: 1rem; text-align: center; }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.active { display: flex; }
         .modal-box { background: white; padding: 1.5rem; border-radius: 8px; max-width: 420px; width: 90%; }
@@ -361,53 +362,17 @@
                     {{ sort_link('status', 'Статус') }}
                 </tr>
             </thead>
-            <tbody>
-                {% for doc in documents %}
-                {% set doc_label = doc.design_document.designation if doc.design_document else (doc.tech_document.designation if doc.tech_document else ('#' ~ doc.id)) %}
-                <tr class="doc-row"
-                    data-doc-id="{{ doc.id }}"
-                    data-doc-label="{{ doc_label|e }}"
-                    data-action-open="{{ url_path('/documents/' ~ doc.id) }}"
-                    {% if doc.file_name %}data-action-download="{{ url_path('/documents/' ~ doc.id ~ '/download') }}"{% endif %}
-                    {% if can_upload_file(user, doc) and not doc.file_name %}data-action-upload="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
-                    {% if can_upload_file(user, doc) and doc.file_name %}data-action-replace="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}"{% endif %}
-                    {% if can_apply_formal_change(user, doc) %}data-action-apply-change="{{ url_path('/documents/' ~ doc.id ~ '/apply-change') }}"{% endif %}
-                    {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
-                    {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
-                    {% if can_request_minor_correction(user, doc) %}data-action-request-correction="{{ doc.id }}"{% endif %}
-                    {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
-                    {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
-                    {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
-                    {% if 'project' in visible_columns %}<td>{{ doc.project.name if doc.project else '—' }}</td>{% endif %}
-                    {% if 'okpo' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>{% endif %}
-                    {% if 'developed_by' in visible_columns %}<td>{{ doc.developed_by or '—' }}</td>{% endif %}
-                    {% if 'doc_name' in visible_columns %}<td>{{ doc.doc_name or '—' }}</td>{% endif %}
-                    {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
-                    {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
-                    {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
-                    {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
-                    {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
-                    {% if 'status' in visible_columns %}
-                    <td>
-                        {% set display_status = get_document_display_status(doc) %}
-                        <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span>
-                        {% if doc.status.value == 'requires_correction' and doc.review_comment %}
-                        <div class="status-comment-link">
-                            <a href="#" class="view-comment-link" data-comment="{{ doc.review_comment|e }}">Комментарий</a>
-                        </div>
-                        {% elif doc.status.value == 'correction_requested' %}
-                        <div class="status-comment-link">
-                            <a href="{{ url_path('/documents/' ~ doc.id) }}">Запрос исправления</a>
-                        </div>
-                        {% endif %}
-                    </td>
-                    {% endif %}
-                </tr>
-                {% else %}
-                <tr><td colspan="{{ visible_columns|length }}" style="text-align:center;">Документы не найдены.</td></tr>
-                {% endfor %}
+            <tbody id="document-rows">
+                {% with show_empty=true %}
+                {% include "_document_rows.html" %}
+                {% endwith %}
             </tbody>
         </table>
+        {% if has_more_documents %}
+        <div class="load-more-wrap">
+            <button type="button" class="btn btn-secondary" id="documents-load-more-btn">Загрузить ещё {{ documents_page_size }}</button>
+        </div>
+        {% endif %}
     </div>
 
     <div class="context-menu" id="doc-context-menu"></div>
@@ -947,15 +912,17 @@
             });
         }
 
-        document.querySelectorAll('.doc-row').forEach(row => {
-            row.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                buildContextMenu(row, e.clientX, e.clientY);
-            });
-            row.addEventListener('dblclick', (e) => {
-                const openUrl = row.dataset.actionOpen;
-                if (openUrl) window.location.href = openUrl;
-            });
+        document.getElementById('document-rows')?.addEventListener('contextmenu', (e) => {
+            const row = e.target.closest('.doc-row');
+            if (!row) return;
+            e.preventDefault();
+            buildContextMenu(row, e.clientX, e.clientY);
+        });
+        document.getElementById('document-rows')?.addEventListener('dblclick', (e) => {
+            const row = e.target.closest('.doc-row');
+            if (!row) return;
+            const openUrl = row.dataset.actionOpen;
+            if (openUrl) window.location.href = openUrl;
         });
 
         document.addEventListener('click', (e) => {
@@ -997,12 +964,12 @@
         const commentViewModal = document.getElementById('comment-view-modal');
         const commentViewText = document.getElementById('comment-view-text');
         const commentViewClose = document.getElementById('comment-view-close');
-        document.querySelectorAll('.view-comment-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                commentViewText.textContent = link.getAttribute('data-comment') || '';
-                commentViewModal.classList.add('active');
-            });
+        document.getElementById('document-rows')?.addEventListener('click', (e) => {
+            const link = e.target.closest('.view-comment-link');
+            if (!link) return;
+            e.preventDefault();
+            commentViewText.textContent = link.getAttribute('data-comment') || '';
+            commentViewModal.classList.add('active');
         });
         if (commentViewClose) {
             commentViewClose.addEventListener('click', () => commentViewModal.classList.remove('active'));
@@ -1010,6 +977,42 @@
         if (commentViewModal) {
             commentViewModal.addEventListener('click', (e) => {
                 if (e.target === commentViewModal) commentViewModal.classList.remove('active');
+            });
+        }
+
+        const documentsLoadMoreBtn = document.getElementById('documents-load-more-btn');
+        const documentRows = document.getElementById('document-rows');
+        const documentsPageSize = {{ documents_page_size }};
+        let documentsLoadedCount = {{ documents|length }};
+        const documentsListUrl = '{{ url_path('/api/documents') }}';
+        const documentsFilterQuery = '{{ filters_query }}';
+
+        if (documentsLoadMoreBtn && documentRows) {
+            documentsLoadMoreBtn.addEventListener('click', async function() {
+                documentsLoadMoreBtn.disabled = true;
+                documentsLoadMoreBtn.textContent = 'Загрузка…';
+                try {
+                    const qs = documentsFilterQuery
+                        ? documentsFilterQuery + '&offset=' + documentsLoadedCount + '&limit=' + documentsPageSize
+                        : 'offset=' + documentsLoadedCount + '&limit=' + documentsPageSize;
+                    const resp = await fetch(documentsListUrl + '?' + qs);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    const emptyRow = document.getElementById('documents-empty-row');
+                    if (emptyRow) emptyRow.remove();
+                    documentRows.insertAdjacentHTML('beforeend', data.html);
+                    documentsLoadedCount += data.count || 0;
+                    if (!data.has_more) {
+                        documentsLoadMoreBtn.parentElement.remove();
+                    } else {
+                        documentsLoadMoreBtn.disabled = false;
+                        documentsLoadMoreBtn.textContent = 'Загрузить ещё ' + documentsPageSize;
+                    }
+                } catch (e) {
+                    documentsLoadMoreBtn.disabled = false;
+                    documentsLoadMoreBtn.textContent = 'Загрузить ещё ' + documentsPageSize;
+                    alert('Не удалось загрузить документы.');
+                }
             });
         }
     </script>

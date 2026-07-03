@@ -1,4 +1,4 @@
-"""Password reset tokens and email delivery."""
+"""Password reset one-time codes and email delivery."""
 
 from __future__ import annotations
 
@@ -11,37 +11,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.auth import get_password_hash
-from app.config import PUBLIC_HTTPS_PORT, ROOT_PATH, url_path
 from app.mail.sender import send_email, smtp_configured
 from app.models import PasswordResetToken, User
 
 RESET_TTL_MINUTES = 60
+RESEND_COOLDOWN_SECONDS = 60
 
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _public_base_url(request_base: str | None = None) -> str:
-    if request_base:
-        return request_base.rstrip("/")
-    port = PUBLIC_HTTPS_PORT.strip()
-    if port and port not in ("443", "80"):
-        return f"https://localhost:{port}{ROOT_PATH}".rstrip("/")
-    return f"https://localhost{ROOT_PATH}".rstrip("/")
+def _generate_reset_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+async def _latest_reset_token(session: AsyncSession, user_id: int) -> PasswordResetToken | None:
+    result = await session.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.user_id == user_id)
+        .order_by(PasswordResetToken.created_at.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
 
 
 async def request_password_reset(
     session: AsyncSession,
     login_or_email: str,
-    request_base: str | None = None,
-) -> None:
+) -> str | None:
+    """Send a 6-digit reset code. Returns user login when mail was sent."""
     login_or_email = login_or_email.strip()
     if not login_or_email:
-        return
+        return None
 
     if not await smtp_configured(session):
-        return
+        return None
 
     normalized = login_or_email.lower()
     result = await session.execute(
@@ -51,22 +56,26 @@ async def request_password_reset(
     )
     user = result.scalars().first()
     if user is None or not user.email or not user.email_verified:
-        return
+        return None
 
-    token = secrets.token_urlsafe(32)
+    latest = await _latest_reset_token(session, user.id)
+    if latest and latest.used_at is None and (datetime.utcnow() - latest.created_at).total_seconds() < RESEND_COOLDOWN_SECONDS:
+        return user.login
+
+    code = _generate_reset_code()
     session.add(
         PasswordResetToken(
             user_id=user.id,
-            token_hash=_hash_token(token),
+            token_hash=_hash_token(code),
             expires_at=datetime.utcnow() + timedelta(minutes=RESET_TTL_MINUTES),
         )
     )
     await session.commit()
 
-    reset_url = f"{_public_base_url(request_base)}{url_path('/reset-password')}?token={token}"
     body = (
         "Вы запросили восстановление пароля в archiveDB.\n\n"
-        f"Перейдите по ссылке (действительна {RESET_TTL_MINUTES} мин.):\n{reset_url}\n\n"
+        f"Код для сброса пароля: {code}\n\n"
+        f"Код действителен {RESET_TTL_MINUTES} минут.\n"
         "Если вы не запрашивали сброс — проигнорируйте письмо."
     )
     await send_email(
@@ -75,6 +84,22 @@ async def request_password_reset(
         subject="archiveDB — восстановление пароля",
         body_text=body,
     )
+    return user.login
+
+
+async def verify_reset_code(session: AsyncSession, user: User, code: str) -> None:
+    token_hash = _hash_token(code.strip())
+    result = await session.execute(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.user_id == user.id, PasswordResetToken.token_hash == token_hash)
+        .limit(1)
+    )
+    row = result.scalars().first()
+    if row is None or row.used_at is not None:
+        raise HTTPException(status_code=400, detail="Неверный или использованный код.")
+
+    if datetime.utcnow() > row.expires_at:
+        raise HTTPException(status_code=400, detail="Срок действия кода истёк. Запросите новый.")
 
 
 async def reset_password_with_token(
@@ -88,10 +113,10 @@ async def reset_password_with_token(
     )
     row = result.scalars().first()
     if row is None or row.used_at is not None:
-        raise HTTPException(status_code=400, detail="Недействительная или использованная ссылка.")
+        raise HTTPException(status_code=400, detail="Недействительный или использованный код.")
 
     if datetime.utcnow() > row.expires_at:
-        raise HTTPException(status_code=400, detail="Срок действия ссылки истёк.")
+        raise HTTPException(status_code=400, detail="Срок действия кода истёк.")
 
     user_result = await session.execute(select(User).where(User.id == row.user_id))
     user = user_result.scalars().first()

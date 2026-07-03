@@ -106,6 +106,7 @@
     {% if can_upload %}
     <script>
         const DESIGNATION = {{ (designation or '')|tojson }};
+        const DOC_NAME = {{ (doc.doc_name or '')|tojson }};
         const IS_REPLACE = {{ is_replace|tojson }};
         const DETECT_FORMAT_URL = {{ url_path('/api/detect-document-format')|tojson }};
         const dropZone = document.getElementById('drop-zone');
@@ -122,18 +123,31 @@
             return lastDot > 0 ? name.slice(0, lastDot) : name;
         }
 
-        function namesMatch(fileName, designation) {
+        function namesMatch(fileName, designation, docName) {
             if (!designation) return true;
             const base = fileBaseName(fileName).trim().toLowerCase();
             const des = designation.trim().toLowerCase();
+            const title = (docName || '').trim().toLowerCase();
+            if (title) {
+                if (base === des + ' - ' + title) return true;
+                if (base.startsWith(des + ' (') && base.endsWith(') - ' + title)) return true;
+                return false;
+            }
             if (base === des) return true;
             return base.startsWith(des + ' (') && base.endsWith(')');
         }
 
-        function buildStoredFileName(designation, fileName) {
+        function buildStoredFileName(designation, fileName, docName) {
             const lastDot = fileName.lastIndexOf('.');
             const baseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
             const ext = lastDot > 0 ? fileName.slice(lastDot) : '';
+            const title = (docName || '').trim();
+            if (title) {
+                if (baseName.trim().toLowerCase() === designation.trim().toLowerCase()) {
+                    return designation + ' - ' + title + ext;
+                }
+                return designation + ' (' + baseName + ') - ' + title + ext;
+            }
             return designation + ' (' + baseName + ')' + ext;
         }
 
@@ -191,8 +205,8 @@
             submitBtn.disabled = false;
             detectFormatFromFile(file);
 
-            if (DESIGNATION && !namesMatch(file.name, DESIGNATION)) {
-                renameWarning.textContent = 'Файл будет переименован в ' + buildStoredFileName(DESIGNATION, file.name);
+            if (DESIGNATION && !namesMatch(file.name, DESIGNATION, DOC_NAME)) {
+                renameWarning.textContent = 'Файл будет переименован в ' + buildStoredFileName(DESIGNATION, file.name, DOC_NAME);
                 renameWarning.style.display = 'block';
             } else {
                 renameWarning.style.display = 'none';

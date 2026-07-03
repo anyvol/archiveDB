@@ -172,9 +172,23 @@ SSL_CERT_CN=SERVER-PDM ./scripts/generate-ssl-cert.sh
 docker compose up -d proxy
 ```
 
-Port 80 redirects to HTTPS on port 8443. Push will not work when accessing the site as `http://192.168.x.x/...` without HTTPS.
+Push over LAN requires HTTPS. Primary URL (include port **8443**):
 
-If connection is refused on port 443, use **8443** (default) or set `HTTPS_PORT` in `.env`.
+```text
+https://192.168.4.108:8443/archive/
+```
+
+If the browser drops `:8443` after a certificate warning and shows «connection refused», use the same site on standard port 443 (requires `443:443` in docker-compose and `windows-forward-ports.ps1`):
+
+```text
+https://192.168.4.108/archive/
+```
+
+HTTP without push (no certificate):
+
+```text
+http://192.168.4.108/archive/
+```
 
 ### VAPID keys
 

@@ -7,13 +7,10 @@ SSL_CERT_IP="${SSL_CERT_IP:-}"
 PUBLIC_HTTPS_PORT="${PUBLIC_HTTPS_PORT:-8443}"
 
 if [ "${PUBLIC_HTTPS_PORT}" = "443" ]; then
-    REDIRECT_PORT=""
     PUBLIC_URL="https://${CN}/archive/"
 else
-    REDIRECT_PORT=":${PUBLIC_HTTPS_PORT}"
     PUBLIC_URL="https://${CN}:${PUBLIC_HTTPS_PORT}/archive/"
 fi
-export REDIRECT_PORT
 
 _build_san() {
     san="DNS:${CN},DNS:localhost,IP:127.0.0.1"
@@ -41,12 +38,17 @@ if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; t
     echo "Open ${PUBLIC_URL} (accept browser security warning for self-signed cert)."
 fi
 
-envsubst '${REDIRECT_PORT}' \
-    < /etc/nginx/templates/default.conf.template \
-    > /etc/nginx/conf.d/default.conf
+cp /etc/nginx/templates/default.conf.template /etc/nginx/conf.d/default.conf
 
 echo "nginx listening:"
 echo "  http://localhost/archive/          (push works on this PC)"
-echo "  https://${CN}${REDIRECT_PORT}/archive/  (LAN — run scripts/windows-forward-ports.ps1 on Windows+WSL)"
+if [ -n "${SSL_CERT_IP}" ]; then
+    echo "  http://${SSL_CERT_IP}/archive/       (LAN — no certificate required)"
+fi
+if [ "${PUBLIC_HTTPS_PORT}" = "443" ]; then
+    echo "  https://${CN}/archive/  (HTTPS + push; run scripts/windows-forward-ports.ps1 on Windows+WSL)"
+else
+    echo "  https://${CN}:${PUBLIC_HTTPS_PORT}/archive/  (HTTPS + push; run scripts/windows-forward-ports.ps1 on Windows+WSL)"
+fi
 
 exec nginx -g 'daemon off;'

@@ -10,6 +10,8 @@ from sqlalchemy.orm import joinedload
 
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Organization, Project, TechDocument
 
+DOCUMENTS_PAGE_SIZE = 20
+
 SORTABLE_COLUMNS = {
     "designation": "designation",
     "okpo": "okpo",
@@ -156,7 +158,13 @@ def _org_name(doc: BaseDocument) -> str:
     return ""
 
 
-async def fetch_documents(session: AsyncSession, **filters):
+async def fetch_documents(
+    session: AsyncSession,
+    *,
+    limit: int | None = None,
+    offset: int = 0,
+    **filters,
+) -> tuple[list[BaseDocument], int]:
     query = build_documents_query(**filters)
     result = await session.execute(query)
     documents = result.unique().scalars().all()
@@ -194,4 +202,9 @@ async def fetch_documents(session: AsyncSession, **filters):
             reverse=reverse,
         )
 
-    return documents
+    total = len(documents)
+    if limit is not None:
+        documents = documents[offset : offset + limit]
+    elif offset:
+        documents = documents[offset:]
+    return documents, total

@@ -43,7 +43,7 @@ from app.models import (
 from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
-from app.document_queries import fetch_documents
+from app.document_queries import fetch_documents, DOCUMENTS_PAGE_SIZE
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_project_by_id, create_new_project
 from app.project_files import (
@@ -122,7 +122,7 @@ from app.admin.router import router as admin_router
 from app.config import ALLOWED_EMAIL_DOMAINS
 from app.email_verification import issue_verification_code, normalize_email, verify_email_code
 from app.mail.sender import smtp_configured
-from app.password_reset import request_password_reset, reset_password_with_token
+from app.password_reset import request_password_reset, reset_password_with_token, verify_reset_code
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -211,6 +211,12 @@ def _filter_params(request: Request) -> dict:
     }
 
 
+def _filters_query_string(filters: dict) -> str:
+    from urllib.parse import urlencode
+
+    return urlencode({k: v for k, v in filters.items() if v is not None and v != ""})
+
+
 @app.get("/version")
 async def version():
     return {"version": SERVICE_VERSION}
@@ -283,6 +289,7 @@ async def login_page(
             "request": request,
             "error": request.query_params.get("error") == "true",
             "success": request.query_params.get("success") == "true",
+            "password_reset": request.query_params.get("password_reset") == "1",
             "service_version": SERVICE_VERSION,
         },
     )
@@ -487,10 +494,13 @@ async def verify_email_submit(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/register"))
+        return RedirectResponse(url=url_path("/register"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await verify_email_code(session, user, code)
-        return RedirectResponse(url=url_path("/login?success=true"))
+        return RedirectResponse(
+            url=url_path("/login?success=true"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except HTTPException as exc:
         msg = exc.detail if isinstance(exc.detail, str) else "error"
         return RedirectResponse(
@@ -507,7 +517,7 @@ async def verify_email_resend(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/register"))
+        return RedirectResponse(url=url_path("/register"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await issue_verification_code(session, user)
     except HTTPException:
@@ -518,15 +528,7 @@ async def verify_email_resend(
     )
 
 
-@app.get("/forgot-password", response_class=HTMLResponse)
-async def forgot_password_page(request: Request):
-    return templates.TemplateResponse(
-        "forgot_password.html",
-        {"request": request, "sent": False, "error": False},
-    )
-
-
-@app.post("/forgot-password", response_class=HTMLResponse)
+@app.post("/forgot-password")
 async def forgot_password_submit(
     request: Request,
     login_or_email: str = Form(...),
@@ -537,11 +539,93 @@ async def forgot_password_submit(
             "forgot_password.html",
             {"request": request, "sent": False, "error": True},
         )
-    base = str(request.base_url).rstrip("/")
-    await request_password_reset(session, login_or_email, request_base=base)
+    login = await request_password_reset(session, login_or_email)
+    if login:
+        return RedirectResponse(
+            url=url_path(f"/reset-password/verify?login={login}&sent=1"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        url=url_path("/forgot-password?sent=1"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request, sent: str = Query("")):
     return templates.TemplateResponse(
         "forgot_password.html",
-        {"request": request, "sent": True, "error": False},
+        {"request": request, "sent": sent == "1", "error": False},
+    )
+
+
+@app.get("/reset-password/verify", response_class=HTMLResponse)
+async def reset_password_verify_page(
+    request: Request,
+    login: str = Query(""),
+    sent: str = Query(""),
+    error: str = Query(""),
+    session: AsyncSession = Depends(get_session),
+):
+    email_display = ""
+    if login:
+        result = await session.execute(select(User).where(User.login == login))
+        user = result.scalars().first()
+        if user and user.email:
+            email_display = user.email
+    return templates.TemplateResponse(
+        "reset_password_verify.html",
+        {
+            "request": request,
+            "login": login,
+            "email": email_display,
+            "sent": sent == "1",
+            "error": bool(error),
+            "error_message": request.query_params.get("message"),
+        },
+    )
+
+
+@app.post("/reset-password/verify", response_class=RedirectResponse)
+async def reset_password_verify_submit(
+    login: str = Form(...),
+    code: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/forgot-password"), status_code=status.HTTP_303_SEE_OTHER)
+    try:
+        await verify_reset_code(session, user, code)
+        return RedirectResponse(
+            url=url_path(f"/reset-password?token={code.strip()}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except HTTPException as exc:
+        msg = exc.detail if isinstance(exc.detail, str) else "error"
+        return RedirectResponse(
+            url=url_path(f"/reset-password/verify?login={login}&error=1&message={msg}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+
+@app.post("/reset-password/resend", response_class=RedirectResponse)
+async def reset_password_resend(
+    login: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/forgot-password"), status_code=status.HTTP_303_SEE_OTHER)
+    try:
+        await request_password_reset(session, user.login)
+    except HTTPException:
+        pass
+    return RedirectResponse(
+        url=url_path(f"/reset-password/verify?login={login}&sent=1"),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -553,7 +637,7 @@ async def reset_password_page(request: Request, token: str = Query("")):
     )
 
 
-@app.post("/reset-password", response_class=HTMLResponse)
+@app.post("/reset-password")
 async def reset_password_submit(
     request: Request,
     token: str = Form(...),
@@ -568,7 +652,10 @@ async def reset_password_submit(
         )
     try:
         await reset_password_with_token(session, token, password)
-        return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            url=url_path("/login?password_reset=1"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except HTTPException as exc:
         msg = exc.detail if isinstance(exc.detail, str) else "Ошибка"
         return templates.TemplateResponse(
@@ -588,17 +675,27 @@ async def documents_page(
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
-    documents_from_db = await fetch_documents(session, **filters)
+    documents_from_db, total_count = await fetch_documents(
+        session,
+        limit=DOCUMENTS_PAGE_SIZE,
+        offset=0,
+        **filters,
+    )
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     known_person_names = await fetch_known_person_names(session)
     ctx = await _page_context(session, user)
+    visible_columns = get_visible_columns(user)
 
     return templates.TemplateResponse(
         "documents.html",
         {
             "request": request,
             "documents": documents_from_db,
+            "documents_total": total_count,
+            "has_more_documents": len(documents_from_db) < total_count,
+            "documents_page_size": DOCUMENTS_PAGE_SIZE,
+            "filters_query": _filters_query_string(filters),
             "filters": filters,
             "projects": projects,
             "known_person_names": known_person_names,
@@ -606,11 +703,43 @@ async def documents_page(
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
             "default_developed_by": user.full_name or "",
-            "visible_columns": get_visible_columns(user),
+            "visible_columns": visible_columns,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
     )
+
+
+@app.get("/api/documents")
+async def list_documents_api(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DOCUMENTS_PAGE_SIZE, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    filters = _filter_params(request)
+    documents, total_count = await fetch_documents(
+        session,
+        limit=limit,
+        offset=offset,
+        **filters,
+    )
+    visible_columns = get_visible_columns(user)
+    html = templates.get_template("_document_rows.html").render(
+        documents=documents,
+        user=user,
+        visible_columns=visible_columns,
+        show_empty=False,
+    )
+    return {
+        "html": html,
+        "has_more": offset + len(documents) < total_count,
+        "count": len(documents),
+    }
 
 
 @app.post("/documents/create", response_class=RedirectResponse)
@@ -891,6 +1020,7 @@ async def handle_upload(
             doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+            doc_name=doc.doc_name,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)

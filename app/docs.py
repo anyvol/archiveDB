@@ -47,14 +47,16 @@ async def list_documents(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    docs = await fetch_documents(
+    docs, _total = await fetch_documents(
         session,
         doc_type=type,
         status=status_filter,
         sort="created_at",
         order="desc",
+        limit=limit,
+        offset=skip,
     )
-    return docs[skip : skip + limit]
+    return docs
 
 
 @router.post("/design-documents/", response_model=DesignDocumentSchema, status_code=status.HTTP_201_CREATED)
@@ -284,6 +286,7 @@ async def upload_file(
         doc.file_path,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+        doc_name=doc.doc_name,
     )
     doc.file_path = file_path
     doc.file_name = file_name
