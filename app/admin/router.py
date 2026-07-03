@@ -368,12 +368,14 @@ async def admin_mailer(
         return RedirectResponse(url=url_path("/documents"))
 
     smtp = await get_smtp_config(session)
+    resolved = await resolve_smtp_config(session)
     ctx = await _admin_context(session, user, "mailer")
     return templates.TemplateResponse(
         "admin/mailer.html",
         {
             "request": request,
             "smtp": smtp,
+            "resolved": resolved,
             "configured": await smtp_configured(session),
             "success": request.query_params.get("success"),
             "error": request.query_params.get("error"),
@@ -386,11 +388,12 @@ async def admin_mailer(
 @router.post("/mailer")
 async def admin_mailer_save(
     host: str = Form(...),
-    port: int = Form(587),
+    port: int = Form(25),
     user: str = Form(""),
     password: str = Form(""),
     from_address: str = Form(...),
     use_tls: str = Form(""),
+    tls_verify: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: str | None = Cookie(None),
 ):
@@ -415,6 +418,7 @@ async def admin_mailer_save(
         "user": user.strip(),
         "from_address": from_address.strip(),
         "use_tls": use_tls == "true",
+        "tls_verify": tls_verify == "true",
         "password_encrypted": existing.get("password_encrypted", ""),
     }
     if password.strip():

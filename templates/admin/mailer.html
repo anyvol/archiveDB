@@ -20,6 +20,13 @@
 {% endif %}
 <div class="card">
     <p>Статус: {% if configured %}<strong>настроен</strong>{% else %}не настроен{% endif %}</p>
+    {% if resolved %}
+    <p style="font-size:0.9rem;color:#495057;">
+        Активно: {{ resolved.host }}:{{ resolved.port }},
+        TLS={{ 'да' if resolved.use_tls else 'нет' }},
+        проверка сертификата={{ 'да' if resolved.tls_verify else 'нет' }}
+    </p>
+    {% endif %}
     <form method="post" action="{{ url_path('/admin/mailer') }}">
         <div class="form-group">
             <label>Сервер SMTP (host)</label>
@@ -51,6 +58,13 @@
                 Шифрование (TLS / STARTTLS)
             </label>
             <small style="color:#6c757d;display:block;">Снимите галочку для порта 25 без шифрования (как в Outlook: «метод шифрования — нет»)</small>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="tls_verify" value="true" {% if smtp.tls_verify != false %}checked{% endif %}>
+                Проверять SSL-сертификат сервера
+            </label>
+            <small style="color:#6c757d;display:block;">Снимите, если при включённом TLS ошибка «certificate verify failed» (самоподписанный сертификат)</small>
         </div>
         <button type="submit" class="btn">Сохранить</button>
     </form>
