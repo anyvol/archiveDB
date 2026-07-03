@@ -47,6 +47,8 @@ services:
       - api
     ports:
       - "0.0.0.0:${HTTP_PORT:-80}:80"
+      # 443 and 8443 both reach nginx TLS — if the browser drops :8443 after a cert warning, port 443 still works
+      - "0.0.0.0:443:443"
       - "0.0.0.0:${HTTPS_PORT:-8443}:443"
     environment:
       SSL_CERT_CN: ${SSL_CERT_CN:-localhost}

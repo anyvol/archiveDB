@@ -16,7 +16,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ports = @($HttpPort, $HttpsPort) | Select-Object -Unique
+$ports = @($HttpPort, $HttpsPort)
+if ($HttpsPort -ne 443) {
+    $ports += 443
+}
+$ports = $ports | Select-Object -Unique
 
 function Get-WslIpAddress {
     $commands = @(
@@ -132,11 +136,11 @@ Write-Host "Test from another PC on LAN (use this server's IP):"
 Get-NetIPAddress -AddressFamily IPv4 |
     Where-Object { $_.IPAddress -notmatch '^127\.' -and $_.PrefixOrigin -ne 'WellKnown' } |
     ForEach-Object {
-        if ($HttpsPort -eq 443) {
-            Write-Host "  https://$($_.IPAddress)/archive/"
-        } else {
-            Write-Host "  https://$($_.IPAddress):${HttpsPort}/archive/"
+        Write-Host "  https://$($_.IPAddress):${HttpsPort}/archive/  (primary HTTPS + push)"
+        if ($HttpsPort -ne 443) {
+            Write-Host "  https://$($_.IPAddress)/archive/  (fallback if browser drops :${HttpsPort})"
         }
+        Write-Host "  http://$($_.IPAddress)/archive/  (HTTP, no push)"
     }
 
 if ($dockerInWsl) {

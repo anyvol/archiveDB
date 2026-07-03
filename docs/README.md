@@ -172,15 +172,19 @@ SSL_CERT_CN=SERVER-PDM ./scripts/generate-ssl-cert.sh
 docker compose up -d proxy
 ```
 
-Port 80 serves the app over HTTP for LAN clients (no certificate). Port 80 no longer redirects to HTTPS — this avoids `ERR_CONNECTION_REFUSED` when browsers drop `:8443` and try port 443.
-
-Push over LAN requires HTTPS on port **8443** (not 443):
+Push over LAN requires HTTPS. Primary URL (include port **8443**):
 
 ```text
 https://192.168.4.108:8443/archive/
 ```
 
-For colleagues without a trusted certificate, use HTTP:
+If the browser drops `:8443` after a certificate warning and shows «connection refused», use the same site on standard port 443 (requires `443:443` in docker-compose and `windows-forward-ports.ps1`):
+
+```text
+https://192.168.4.108/archive/
+```
+
+HTTP without push (no certificate):
 
 ```text
 http://192.168.4.108/archive/
