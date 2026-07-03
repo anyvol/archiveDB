@@ -35,15 +35,41 @@ def test_compute_stored_file_name_renames_when_designation_differs():
     assert compute_stored_file_name(None, "report.pdf") == "report.pdf"
 
 
+def test_compute_stored_file_name_includes_doc_name():
+    assert compute_stored_file_name("ORG.001", "other.pdf", "Спецификация") == (
+        "ORG.001 (other) - Спецификация.pdf"
+    )
+    assert compute_stored_file_name("ORG.001", "ORG.001.pdf", "Спецификация") == (
+        "ORG.001 - Спецификация.pdf"
+    )
+    assert compute_stored_file_name("ORG.001", "ORG.001 - Спецификация.pdf", "Спецификация") == (
+        "ORG.001 - Спецификация.pdf"
+    )
+
+
 def test_file_name_matches_designation():
     assert file_name_matches_designation("ORG.123456.001.pdf", "ORG.123456.001")
     assert file_name_matches_designation("ORG.123456.001 (other).pdf", "ORG.123456.001")
     assert not file_name_matches_designation("other.pdf", "ORG.123456.001")
+    assert not file_name_matches_designation("ORG.001.pdf", "ORG.001", "Spec")
+    assert file_name_matches_designation(
+        "ORG.001 - Spec.pdf",
+        "ORG.001",
+        "Spec",
+    )
+    assert file_name_matches_designation(
+        "ORG.001 (scan) - Spec.pdf",
+        "ORG.001",
+        "Spec",
+    )
 
 
 def test_build_upload_rename_message():
     assert build_upload_rename_message("ORG.123456.001", "other.pdf") == (
         "Файл будет переименован в ORG.123456.001 (other).pdf"
+    )
+    assert build_upload_rename_message("ORG.001", "other.pdf", "Spec") == (
+        "Файл будет переименован в ORG.001 (other) - Spec.pdf"
     )
 
 

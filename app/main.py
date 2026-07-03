@@ -494,10 +494,13 @@ async def verify_email_submit(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/register"))
+        return RedirectResponse(url=url_path("/register"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await verify_email_code(session, user, code)
-        return RedirectResponse(url=url_path("/login?success=true"))
+        return RedirectResponse(
+            url=url_path("/login?success=true"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except HTTPException as exc:
         msg = exc.detail if isinstance(exc.detail, str) else "error"
         return RedirectResponse(
@@ -514,7 +517,7 @@ async def verify_email_resend(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/register"))
+        return RedirectResponse(url=url_path("/register"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await issue_verification_code(session, user)
     except HTTPException:
@@ -592,7 +595,7 @@ async def reset_password_verify_submit(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/forgot-password"))
+        return RedirectResponse(url=url_path("/forgot-password"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await verify_reset_code(session, user, code)
         return RedirectResponse(
@@ -615,7 +618,7 @@ async def reset_password_resend(
     result = await session.execute(select(User).where(User.login == login))
     user = result.scalars().first()
     if user is None:
-        return RedirectResponse(url=url_path("/forgot-password"))
+        return RedirectResponse(url=url_path("/forgot-password"), status_code=status.HTTP_303_SEE_OTHER)
     try:
         await request_password_reset(session, user.login)
     except HTTPException:
@@ -1017,6 +1020,7 @@ async def handle_upload(
             doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+            doc_name=doc.doc_name,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
