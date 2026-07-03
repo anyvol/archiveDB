@@ -154,3 +154,8 @@ async def save_upload_file(
         buffer.write(contents)
 
     return file_path, stored_name
+
+
+def remove_file_if_exists(file_path: Optional[str]) -> None:
+    if file_path and os.path.exists(file_path):
+        os.remove(file_path)
