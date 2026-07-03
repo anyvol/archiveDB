@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
@@ -16,7 +16,7 @@ from app.auth import get_current_user_from_token
 from app.config import SERVICE_VERSION, url_path
 from app.crypto_utils import encrypt_secret
 from app.database import get_session
-from app.mail.sender import send_email, smtp_configured
+from app.mail.sender import send_email, smtp_configured, resolve_smtp_config
 from app.models import BackupRecord, User, UserRole, USER_ROLE_LABELS, DEPARTMENTS
 from app.notifications import count_unread
 from app.permissions import is_master_admin
@@ -47,6 +47,17 @@ templates.env.globals["UserRole"] = UserRole
 templates.env.globals["USER_ROLE_LABELS"] = USER_ROLE_LABELS
 templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 
+
+def _see_other(url: str) -> RedirectResponse:
+    """POST/redirect/GET — avoid 307 which re-submits POST and causes redirect loops."""
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _smtp_host_error(host: str) -> str | None:
+    host = host.strip()
+    if not host or "@" in host or " " in host:
+        return "host"
+    return None
 
 async def _admin_context(session: AsyncSession, user: User, nav: str) -> dict:
     return {
@@ -198,7 +209,7 @@ async def admin_update_user(
     target.role = new_role
     target.is_active = is_active == "true"
     await session.commit()
-    return RedirectResponse(url=url_path("/admin/users?success=1"))
+    return _see_other(url_path("/admin/users?success=1"))
 
 
 @router.get("/traffic", response_class=HTMLResponse)
@@ -274,7 +285,7 @@ async def admin_timezone_save(
     except Exception:
         logger.exception("Failed to set PostgreSQL timezone")
 
-    return RedirectResponse(url=url_path("/admin/timezone?success=1"))
+    return _see_other(url_path("/admin/timezone?success=1"))
 
 
 @router.get("/backups", response_class=HTMLResponse)
@@ -331,14 +342,14 @@ async def admin_run_backup(
     if backup_files == "true":
         types.append("files")
     if not types:
-        return RedirectResponse(url=url_path("/admin/backups?error=types"))
+        return _see_other(url_path("/admin/backups?error=types"))
 
     try:
         await trigger_backup(types, triggered_by=user.login)
     except Exception:
         logger.exception("Backup failed")
-        return RedirectResponse(url=url_path("/admin/backups?error=run"))
-    return RedirectResponse(url=url_path("/admin/backups?success=1"))
+        return _see_other(url_path("/admin/backups?error=run"))
+    return _see_other(url_path("/admin/backups?success=1"))
 
 
 @router.get("/mailer", response_class=HTMLResponse)
@@ -387,9 +398,13 @@ async def admin_mailer_save(
     except HTTPException:
         return RedirectResponse(url=url_path("/documents"))
 
+    host = host.strip()
+    if err := _smtp_host_error(host):
+        return _see_other(url_path(f"/admin/mailer?error={err}"))
+
     existing = await get_smtp_config(session)
     payload = {
-        "host": host.strip(),
+        "host": host,
         "port": port,
         "user": user.strip(),
         "from_address": from_address.strip(),
@@ -400,7 +415,7 @@ async def admin_mailer_save(
         payload["password_encrypted"] = encrypt_secret(password.strip())
 
     await set_setting(session, SETTING_SMTP, payload, updated_by_id=actor.id)
-    return RedirectResponse(url=url_path("/admin/mailer?success=1"))
+    return _see_other(url_path("/admin/mailer?success=1"))
 
 
 @router.post("/mailer/test")
@@ -417,6 +432,9 @@ async def admin_mailer_test(
         return RedirectResponse(url=url_path("/documents"))
 
     try:
+        config = await resolve_smtp_config(session)
+        if "@" in (config.get("host") or ""):
+            return _see_other(url_path("/admin/mailer?error=test_host"))
         await send_email(
             session,
             to_address=test_email.strip(),
@@ -425,5 +443,5 @@ async def admin_mailer_test(
         )
     except Exception:
         logger.exception("Test email failed")
-        return RedirectResponse(url=url_path("/admin/mailer?error=test"))
-    return RedirectResponse(url=url_path("/admin/mailer?success=test"))
+        return _see_other(url_path("/admin/mailer?error=test_connect"))
+    return _see_other(url_path("/admin/mailer?success=test"))
