@@ -123,6 +123,8 @@ from app.config import ALLOWED_EMAIL_DOMAINS
 from app.email_verification import issue_verification_code, normalize_email, verify_email_code
 from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
+from app.settings_store import get_app_timezone
+from app.timezone_utils import format_datetime, format_datetime_short, format_datetime_date
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -158,6 +160,9 @@ templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
+templates.env.globals["format_datetime"] = format_datetime
+templates.env.globals["format_datetime_short"] = format_datetime_short
+templates.env.globals["format_datetime_date"] = format_datetime_date
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -180,6 +185,7 @@ async def _page_context(session: AsyncSession, user: User) -> dict:
     return {
         "user": user,
         "unread_count": await count_unread(session, user.id),
+        "app_timezone": await get_app_timezone(session),
     }
 
 
@@ -588,7 +594,8 @@ async def documents_page(
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
-    documents_from_db = await fetch_documents(session, **filters)
+    app_timezone = await get_app_timezone(session)
+    documents_from_db = await fetch_documents(session, timezone_name=app_timezone, **filters)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     known_person_names = await fetch_known_person_names(session)
@@ -891,6 +898,7 @@ async def handle_upload(
             doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+            doc_name=doc.doc_name,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
@@ -1040,7 +1048,13 @@ async def edit_document_page(
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
         "edit_document.html",
-        {"request": request, "doc": doc, "service_version": SERVICE_VERSION, **ctx},
+        {
+            "request": request,
+            "doc": doc,
+            "known_person_names": await fetch_known_person_names(session),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
     )
 
 
@@ -1049,6 +1063,11 @@ async def edit_document(
     doc_id: int,
     doc_name: str = Form(""),
     developed_by: str = Form(...),
+    reviewed_by: str = Form(""),
+    approved_by: str = Form(""),
+    developer_signed_date: str = Form(""),
+    reviewer_signed_date: str = Form(""),
+    approver_signed_date: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -1063,17 +1082,44 @@ async def edit_document(
     require_edit_metadata_permission(user, doc)
     old_doc_name = doc.doc_name
     old_developed_by = doc.developed_by
+    old_reviewed_by = doc.reviewed_by
+    old_approved_by = doc.approved_by
+    old_developer_signed_date = doc.developer_signed_date
+    old_reviewer_signed_date = doc.reviewer_signed_date
+    old_approver_signed_date = doc.approver_signed_date
+
     new_doc_name = doc_name or None
+    new_developed_by = normalize_person_name(developed_by)
+    new_reviewed_by = normalize_person_name(reviewed_by) or None
+    new_approved_by = normalize_person_name(approved_by) or None
+    new_developer_signed_date = developer_signed_date.strip() or None
+    new_reviewer_signed_date = reviewer_signed_date.strip() or None
+    new_approver_signed_date = approver_signed_date.strip() or None
+
+    if not new_developed_by:
+        raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
+
     changes = []
-    name_change = format_field_change("наименование", old_doc_name, new_doc_name)
-    if name_change:
-        changes.append(name_change)
-    dev_change = format_field_change("разработчик", old_developed_by, developed_by)
-    if dev_change:
-        changes.append(dev_change)
+    for label, old_val, new_val in (
+        ("наименование", old_doc_name, new_doc_name),
+        ("разработчик", old_developed_by, new_developed_by),
+        ("проверяющий", old_reviewed_by, new_reviewed_by),
+        ("утверждающий", old_approved_by, new_approved_by),
+        ("дата подписи разработчика", old_developer_signed_date, new_developer_signed_date),
+        ("дата подписи проверяющего", old_reviewer_signed_date, new_reviewer_signed_date),
+        ("дата подписи утверждающего", old_approver_signed_date, new_approver_signed_date),
+    ):
+        field_change = format_field_change(label, old_val, new_val)
+        if field_change:
+            changes.append(field_change)
 
     doc.doc_name = new_doc_name
-    doc.developed_by = developed_by
+    doc.developed_by = new_developed_by
+    doc.reviewed_by = new_reviewed_by
+    doc.approved_by = new_approved_by
+    doc.developer_signed_date = new_developer_signed_date
+    doc.reviewer_signed_date = new_reviewer_signed_date
+    doc.approver_signed_date = new_approver_signed_date
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if changes:
@@ -1828,12 +1874,13 @@ async def list_notifications_api(
     user = await get_current_user_from_token(access_token=access_token, db=session)
     notifications = await get_notifications_for_user(session, user, limit=limit, offset=offset)
     total_count = await count_notifications_for_user(session, user.id)
+    app_timezone = await get_app_timezone(session)
     return {
         "notifications": [
             {
                 "id": n.id,
                 "message": n.message,
-                "created_at": n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else "",
+                "created_at": format_datetime_short(n.created_at, app_timezone),
             }
             for n in notifications
         ],

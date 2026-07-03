@@ -284,6 +284,7 @@ async def upload_file(
         doc.file_path,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+        doc_name=doc.doc_name,
     )
     doc.file_path = file_path
     doc.file_name = file_name

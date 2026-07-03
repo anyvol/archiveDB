@@ -385,8 +385,8 @@
                     {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
                     {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
                     {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
-                    {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
-                    {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
+                    {% if 'created_at' in visible_columns %}<td>{{ format_datetime_short(doc.created_at, app_timezone) }}</td>{% endif %}
+                    {% if 'last_update' in visible_columns %}<td>{{ format_datetime_short(doc.last_update, app_timezone) }}</td>{% endif %}
                     {% if 'status' in visible_columns %}
                     <td>
                         {% set display_status = get_document_display_status(doc) %}
@@ -636,6 +636,38 @@
                 const savedClass = localStorage.getItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd');
                 if (savedClass && !classCodeInput.value) classCodeInput.value = savedClass;
             }
+            restoreMetadataSession();
+        }
+
+        const METADATA_SESSION_KEYS = {
+            developed_by: 'doc_meta_developed_by',
+            reviewed_by: 'doc_meta_reviewed_by',
+            approved_by: 'doc_meta_approved_by',
+            developer_signed_date: 'doc_meta_developer_signed_date',
+            reviewer_signed_date: 'doc_meta_reviewer_signed_date',
+            approver_signed_date: 'doc_meta_approver_signed_date',
+        };
+
+        function restoreMetadataSession() {
+            Object.entries(METADATA_SESSION_KEYS).forEach(([fieldId, storageKey]) => {
+                const saved = sessionStorage.getItem(storageKey);
+                if (!saved) return;
+                const input = document.getElementById(fieldId);
+                if (input) input.value = saved;
+            });
+        }
+
+        function saveMetadataSession() {
+            Object.entries(METADATA_SESSION_KEYS).forEach(([fieldId, storageKey]) => {
+                const input = document.getElementById(fieldId);
+                if (!input) return;
+                const value = input.value.trim();
+                if (value) {
+                    sessionStorage.setItem(storageKey, value);
+                } else {
+                    sessionStorage.removeItem(storageKey);
+                }
+            });
         }
 
         function focusFirstEmpty() {
@@ -782,6 +814,7 @@
                 if (classCodeInput && classCodeInput.value.trim()) {
                     localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
                 }
+                saveMetadataSession();
 
                 const submitBtn = document.getElementById('create-submit');
                 if (submitBtn) submitBtn.disabled = true;

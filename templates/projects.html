@@ -84,7 +84,7 @@
                     <td>{{ project.name }}</td>
                     <td>{{ project.slug }}</td>
                     <td>{{ (project.description or '—')[:120] }}{% if project.description and project.description|length > 120 %}…{% endif %}</td>
-                    <td>{{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '—' }}</td>
+                    <td>{{ format_datetime_date(project.created_at, app_timezone) }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="4" style="text-align:center;">Проекты не найдены.</td></tr>
