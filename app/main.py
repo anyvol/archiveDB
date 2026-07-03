@@ -122,7 +122,7 @@ from app.admin.router import router as admin_router
 from app.config import ALLOWED_EMAIL_DOMAINS
 from app.email_verification import issue_verification_code, normalize_email, verify_email_code
 from app.mail.sender import smtp_configured
-from app.password_reset import request_password_reset, reset_password_with_token
+from app.password_reset import request_password_reset, reset_password_with_token, verify_reset_code
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -283,6 +283,7 @@ async def login_page(
             "request": request,
             "error": request.query_params.get("error") == "true",
             "success": request.query_params.get("success") == "true",
+            "password_reset": request.query_params.get("password_reset") == "1",
             "service_version": SERVICE_VERSION,
         },
     )
@@ -518,15 +519,7 @@ async def verify_email_resend(
     )
 
 
-@app.get("/forgot-password", response_class=HTMLResponse)
-async def forgot_password_page(request: Request):
-    return templates.TemplateResponse(
-        "forgot_password.html",
-        {"request": request, "sent": False, "error": False},
-    )
-
-
-@app.post("/forgot-password", response_class=HTMLResponse)
+@app.post("/forgot-password")
 async def forgot_password_submit(
     request: Request,
     login_or_email: str = Form(...),
@@ -537,11 +530,93 @@ async def forgot_password_submit(
             "forgot_password.html",
             {"request": request, "sent": False, "error": True},
         )
-    base = str(request.base_url).rstrip("/")
-    await request_password_reset(session, login_or_email, request_base=base)
+    login = await request_password_reset(session, login_or_email)
+    if login:
+        return RedirectResponse(
+            url=url_path(f"/reset-password/verify?login={login}&sent=1"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        url=url_path("/forgot-password?sent=1"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request, sent: str = Query("")):
     return templates.TemplateResponse(
         "forgot_password.html",
-        {"request": request, "sent": True, "error": False},
+        {"request": request, "sent": sent == "1", "error": False},
+    )
+
+
+@app.get("/reset-password/verify", response_class=HTMLResponse)
+async def reset_password_verify_page(
+    request: Request,
+    login: str = Query(""),
+    sent: str = Query(""),
+    error: str = Query(""),
+    session: AsyncSession = Depends(get_session),
+):
+    email_display = ""
+    if login:
+        result = await session.execute(select(User).where(User.login == login))
+        user = result.scalars().first()
+        if user and user.email:
+            email_display = user.email
+    return templates.TemplateResponse(
+        "reset_password_verify.html",
+        {
+            "request": request,
+            "login": login,
+            "email": email_display,
+            "sent": sent == "1",
+            "error": bool(error),
+            "error_message": request.query_params.get("message"),
+        },
+    )
+
+
+@app.post("/reset-password/verify", response_class=RedirectResponse)
+async def reset_password_verify_submit(
+    login: str = Form(...),
+    code: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/forgot-password"))
+    try:
+        await verify_reset_code(session, user, code)
+        return RedirectResponse(
+            url=url_path(f"/reset-password?token={code.strip()}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except HTTPException as exc:
+        msg = exc.detail if isinstance(exc.detail, str) else "error"
+        return RedirectResponse(
+            url=url_path(f"/reset-password/verify?login={login}&error=1&message={msg}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+
+@app.post("/reset-password/resend", response_class=RedirectResponse)
+async def reset_password_resend(
+    login: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/forgot-password"))
+    try:
+        await request_password_reset(session, user.login)
+    except HTTPException:
+        pass
+    return RedirectResponse(
+        url=url_path(f"/reset-password/verify?login={login}&sent=1"),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -553,7 +628,7 @@ async def reset_password_page(request: Request, token: str = Query("")):
     )
 
 
-@app.post("/reset-password", response_class=HTMLResponse)
+@app.post("/reset-password")
 async def reset_password_submit(
     request: Request,
     token: str = Form(...),
@@ -568,7 +643,10 @@ async def reset_password_submit(
         )
     try:
         await reset_password_with_token(session, token, password)
-        return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            url=url_path("/login?password_reset=1"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except HTTPException as exc:
         msg = exc.detail if isinstance(exc.detail, str) else "Ошибка"
         return templates.TemplateResponse(

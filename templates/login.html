@@ -14,7 +14,12 @@
             <div class="col-md-6">
                 <h2>Вход в систему</h2>
                 
-                {% if success %}
+                {% if password_reset %}
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    Новый пароль установлен. Войдите в систему.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% elif success %}
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                     Регистрация прошла успешно! Теперь войдите в систему.
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
