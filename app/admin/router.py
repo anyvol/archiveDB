@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -375,6 +377,7 @@ async def admin_mailer(
             "configured": await smtp_configured(session),
             "success": request.query_params.get("success"),
             "error": request.query_params.get("error"),
+            "error_detail": request.query_params.get("detail"),
             **ctx,
         },
     )
@@ -387,7 +390,7 @@ async def admin_mailer_save(
     user: str = Form(""),
     password: str = Form(""),
     from_address: str = Form(...),
-    use_tls: str = Form("true"),
+    use_tls: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: str | None = Cookie(None),
 ):
@@ -403,6 +406,9 @@ async def admin_mailer_save(
         return _see_other(url_path(f"/admin/mailer?error={err}"))
 
     existing = await get_smtp_config(session)
+    if not password.strip() and not existing.get("password_encrypted"):
+        return _see_other(url_path("/admin/mailer?error=password"))
+
     payload = {
         "host": host,
         "port": port,
@@ -441,7 +447,8 @@ async def admin_mailer_test(
             subject="archiveDB — тестовое письмо",
             body_text="Почтовый сервер archiveDB настроен корректно.",
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Test email failed")
-        return _see_other(url_path("/admin/mailer?error=test_connect"))
+        detail = quote(str(exc)[:200])
+        return _see_other(url_path(f"/admin/mailer?error=test_connect&detail={detail}"))
     return _see_other(url_path("/admin/mailer?success=test"))

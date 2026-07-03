@@ -5,37 +5,59 @@
 {% if success == '1' %}<div class="alert alert-success">Настройки сохранены.</div>{% endif %}
 {% if success == 'test' %}<div class="alert alert-success">Тестовое письмо отправлено.</div>{% endif %}
 {% if error == 'host' %}
-<div class="alert alert-error">Неверный SMTP-сервер: укажите имя хоста (например <code>smtp.company.ru</code>), а не email-адрес.</div>
+<div class="alert alert-error">Неверный SMTP-сервер: укажите имя хоста (например <code>mail.company.ru</code>), а не email-адрес.</div>
+{% elif error == 'password' %}
+<div class="alert alert-error">Укажите пароль SMTP при первом сохранении настроек.</div>
 {% elif error == 'test_host' %}
-<div class="alert alert-error">Не удалось отправить письмо: в поле «Сервер SMTP» указан email вместо имени сервера. Исправьте настройки и сохраните.</div>
+<div class="alert alert-error">Не удалось отправить письмо: в поле «Сервер SMTP» указан email вместо имени сервера.</div>
 {% elif error == 'test_connect' or error == 'test' %}
-<div class="alert alert-error">Не удалось подключиться к SMTP-серверу. Проверьте хост, порт, логин и пароль.</div>
+<div class="alert alert-error">
+    Не удалось отправить письмо через SMTP.
+    {% if error_detail %}<br><small>{{ error_detail }}</small>{% endif %}
+    <br><small>Для Outlook «без шифрования»: порт <strong>25</strong>, галочка TLS <strong>снята</strong>.
+    Проверьте доступ из контейнера: <code>docker compose exec api nc -zv mail.saga-tech.ru 25</code></small>
+</div>
 {% endif %}
 <div class="card">
     <p>Статус: {% if configured %}<strong>настроен</strong>{% else %}не настроен{% endif %}</p>
     <form method="post" action="{{ url_path('/admin/mailer') }}">
         <div class="form-group">
             <label>Сервер SMTP (host)</label>
-            <input type="text" name="host" value="{{ smtp.host or '' }}" required placeholder="smtp.company.ru">
-            <small style="color:#6c757d;">Имя почтового сервера, не email</small>
+            <input type="text" name="host" value="{{ smtp.host or '' }}" required placeholder="mail.saga-tech.ru">
+            <small style="color:#6c757d;">Как в Outlook → исходящая почта → сервер</small>
         </div>
-        <div class="form-group"><label>Порт</label><input type="number" name="port" value="{{ smtp.port or 587 }}"></div>
+        <div class="form-group">
+            <label>Порт</label>
+            <input type="number" name="port" value="{{ smtp.port if smtp.port is not none else 25 }}">
+            <small style="color:#6c757d;">25 — без шифрования (как в вашем Outlook); 587 — STARTTLS; 465 — SSL</small>
+        </div>
         <div class="form-group">
             <label>Логин SMTP</label>
             <input type="text" name="user" value="{{ smtp.user or '' }}" placeholder="a.volkov@saga-tech.ru">
+            <small style="color:#6c757d;">Тот же email, что в Outlook; требуется проверка подлинности</small>
         </div>
-        <div class="form-group"><label>Пароль (оставьте пустым, чтобы не менять)</label><input type="password" name="password" value=""></div>
+        <div class="form-group">
+            <label>Пароль SMTP</label>
+            <input type="password" name="password" value="" autocomplete="new-password">
+            <small style="color:#6c757d;">Пароль от почты. Оставьте пустым только чтобы не менять уже сохранённый.</small>
+        </div>
         <div class="form-group">
             <label>Адрес отправителя (From)</label>
-            <input type="email" name="from_address" value="{{ smtp.from_address or '' }}" required placeholder="archiveDB &lt;noreply@company.ru&gt;">
+            <input type="email" name="from_address" value="{{ smtp.from_address or '' }}" required placeholder="a.volkov@saga-tech.ru">
         </div>
-        <div class="form-group"><label><input type="checkbox" name="use_tls" value="true" {% if smtp.use_tls != false %}checked{% endif %}> TLS (STARTTLS на порту 587)</label></div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="use_tls" value="true" {% if smtp.use_tls %}checked{% endif %}>
+                Шифрование (TLS / STARTTLS)
+            </label>
+            <small style="color:#6c757d;display:block;">Снимите галочку для порта 25 без шифрования (как в Outlook: «метод шифрования — нет»)</small>
+        </div>
         <button type="submit" class="btn">Сохранить</button>
     </form>
 </div>
 <div class="card">
     <h3>Тестовое письмо</h3>
-    <p style="color:#6c757d;font-size:0.9rem;">Сначала сохраните настройки SMTP, затем отправьте тест.</p>
+    <p style="color:#6c757d;font-size:0.9rem;">Сначала сохраните настройки (с паролем), затем отправьте тест.</p>
     <form method="post" action="{{ url_path('/admin/mailer/test') }}">
         <div class="form-group"><label>Email получателя</label><input type="email" name="test_email" required></div>
         <button type="submit" class="btn btn-secondary">Отправить тест</button>

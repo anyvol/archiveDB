@@ -48,7 +48,7 @@ async def resolve_smtp_config(session: AsyncSession | None) -> dict[str, Any]:
         "user": (db_config.get("user") or SMTP_USER or "").strip(),
         "password": password,
         "from_address": (db_config.get("from_address") or SMTP_FROM or SMTP_USER or "").strip(),
-        "use_tls": bool(db_config.get("use_tls", SMTP_USE_TLS)),
+        "use_tls": bool(db_config["use_tls"]) if "use_tls" in db_config else SMTP_USE_TLS,
     }
 
 
@@ -76,15 +76,31 @@ async def send_email(
     if body_html:
         message.add_alternative(body_html, subtype="html")
 
-    use_tls = config.get("use_tls", True)
-    port = int(config.get("port") or 587)
-    await aiosmtplib.send(
-        message,
-        hostname=config["host"],
+    use_tls = bool(config.get("use_tls"))
+    port = int(config.get("port") or 25)
+    username = config.get("user") or None
+    password = config.get("password") or None
+    hostname = config["host"]
+
+    # Port 465: implicit TLS; port 587: plain then STARTTLS; port 25: plain (Outlook «без шифрования»)
+    implicit_tls = use_tls and port == 465
+    client = aiosmtplib.SMTP(
+        hostname=hostname,
         port=port,
-        username=config.get("user") or None,
-        password=config.get("password") or None,
-        start_tls=use_tls and port != 465,
-        use_tls=use_tls and port == 465,
+        use_tls=implicit_tls,
+        timeout=30,
     )
-    logger.info("Email sent to %s", to_address)
+    await client.connect()
+    try:
+        if use_tls and port != 465:
+            await client.starttls()
+        if username and password:
+            await client.login(username, password)
+        await client.send_message(message)
+    finally:
+        try:
+            await client.quit()
+        except Exception:
+            pass
+
+    logger.info("Email sent to %s via %s:%s (tls=%s)", to_address, hostname, port, use_tls)
