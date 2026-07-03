@@ -84,8 +84,11 @@
                 <input type="text" id="patronymic" name="patronymic" value="{{ patronymic }}">
             </div>
             <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" value="{{ user.email or '' }}" maxlength="100">
+                <label for="email">Email (обязательно, подтверждается кодом):</label>
+                <input type="email" id="email" name="email" value="{{ user.email or '' }}" maxlength="100" required>
+                {% if not user.email_verified %}
+                <small style="color:#856404;">Email не подтверждён. После сохранения будет отправлен код.</small>
+                {% endif %}
             </div>
             <div class="form-group">
                 <label for="position">Должность:</label>

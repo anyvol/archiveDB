@@ -8,6 +8,7 @@ from app.models import DocumentStatus
 
 
 class UserRole(str, enum.Enum):
+    master_admin = "master_admin"
     admin = "admin"
     user = "user"
     reviewer = "reviewer"
@@ -41,6 +42,8 @@ class UserAdminUpdate(BaseModel):
 class User(UserBase):
     id: int
     email: Optional[str] = None
+    email_verified: bool = False
+    is_active: bool = False
     preferred_org_code: Optional[str] = None
     preferred_org_okpo: bool = False
     visible_columns: Optional[list[str]] = None

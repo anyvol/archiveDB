@@ -82,7 +82,12 @@ async def authenticate_user(session: AsyncSession, username: str, password: str)
             detail="Неверный логин или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="email_not_verified" if not user.email_verified else "account_inactive",
+        )
     # Создание токена
     access_token = create_access_token(data={"sub": user.login})
     logger.info(f"User {username} authenticated")

@@ -1,5 +1,8 @@
 <nav>
     {% if user %}
+        {% if is_master_admin(user) %}
+        <a href="{{ url_path('/admin') }}">Администрирование</a>
+        {% endif %}
         {% if nav_context in ('profile', 'notifications', 'help') %}
         <a href="{{ url_path('/documents') }}">Архив документов</a>
         {% elif nav_context == 'projects' %}

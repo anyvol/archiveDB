@@ -9,12 +9,14 @@ Base = declarative_base()
 
 
 class UserRole(str, enum.Enum):
+    master_admin = "master_admin"
     admin = "admin"
     user = "user"
     reviewer = "reviewer"
 
 
 USER_ROLE_LABELS = {
+    UserRole.master_admin: "Главный администратор",
     UserRole.admin: "Администратор",
     UserRole.user: "Обычный пользователь",
     UserRole.reviewer: "Ревьюер",
@@ -105,7 +107,9 @@ class User(Base):
     position = Column(String, nullable=True)
     department = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
-    email = Column(String(100), nullable=True)
+    email = Column(String(100), nullable=True, unique=True, index=True)
+    email_verified = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=False, nullable=False)
     preferred_org_code = Column(String(8), nullable=True)
     preferred_org_okpo = Column(Boolean, default=False, nullable=False)
     visible_columns = Column(JSON, nullable=True)
@@ -357,3 +361,52 @@ class DocumentChangeEvent(Base):
     actor = relationship("User")
     change_notification = relationship("ChangeNotification", back_populates="change_event")
     file_revision = relationship("FileRevision")
+
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class EmailVerificationCode(Base):
+    __tablename__ = "email_verification_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User")
+
+
+class BackupRecord(Base):
+    __tablename__ = "backup_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    backup_id = Column(String(64), unique=True, nullable=False, index=True)
+    backup_type = Column(String(32), nullable=False)
+    file_path = Column(String(512), nullable=False)
+    size_bytes = Column(Integer, nullable=True)
+    status = Column(String(32), nullable=False, default="completed")
+    checksum_sha256 = Column(String(64), nullable=True)
+    triggered_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -6,8 +6,12 @@ from app.models import BaseDocument, DocumentStatus, User, UserRole
 from app.change_log import is_governed_document
 
 
+def is_master_admin(user: User) -> bool:
+    return user.role == UserRole.master_admin
+
+
 def is_admin(user: User) -> bool:
-    return user.role == UserRole.admin
+    return user.role in (UserRole.admin, UserRole.master_admin)
 
 
 def is_reviewer(user: User) -> bool:
@@ -15,7 +19,7 @@ def is_reviewer(user: User) -> bool:
 
 
 def is_reviewer_or_admin(user: User) -> bool:
-    return user.role in (UserRole.admin, UserRole.reviewer)
+    return user.role in (UserRole.admin, UserRole.master_admin, UserRole.reviewer)
 
 
 def is_owner(user: User, doc: BaseDocument) -> bool:
@@ -23,7 +27,7 @@ def is_owner(user: User, doc: BaseDocument) -> bool:
 
 
 def can_create_document(user: User) -> bool:
-    return user.role in (UserRole.admin, UserRole.user)
+    return user.role in (UserRole.admin, UserRole.master_admin, UserRole.user)
 
 
 def can_set_document_status(user: User) -> bool:
@@ -82,7 +86,7 @@ def can_apply_formal_change(user: User, doc: BaseDocument) -> bool:
 
 
 def can_open_document_card(user: User) -> bool:
-    return user.role in (UserRole.admin, UserRole.user, UserRole.reviewer)
+    return user.role in (UserRole.admin, UserRole.master_admin, UserRole.user, UserRole.reviewer)
 
 
 def require_upload_permission(user: User, doc: BaseDocument) -> None:

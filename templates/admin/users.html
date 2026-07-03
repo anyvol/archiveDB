@@ -1,0 +1,37 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Пользователи{% endblock %}
+{% block content %}
+<h2>Пользователи</h2>
+{% if success %}<div class="alert alert-success">Изменения сохранены.</div>{% endif %}
+{% if error == 'master_admin' %}<div class="alert alert-error">Роль главного администратора нельзя назначить или снять через UI.</div>{% endif %}
+<div class="card">
+    <table>
+        <tr>
+            <th>Логин</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Активен</th><th>Email подтверждён</th><th></th>
+        </tr>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.login }}</td>
+            <td>{{ u.full_name or '—' }}</td>
+            <td>{{ u.email or '—' }}</td>
+            <td>{{ USER_ROLE_LABELS.get(u.role, u.role.value) }}</td>
+            <td>{{ 'да' if u.is_active else 'нет' }}</td>
+            <td>{{ 'да' if u.email_verified else 'нет' }}</td>
+            <td>
+                <form method="post" action="{{ url_path('/admin/users/' ~ u.id) }}" style="display:flex;gap:0.5rem;align-items:center;">
+                    <select name="role">
+                        {% for role in UserRole %}
+                        {% if role.value != 'master_admin' or u.role.value == 'master_admin' %}
+                        <option value="{{ role.value }}" {% if u.role == role %}selected{% endif %}>{{ USER_ROLE_LABELS.get(role, role.value) }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <label><input type="checkbox" name="is_active" value="true" {% if u.is_active %}checked{% endif %}> активен</label>
+                    <button type="submit" class="btn">Сохранить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endblock %}

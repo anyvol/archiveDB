@@ -9,7 +9,10 @@ The system is built for teams that need a single place to register documents, at
 - Register KD and TD documents with automatic PRNI/PRN numbering
 - Upload files to local disk (Docker bind mount)
 - Status workflow: **Pending review** → **Verified** / **Requires correction**
-- Roles: **user**, **reviewer**, **admin**
+- Roles: **user**, **reviewer**, **admin**, **master_admin**
+- **Administration** panel (master_admin): containers, users, traffic, timezone, backups, SMTP
+- Mandatory **email verification** at registration; **password reset** via email
+- Automated **backups** (DB + files) in a separate Docker service
 - Filter and sort all table columns
 - REST API (`/docs`) and web UI
 - Browser push notifications (HTTPS required)

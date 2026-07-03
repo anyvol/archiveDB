@@ -31,6 +31,14 @@
         <div class="alert">Фамилия, имя и отчество не могут состоять только из цифр.</div>
         {% elif error == 'position_digits' %}
         <div class="alert">Должность не может состоять только из цифр.</div>
+        {% elif error == 'email_required' %}
+        <div class="alert">Email обязателен для регистрации.</div>
+        {% elif error == 'email_exists' %}
+        <div class="alert">Пользователь с таким email уже зарегистрирован.</div>
+        {% elif error == 'email_domain' %}
+        <div class="alert">Разрешены только корпоративные email-домены.</div>
+        {% elif error == 'mailer' %}
+        <div class="alert">Регистрация временно недоступна: почтовый сервер не настроен.</div>
         {% elif error == 'server' %}
         <div class="alert">Произошла ошибка при регистрации. Попробуйте позже.</div>
         {% elif error %}
@@ -49,8 +57,8 @@
         <input type="text" id="first_name" name="first_name" required value="{{ form_first_name or '' }}">
         <label for="patronymic">Отчество (при наличии):</label>
         <input type="text" id="patronymic" name="patronymic" value="{{ form_patronymic or '' }}">
-        <label for="email">Email:</label>
-        <input type="email" id="email" name="email" value="{{ form_email or '' }}" maxlength="100">
+        <label for="email">Email (обязательно):</label>
+        <input type="email" id="email" name="email" value="{{ form_email or '' }}" maxlength="100" required>
         <label for="position">Должность:</label>
         <input type="text" id="position" name="position" value="{{ form_position or '' }}">
         <label for="department">Отдел:</label>

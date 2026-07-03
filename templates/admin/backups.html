@@ -1,0 +1,34 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Бекапы{% endblock %}
+{% block content %}
+<h2>Бекапы</h2>
+{% if success %}<div class="alert alert-success">Бекап запущен или завершён.</div>{% endif %}
+{% if error %}<div class="alert alert-error">Ошибка при создании бекапа.</div>{% endif %}
+<div class="card">
+    <p>Каталог на хосте: <code>{{ backup_host_path }}</code></p>
+    <p>Для WSL укажите путь на диск Windows, например <code>/mnt/c/ArchiveDB/backups</code> в <code>BACKUP_HOST_PATH</code>.</p>
+    <form method="post" action="{{ url_path('/admin/backups/run') }}">
+        <label><input type="checkbox" name="backup_db" value="true" checked> Бекап базы данных</label><br>
+        <label><input type="checkbox" name="backup_files" value="true" checked> Бекап загруженных файлов</label><br><br>
+        <button type="submit" class="btn">Создать бекап</button>
+    </form>
+</div>
+<div class="card">
+    <h3>История</h3>
+    <table>
+        <tr><th>ID</th><th>Тип</th><th>Размер</th><th>Статус</th><th>Когда</th><th>Кем</th></tr>
+        {% for r in records %}
+        <tr>
+            <td>{{ r.backup_id }}</td>
+            <td>{{ r.backup_type }}</td>
+            <td>{{ format_bytes(r.size_bytes or 0) }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ format_datetime(r.created_at, timezone) }}</td>
+            <td>{{ r.triggered_by or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">Бекапов пока нет.</td></tr>
+        {% endfor %}
+    </table>
+</div>
+{% endblock %}

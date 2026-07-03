@@ -9,6 +9,7 @@ def test_departments_include_integration_and_service():
 
 
 def test_user_role_labels_cover_all_roles():
+    assert USER_ROLE_LABELS[UserRole.master_admin] == "Главный администратор"
     assert USER_ROLE_LABELS[UserRole.admin] == "Администратор"
     assert USER_ROLE_LABELS[UserRole.user] == "Обычный пользователь"
     assert USER_ROLE_LABELS[UserRole.reviewer] == "Ревьюер"

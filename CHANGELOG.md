@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.13.0
+
+- Added **master_admin** role and **Администрирование** section in the header (containers/logs, users, traffic, timezone, backups, SMTP).
+- Separate **backup** and **ops-agent** Docker services; backups stored via `BACKUP_HOST_PATH` (supports Windows host paths from WSL, e.g. `/mnt/c/ArchiveDB/backups`).
+- **Mandatory email** at registration with 6-digit verification code sent via SMTP.
+- **Password reset** via email link; mailer configurable in admin panel or `.env`.
+- New tables: `system_settings`, `email_verification_codes`, `password_reset_tokens`, `backup_records`.
+- Alembic migration `f6a7b8c9d0e1` (idempotent where possible).
+
 ## 0.12.2
 
 - Fixed project documents not appearing in «Проекты» when a development order was uploaded at project creation: the file was saved to «Прочие документы» on disk but not registered in `project_files`.

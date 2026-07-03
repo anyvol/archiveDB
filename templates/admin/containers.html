@@ -1,0 +1,26 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Контейнеры{% endblock %}
+{% block content %}
+<h2>Статус контейнеров</h2>
+<div class="card">
+    <table>
+        <tr><th>Имя</th><th>Статус</th><th>Health</th><th></th></tr>
+        {% for c in containers %}
+        <tr>
+            <td>{{ c.name }}</td>
+            <td>{{ c.status }}</td>
+            <td>{{ c.health or '—' }}</td>
+            <td><a href="{{ url_path('/admin/containers') }}?name={{ c.name }}">Логи</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Нет данных от ops-agent.</td></tr>
+        {% endfor %}
+    </table>
+</div>
+{% if selected %}
+<div class="card">
+    <h3>Логи: {{ selected }}</h3>
+    <div class="logs">{{ logs }}</div>
+</div>
+{% endif %}
+{% endblock %}

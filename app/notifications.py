@@ -31,7 +31,7 @@ def _actor_name(user: User) -> str:
 
 async def _get_admin_reviewer_ids(session: AsyncSession) -> list[int]:
     result = await session.execute(
-        select(User.id).where(User.role.in_([UserRole.admin, UserRole.reviewer]))
+        select(User.id).where(User.role.in_([UserRole.master_admin, UserRole.admin, UserRole.reviewer]))
     )
     return list(result.scalars().all())
 

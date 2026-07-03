@@ -1,0 +1,29 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Обзор{% endblock %}
+{% block content %}
+<h2>Обзор системы</h2>
+<div class="card">
+    <p><strong>Файлы:</strong> {{ format_bytes(stats.upload_bytes) }} ({{ stats.upload_files }} файлов)</p>
+    <p><strong>Бекапы:</strong> {{ format_bytes(stats.backup_bytes) }} ({{ stats.backup_files }} файлов)</p>
+    <p><strong>Пользователи:</strong> {{ stats.users_count }} · <strong>Документы:</strong> {{ stats.docs_count }} · <strong>Проекты:</strong> {{ stats.projects_count }}</p>
+    <p><strong>Часовой пояс:</strong> {{ timezone }}</p>
+    <p><strong>SMTP:</strong> {% if mailer_ok %}настроен{% else %}не настроен{% endif %}</p>
+</div>
+<div class="card">
+    <h3>Контейнеры</h3>
+    {% if containers %}
+    <table>
+        <tr><th>Имя</th><th>Статус</th><th>Health</th></tr>
+        {% for c in containers %}
+        <tr>
+            <td>{{ c.name }}</td>
+            <td>{{ c.status }}</td>
+            <td>{{ c.health or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>ops-agent недоступен или контейнеры не найдены.</p>
+    {% endif %}
+</div>
+{% endblock %}

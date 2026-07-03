@@ -1,0 +1,22 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Часовой пояс{% endblock %}
+{% block content %}
+<h2>Часовой пояс</h2>
+{% if success %}<div class="alert alert-success">Часовой пояс обновлён.</div>{% endif %}
+{% if error %}<div class="alert alert-error">Недопустимый часовой пояс.</div>{% endif %}
+<div class="card">
+    <p>Текущее время в системе: <strong>{{ now_formatted }}</strong> ({{ timezone }})</p>
+    <form method="post" action="{{ url_path('/admin/timezone') }}">
+        <div class="form-group">
+            <label for="timezone">Часовой пояс (IANA):</label>
+            <select name="timezone" id="timezone">
+                {% for tz in timezones %}
+                <option value="{{ tz }}" {% if tz == timezone %}selected{% endif %}>{{ tz }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn">Применить</button>
+    </form>
+    <p style="margin-top:1rem;color:#6c757d;font-size:0.9rem;">Даты в БД хранятся в UTC; отображение использует выбранный часовой пояс.</p>
+</div>
+{% endblock %}
