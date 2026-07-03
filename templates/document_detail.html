@@ -108,8 +108,8 @@
                 <div class="meta-item"><label>Формат документа</label><div>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) }}</div></div>
                 {% endif %}
                 <div class="meta-item"><label>Зарегистрировал</label><div>{{ doc.created_by or '—' }}</div></div>
-                <div class="meta-item"><label>Дата регистрации</label><div>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</div></div>
-                <div class="meta-item"><label>Обновлено</label><div>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</div></div>
+                <div class="meta-item"><label>Дата регистрации</label><div>{{ format_datetime_short(doc.created_at, app_timezone) }}</div></div>
+                <div class="meta-item"><label>Обновлено</label><div>{{ format_datetime_short(doc.last_update, app_timezone) }}</div></div>
             </div>
 
             {% if is_governed %}
@@ -175,7 +175,7 @@
                 {% for event in change_history %}
                 <li class="history-item">
                     <div class="history-meta">
-                        {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }}
+                        {{ format_datetime_short(event.created_at, app_timezone) }}
                         {% if event.actor %} · {{ event.actor.full_name or event.actor.login }}{% endif %}
                     </div>
                     <div class="history-title">{{ event.summary }}</div>

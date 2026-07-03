@@ -36,7 +36,7 @@
                 {% for n in notifications %}
                 <div class="notification-item{% if n.id in unread_ids %} unread{% endif %}">
                     <div>{{ n.message }}</div>
-                    <div class="notification-time">{{ n.created_at.strftime('%Y-%m-%d %H:%M') if n.created_at else '' }}</div>
+                    <div class="notification-time">{{ format_datetime_short(n.created_at, app_timezone) }}</div>
                 </div>
                 {% else %}
                 <div class="empty" id="empty-message">Нет уведомлений</div>

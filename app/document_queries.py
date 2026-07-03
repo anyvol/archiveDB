@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
+from app.timezone_utils import parse_filter_date
 from sqlalchemy import asc, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -26,17 +27,6 @@ SORTABLE_COLUMNS = {
 }
 
 
-def _parse_date(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M", "%d.%m.%Y"):
-        try:
-            return datetime.strptime(value.strip(), fmt)
-        except ValueError:
-            continue
-    return None
-
-
 def build_documents_query(
     *,
     designation: Optional[str] = None,
@@ -55,6 +45,7 @@ def build_documents_query(
     updated_to: Optional[str] = None,
     sort: str = "created_at",
     order: str = "desc",
+    timezone_name: str = "UTC",
 ):
     query = select(BaseDocument).options(
         joinedload(BaseDocument.project),
@@ -122,15 +113,15 @@ def build_documents_query(
         except ValueError:
             pass
 
-    created_from_dt = _parse_date(created_from)
-    created_to_dt = _parse_date(created_to)
+    created_from_dt = parse_filter_date(created_from, timezone_name)
+    created_to_dt = parse_filter_date(created_to, timezone_name, end_of_day=True)
     if created_from_dt:
         query = query.where(BaseDocument.created_at >= created_from_dt)
     if created_to_dt:
         query = query.where(BaseDocument.created_at <= created_to_dt)
 
-    updated_from_dt = _parse_date(updated_from)
-    updated_to_dt = _parse_date(updated_to)
+    updated_from_dt = parse_filter_date(updated_from, timezone_name)
+    updated_to_dt = parse_filter_date(updated_to, timezone_name, end_of_day=True)
     if updated_from_dt:
         query = query.where(BaseDocument.last_update >= updated_from_dt)
     if updated_to_dt:
