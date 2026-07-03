@@ -9,12 +9,13 @@ from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from app.auth import get_current_user_from_token
 from app.config import SERVICE_VERSION, url_path
 from app.crypto_utils import encrypt_secret
 from app.database import get_session
-from app.dependencies import get_current_master_admin_user
 from app.mail.sender import send_email, smtp_configured
 from app.models import BackupRecord, User, UserRole, USER_ROLE_LABELS, DEPARTMENTS
 from app.notifications import count_unread
