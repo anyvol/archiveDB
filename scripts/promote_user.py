@@ -32,7 +32,12 @@ def main():
     parser.add_argument("login", help="User login")
     parser.add_argument(
         "role",
-        choices=[UserRole.admin.value, UserRole.reviewer.value, UserRole.user.value],
+        choices=[
+            UserRole.master_admin.value,
+            UserRole.admin.value,
+            UserRole.reviewer.value,
+            UserRole.user.value,
+        ],
         help="New role",
     )
     args = parser.parse_args()

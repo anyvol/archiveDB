@@ -19,4 +19,4 @@ def test_service_version_is_semver():
 
 
 def test_service_version_is_current_release():
-    assert SERVICE_VERSION == "0.12.2"
+    assert SERVICE_VERSION == "0.13.0"

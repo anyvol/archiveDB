@@ -9,6 +9,7 @@ from app.permissions import (
     can_request_minor_correction,
     can_set_document_status,
     can_upload_file,
+    is_master_admin,
 )
 
 
@@ -42,8 +43,14 @@ def test_reviewer_can_set_status():
 
 def test_only_admin_can_delete():
     assert can_delete_document(_user(UserRole.admin))
+    assert can_delete_document(_user(UserRole.master_admin))
     assert not can_delete_document(_user(UserRole.user))
     assert not can_delete_document(_user(UserRole.reviewer))
+
+
+def test_master_admin_flag():
+    assert is_master_admin(_user(UserRole.master_admin))
+    assert not is_master_admin(_user(UserRole.admin))
 
 
 def test_user_first_upload_allowed():

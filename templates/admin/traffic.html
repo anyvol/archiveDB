@@ -1,0 +1,25 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Трафик данных{% endblock %}
+{% block content %}
+<h2>Трафик и объёмы данных</h2>
+<div class="card">
+    <h3>Загруженные файлы</h3>
+    <p>Путь: <code>{{ stats.upload_path }}</code></p>
+    <p>Объём: <strong>{{ format_bytes(stats.upload_bytes) }}</strong> · файлов: {{ stats.upload_files }}</p>
+</div>
+<div class="card">
+    <h3>Бекапы на хосте</h3>
+    <p>Путь: <code>{{ stats.backup_path }}</code></p>
+    <p>Объём: <strong>{{ format_bytes(stats.backup_bytes) }}</strong> · файлов: {{ stats.backup_files }}</p>
+</div>
+<div class="card">
+    <h3>Сущности в БД</h3>
+    <ul>
+        <li>Пользователи: {{ stats.users_count }}</li>
+        <li>Документы: {{ stats.docs_count }}</li>
+        <li>Проекты: {{ stats.projects_count }}</li>
+        <li>Файлы проектов: {{ stats.project_files_count }}</li>
+        <li>Изображения проектов: {{ stats.project_images_count }}</li>
+    </ul>
+</div>
+{% endblock %}

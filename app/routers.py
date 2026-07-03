@@ -13,6 +13,9 @@ from app.schemas import User as UserSchema
 from app.auth import create_access_token, get_current_user, get_password_hash, authenticate_user
 from app.column_preferences import DEFAULT_VISIBLE_COLUMNS
 from app.dependencies import get_current_admin_user
+from app.config import ALLOWED_EMAIL_DOMAINS
+from app.email_verification import issue_verification_code, normalize_email
+from app.mail.sender import smtp_configured
 from app.user_helpers import build_full_name
 
 router = APIRouter()
@@ -43,9 +46,25 @@ async def register(
     else:
         resolved_name = full_name
 
+    normalized_email = normalize_email(email or "")
+    if not normalized_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email обязателен")
+
+    if ALLOWED_EMAIL_DOMAINS:
+        domain = normalized_email.split("@")[-1]
+        if domain not in ALLOWED_EMAIL_DOMAINS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Недопустимый домен email")
+
+    if not await smtp_configured(session):
+        raise HTTPException(status_code=503, detail="Почтовый сервер не настроен")
+
     result = await session.execute(select(User).where(User.login == login))
     if result.scalars().first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Login already registered")
+
+    existing_email = await session.execute(select(User).where(User.email == normalized_email))
+    if existing_email.scalars().first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
     user = User(
         login=login,
@@ -53,14 +72,22 @@ async def register(
         full_name=resolved_name,
         position=position,
         department=department,
-        email=(email or "").strip() or None,
+        email=normalized_email,
         role=UserRole.user,
+        email_verified=False,
+        is_active=False,
     )
     session.add(user)
     await session.commit()
+    await session.refresh(user)
+    await issue_verification_code(session, user)
 
     access_token = create_access_token({"sub": user.login})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "email_verification_required": True,
+    }
 
 
 @router.post("/login", response_model=Token)

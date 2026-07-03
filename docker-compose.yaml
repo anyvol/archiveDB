@@ -21,13 +21,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      backup:
+        condition: service_started
     env_file: .env
     environment:
       ROOT_PATH: ${ROOT_PATH:-/archive}
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
+      BACKUP_AGENT_URL: http://backup:9002
+      OPS_AGENT_URL: http://ops-agent:9001
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files
+      - ${BACKUP_HOST_PATH:-./backups}:/app/backups:ro
     expose:
       - "8000"
     working_dir: /app
@@ -50,6 +55,35 @@ services:
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
     volumes:
       - ./nginx/certs:/etc/nginx/certs
+
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      BACKUP_DIR: /backups
+      UPLOADS_DIR: /uploads
+      POSTGRES_HOST: db
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+    volumes:
+      - ${BACKUP_HOST_PATH:-./backups}:/backups
+      - ${UPLOAD_HOST_PATH:-./uploaded_files}:/uploads:ro
+    expose:
+      - "9002"
+
+  ops-agent:
+    build: ./ops-agent
+    restart: unless-stopped
+    environment:
+      OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "9001"
 
 volumes:
   pgdata:

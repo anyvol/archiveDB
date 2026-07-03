@@ -1,0 +1,80 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Почта{% endblock %}
+{% block content %}
+<h2>Настройка SMTP</h2>
+{% if success == '1' %}<div class="alert alert-success">Настройки сохранены.</div>{% endif %}
+{% if success == 'test' %}<div class="alert alert-success">Тестовое письмо отправлено.</div>{% endif %}
+{% if error == 'host' %}
+<div class="alert alert-error">Неверный SMTP-сервер: укажите имя хоста (например <code>mail.company.ru</code>), а не email-адрес.</div>
+{% elif error == 'password' %}
+<div class="alert alert-error">Укажите пароль SMTP при первом сохранении настроек.</div>
+{% elif error == 'test_host' %}
+<div class="alert alert-error">Не удалось отправить письмо: в поле «Сервер SMTP» указан email вместо имени сервера.</div>
+{% elif error == 'test_connect' or error == 'test' %}
+<div class="alert alert-error">
+    Не удалось отправить письмо через SMTP.
+    {% if error_detail %}<br><small>{{ error_detail }}</small>{% endif %}
+    <br><small>Для Outlook «без шифрования»: порт <strong>25</strong>, галочка TLS <strong>снята</strong>.
+    Проверьте доступ из контейнера: <code>docker compose exec api nc -zv mail.saga-tech.ru 25</code></small>
+</div>
+{% endif %}
+<div class="card">
+    <p>Статус: {% if configured %}<strong>настроен</strong>{% else %}не настроен{% endif %}</p>
+    {% if resolved %}
+    <p style="font-size:0.9rem;color:#495057;">
+        Активно: {{ resolved.host }}:{{ resolved.port }},
+        TLS={{ 'да' if resolved.use_tls else 'нет' }},
+        проверка сертификата={{ 'да' if resolved.tls_verify else 'нет' }}
+    </p>
+    {% endif %}
+    <form method="post" action="{{ url_path('/admin/mailer') }}">
+        <div class="form-group">
+            <label>Сервер SMTP (host)</label>
+            <input type="text" name="host" value="{{ smtp.host or '' }}" required placeholder="mail.saga-tech.ru">
+            <small style="color:#6c757d;">Как в Outlook → исходящая почта → сервер</small>
+        </div>
+        <div class="form-group">
+            <label>Порт</label>
+            <input type="number" name="port" value="{{ smtp.port if smtp.port is not none else 25 }}">
+            <small style="color:#6c757d;">25 — без шифрования (как в вашем Outlook); 587 — STARTTLS; 465 — SSL</small>
+        </div>
+        <div class="form-group">
+            <label>Логин SMTP</label>
+            <input type="text" name="user" value="{{ smtp.user or '' }}" placeholder="a.volkov@saga-tech.ru">
+            <small style="color:#6c757d;">Тот же email, что в Outlook; требуется проверка подлинности</small>
+        </div>
+        <div class="form-group">
+            <label>Пароль SMTP</label>
+            <input type="password" name="password" value="" autocomplete="new-password">
+            <small style="color:#6c757d;">Пароль от почты. Оставьте пустым только чтобы не менять уже сохранённый.</small>
+        </div>
+        <div class="form-group">
+            <label>Адрес отправителя (From)</label>
+            <input type="email" name="from_address" value="{{ smtp.from_address or '' }}" required placeholder="a.volkov@saga-tech.ru">
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="use_tls" value="true" {% if smtp.use_tls %}checked{% endif %}>
+                Шифрование (TLS / STARTTLS)
+            </label>
+            <small style="color:#6c757d;display:block;">Снимите галочку для порта 25 без шифрования (как в Outlook: «метод шифрования — нет»)</small>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="tls_verify" value="true" {% if smtp.tls_verify != false %}checked{% endif %}>
+                Проверять SSL-сертификат сервера
+            </label>
+            <small style="color:#6c757d;display:block;">Снимите, если при включённом TLS ошибка «certificate verify failed» (самоподписанный сертификат)</small>
+        </div>
+        <button type="submit" class="btn">Сохранить</button>
+    </form>
+</div>
+<div class="card">
+    <h3>Тестовое письмо</h3>
+    <p style="color:#6c757d;font-size:0.9rem;">Сначала сохраните настройки (с паролем), затем отправьте тест.</p>
+    <form method="post" action="{{ url_path('/admin/mailer/test') }}">
+        <div class="form-group"><label>Email получателя</label><input type="email" name="test_email" required></div>
+        <button type="submit" class="btn btn-secondary">Отправить тест</button>
+    </form>
+</div>
+{% endblock %}

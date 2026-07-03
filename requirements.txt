@@ -30,3 +30,6 @@ pytest-asyncio==1.1.0
 pywebpush==2.0.1
 pypdf==5.9.0
 Pillow==11.3.0
+aiosmtplib==3.0.2
+httpx==0.28.1
+cryptography==44.0.0

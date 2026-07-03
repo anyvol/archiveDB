@@ -67,6 +67,7 @@ from app.permissions import (
     can_request_minor_correction,
     can_respond_correction_request,
     is_admin,
+    is_master_admin,
     is_owner,
     require_delete_permission,
     require_edit_metadata_permission,
@@ -117,6 +118,11 @@ from app.cert_scripts import (
 )
 from app.push import DEFAULT_PUSH_PREFERENCES, normalize_push_preferences
 from app.changelog import render_changelog_html
+from app.admin.router import router as admin_router
+from app.config import ALLOWED_EMAIL_DOMAINS
+from app.email_verification import issue_verification_code, normalize_email, verify_email_code
+from app.mail.sender import smtp_configured
+from app.password_reset import request_password_reset, reset_password_with_token
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -148,13 +154,14 @@ templates.env.globals["get_document_display_status"] = get_document_display_stat
 templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
 templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
 templates.env.globals["is_governed_document"] = is_governed_document
-templates.env.globals["service_version"] = SERVICE_VERSION
+templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
+app.include_router(admin_router, prefix="/admin")
 
 _COOKIE_PATH = ROOT_PATH or "/"
 _CERT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nginx", "certs", "fullchain.pem")
@@ -299,7 +306,12 @@ async def handle_login(
             path=_COOKIE_PATH,
         )
         return response
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_403_FORBIDDEN and exc.detail == "email_not_verified":
+            return RedirectResponse(
+                url=url_path(f"/verify-email?login={username}"),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
         return RedirectResponse(url=url_path("/login?error=true"), status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -388,29 +400,181 @@ async def handle_register(
         form_ctx["error"] = field_error
         return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
+    normalized_email = normalize_email(email)
+    if not normalized_email:
+        form_ctx["error"] = "email_required"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=400)
+
+    if ALLOWED_EMAIL_DOMAINS:
+        domain = normalized_email.split("@")[-1]
+        if domain not in ALLOWED_EMAIL_DOMAINS:
+            form_ctx["error"] = "email_domain"
+            return templates.TemplateResponse("register.html", form_ctx, status_code=400)
+
+    if not await smtp_configured(session):
+        form_ctx["error"] = "mailer"
+        return templates.TemplateResponse("register.html", form_ctx, status_code=503)
+
     try:
         existing = await session.execute(select(User).where(User.login == login))
         if existing.scalars().first():
             form_ctx["error"] = "exists"
             return templates.TemplateResponse("register.html", form_ctx, status_code=400)
 
-        session.add(
-            User(
-                login=login,
-                password_hash=get_password_hash(password),
-                full_name=full_name,
-                position=position or None,
-                department=department,
-                email=email.strip() or None,
-                role=UserRole.user,
-            )
+        existing_email = await session.execute(select(User).where(User.email == normalized_email))
+        if existing_email.scalars().first():
+            form_ctx["error"] = "email_exists"
+            return templates.TemplateResponse("register.html", form_ctx, status_code=400)
+
+        new_user = User(
+            login=login,
+            password_hash=get_password_hash(password),
+            full_name=full_name,
+            position=position or None,
+            department=department,
+            email=normalized_email,
+            role=UserRole.user,
+            email_verified=False,
+            is_active=False,
         )
+        session.add(new_user)
         await session.commit()
-        return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+        await session.refresh(new_user)
+        await issue_verification_code(session, new_user)
+        return RedirectResponse(
+            url=url_path(f"/verify-email?login={login}&sent=1"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except Exception:
         logger.exception("Registration failed for login=%s", login)
         form_ctx["error"] = "server"
         return templates.TemplateResponse("register.html", form_ctx, status_code=500)
+
+
+@app.get("/verify-email", response_class=HTMLResponse)
+async def verify_email_page(
+    request: Request,
+    login: str = Query(""),
+    sent: str = Query(""),
+    error: str = Query(""),
+    session: AsyncSession = Depends(get_session),
+):
+    email_display = ""
+    if login:
+        result = await session.execute(select(User).where(User.login == login))
+        user = result.scalars().first()
+        if user and user.email:
+            email_display = user.email
+    return templates.TemplateResponse(
+        "verify_email.html",
+        {
+            "request": request,
+            "login": login,
+            "email": email_display,
+            "sent": sent == "1",
+            "error": bool(error),
+            "error_message": request.query_params.get("message"),
+        },
+    )
+
+
+@app.post("/verify-email", response_class=RedirectResponse)
+async def verify_email_submit(
+    login: str = Form(...),
+    code: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/register"))
+    try:
+        await verify_email_code(session, user, code)
+        return RedirectResponse(url=url_path("/login?success=true"))
+    except HTTPException as exc:
+        msg = exc.detail if isinstance(exc.detail, str) else "error"
+        return RedirectResponse(
+            url=url_path(f"/verify-email?login={login}&error=1&message={msg}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+
+@app.post("/verify-email/resend", response_class=RedirectResponse)
+async def verify_email_resend(
+    login: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(User).where(User.login == login))
+    user = result.scalars().first()
+    if user is None:
+        return RedirectResponse(url=url_path("/register"))
+    try:
+        await issue_verification_code(session, user)
+    except HTTPException:
+        pass
+    return RedirectResponse(
+        url=url_path(f"/verify-email?login={login}&sent=1"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {"request": request, "sent": False, "error": False},
+    )
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_submit(
+    request: Request,
+    login_or_email: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not await smtp_configured(session):
+        return templates.TemplateResponse(
+            "forgot_password.html",
+            {"request": request, "sent": False, "error": True},
+        )
+    base = str(request.base_url).rstrip("/")
+    await request_password_reset(session, login_or_email, request_base=base)
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {"request": request, "sent": True, "error": False},
+    )
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str = Query("")):
+    return templates.TemplateResponse(
+        "reset_password.html",
+        {"request": request, "token": token, "error": False, "error_message": None},
+    )
+
+
+@app.post("/reset-password", response_class=HTMLResponse)
+async def reset_password_submit(
+    request: Request,
+    token: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if password != password_confirm:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": True, "error_message": "Пароли не совпадают."},
+        )
+    try:
+        await reset_password_with_token(session, token, password)
+        return RedirectResponse(url=url_path("/login?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+    except HTTPException as exc:
+        msg = exc.detail if isinstance(exc.detail, str) else "Ошибка"
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": True, "error_message": msg},
+        )
 
 
 @app.get("/documents", response_class=HTMLResponse)
@@ -1584,7 +1748,25 @@ async def handle_profile(
     user.full_name = full_name
     user.position = position or None
     user.department = department
-    user.email = email.strip() or None
+    new_email = normalize_email(email)
+    if new_email != (user.email or ""):
+        if not new_email:
+            return RedirectResponse(url=url_path("/profile?error=email_required"), status_code=303)
+        if ALLOWED_EMAIL_DOMAINS:
+            domain = new_email.split("@")[-1]
+            if domain not in ALLOWED_EMAIL_DOMAINS:
+                return RedirectResponse(url=url_path("/profile?error=email_domain"), status_code=303)
+        existing_email = await session.execute(
+            select(User).where(User.email == new_email, User.id != user.id)
+        )
+        if existing_email.scalars().first():
+            return RedirectResponse(url=url_path("/profile?error=email_exists"), status_code=303)
+        user.email = new_email
+        user.email_verified = False
+        user.is_active = False
+        await session.commit()
+        await issue_verification_code(session, user)
+        return RedirectResponse(url=url_path(f"/verify-email?login={user.login}&sent=1"), status_code=303)
     user.preferred_org_code = preferred_org_code.strip() or None
     user.preferred_org_okpo = preferred_org_okpo == "true"
     user.visible_columns = selected_columns
