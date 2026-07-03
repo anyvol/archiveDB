@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["url_path"] = url_path
+templates.env.globals["is_master_admin"] = is_master_admin
+templates.env.globals["UserRole"] = UserRole
+templates.env.globals["USER_ROLE_LABELS"] = USER_ROLE_LABELS
+templates.env.globals["DEPARTMENTS"] = DEPARTMENTS
 
 
 async def _admin_context(session: AsyncSession, user: User, nav: str) -> dict:

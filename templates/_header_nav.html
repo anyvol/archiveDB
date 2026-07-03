@@ -1,6 +1,6 @@
 <nav>
     {% if user %}
-        {% if is_master_admin(user) %}
+        {% if user.role.value == 'master_admin' %}
         <a href="{{ url_path('/admin') }}">Администрирование</a>
         {% endif %}
         {% if nav_context in ('profile', 'notifications', 'help') %}
