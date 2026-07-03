@@ -10,7 +10,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - Documents archive page loads 20 records at a time with a «Загрузить ещё 20» button.
 - Fixed OTP/email verification redirect: use HTTP 303 so the browser opens login page instead of re-POSTing the form (JSON validation error).
 - Uploaded file name includes registration title: `{designation} ({original}) - {doc_name}.ext`, or `{designation} - {doc_name}.ext` when the file base name matches the designation.
-- LAN access: nginx redirects `/archive` to `/archive/` on HTTPS; when `SSL_CERT_IP` is set, `http://<ip>/archive/` serves the app without TLS (for phones that cannot trust the self-signed cert).
+- LAN access: nginx serves `http://<server-ip>/archive/` directly (no HTTPS redirect); use `https://<ip>:8443/archive/` for push (port 443 is not used by default).
 
 ## 0.13.0
 
