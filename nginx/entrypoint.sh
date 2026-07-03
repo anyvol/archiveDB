@@ -45,6 +45,36 @@ envsubst '${REDIRECT_PORT}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 
+if [ -n "${SSL_CERT_IP}" ]; then
+    cat >> /etc/nginx/conf.d/default.conf <<EOF
+
+# HTTP on LAN IP — no TLS redirect (push requires HTTPS; login and browsing work over HTTP)
+server {
+    listen 80;
+    server_name ${SSL_CERT_IP};
+
+    location = /archive {
+        return 302 /archive/;
+    }
+
+    location /archive/ {
+        proxy_pass http://api:8000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+    }
+
+    location / {
+        return 302 /archive/;
+    }
+}
+EOF
+    echo "LAN HTTP (no cert): http://${SSL_CERT_IP}/archive/"
+fi
+
 echo "nginx listening:"
 echo "  http://localhost/archive/          (push works on this PC)"
 echo "  https://${CN}${REDIRECT_PORT}/archive/  (LAN — run scripts/windows-forward-ports.ps1 on Windows+WSL)"
