@@ -47,14 +47,16 @@ async def list_documents(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    docs = await fetch_documents(
+    docs, _total = await fetch_documents(
         session,
         doc_type=type,
         status=status_filter,
         sort="created_at",
         order="desc",
+        limit=limit,
+        offset=skip,
     )
-    return docs[skip : skip + limit]
+    return docs
 
 
 @router.post("/design-documents/", response_model=DesignDocumentSchema, status_code=status.HTTP_201_CREATED)

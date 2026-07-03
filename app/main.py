@@ -43,7 +43,7 @@ from app.models import (
 from app.routers import router as user_router
 from app import docs
 from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
-from app.document_queries import fetch_documents
+from app.document_queries import fetch_documents, DOCUMENTS_PAGE_SIZE
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_project_by_id, create_new_project
 from app.project_files import (
@@ -209,6 +209,12 @@ def _filter_params(request: Request) -> dict:
         "sort": qp.get("sort") or "created_at",
         "order": qp.get("order") or "desc",
     }
+
+
+def _filters_query_string(filters: dict) -> str:
+    from urllib.parse import urlencode
+
+    return urlencode({k: v for k, v in filters.items() if v is not None and v != ""})
 
 
 @app.get("/version")
@@ -666,17 +672,27 @@ async def documents_page(
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
     filters = _filter_params(request)
-    documents_from_db = await fetch_documents(session, **filters)
+    documents_from_db, total_count = await fetch_documents(
+        session,
+        limit=DOCUMENTS_PAGE_SIZE,
+        offset=0,
+        **filters,
+    )
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     known_person_names = await fetch_known_person_names(session)
     ctx = await _page_context(session, user)
+    visible_columns = get_visible_columns(user)
 
     return templates.TemplateResponse(
         "documents.html",
         {
             "request": request,
             "documents": documents_from_db,
+            "documents_total": total_count,
+            "has_more_documents": len(documents_from_db) < total_count,
+            "documents_page_size": DOCUMENTS_PAGE_SIZE,
+            "filters_query": _filters_query_string(filters),
             "filters": filters,
             "projects": projects,
             "known_person_names": known_person_names,
@@ -684,11 +700,43 @@ async def documents_page(
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
             "default_developed_by": user.full_name or "",
-            "visible_columns": get_visible_columns(user),
+            "visible_columns": visible_columns,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
     )
+
+
+@app.get("/api/documents")
+async def list_documents_api(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DOCUMENTS_PAGE_SIZE, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    filters = _filter_params(request)
+    documents, total_count = await fetch_documents(
+        session,
+        limit=limit,
+        offset=offset,
+        **filters,
+    )
+    visible_columns = get_visible_columns(user)
+    html = templates.get_template("_document_rows.html").render(
+        documents=documents,
+        user=user,
+        visible_columns=visible_columns,
+        show_empty=False,
+    )
+    return {
+        "html": html,
+        "has_more": offset + len(documents) < total_count,
+        "count": len(documents),
+    }
 
 
 @app.post("/documents/create", response_class=RedirectResponse)

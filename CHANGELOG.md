@@ -7,6 +7,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 - OTP entry pages (email verification and password reset): buttons stacked vertically in a single card.
 - Password reset via 6-digit email code instead of a link; after entering a new password, redirect to login with «Новый пароль установлен» message (no JSON response).
+- Documents archive page loads 20 records at a time with a «Загрузить ещё 20» button.
 
 ## 0.13.0
 
