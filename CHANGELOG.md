@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.15.1
+
+- **Sliding session:** the `access_token` JWT cookie is refreshed on each authenticated request while the user remains active, using `ACCESS_TOKEN_EXPIRE_MINUTES` for both token lifetime and cookie `max_age`.
+- **Expired session UX:** missing or expired sessions return a clear «Сессия истекла» message (`401` JSON with `detail: session_expired` for AJAX, redirect to `/login?expired=1` for HTML) instead of Pydantic validation errors on `/login`.
+- **AJAX auth:** document creation and related `fetch` calls use `redirect: manual` and shared `SessionAuth` helpers so requests no longer follow redirects to the login form.
+
 ## 0.15.0
 
 - **Document registration — execution suffix (КД only):** optional «Исполнение» field before the document kind code when registering design documentation; user enters digits from 1 to 99 (e.g. `1` → `-01`, `15` → `-15`) and the suffix is included in the designation preview and stored designation. Not available for technological documentation.

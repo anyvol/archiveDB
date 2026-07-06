@@ -6,7 +6,7 @@ JWT-аутентификация: создание токенов, провер�
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordBearer
 import os
 from dotenv import load_dotenv
@@ -26,6 +26,9 @@ if not SECRET_KEY:
     raise ValueError("SECRET_KEY must be set in .env")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_COOKIE_MAX_AGE = ACCESS_TOKEN_EXPIRE_MINUTES * 60
+SESSION_EXPIRED_DETAIL = "session_expired"
+SESSION_EXPIRED_MESSAGE = "Сессия истекла. Войдите в систему снова."
 
 # OAuth2 для API (header Authorization: Bearer token, используется в Swagger)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
@@ -50,6 +53,43 @@ def get_password_hash(password: str) -> str:
     Используется в register.
     """
     return pwd_context.hash(password)
+
+def cookie_path() -> str:
+    from app.config import ROOT_PATH
+
+    return ROOT_PATH or "/"
+
+
+def parse_bearer_token(access_token: Optional[str]) -> Optional[str]:
+    if not access_token:
+        return None
+    token = access_token
+    if "Bearer " in token:
+        token = token.split("Bearer ")[-1].strip()
+    return token or None
+
+
+def get_login_from_valid_token(access_token: Optional[str]) -> Optional[str]:
+    token = parse_bearer_token(access_token)
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+def set_access_token_cookie(response: Response, jwt_token: str) -> None:
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {jwt_token}",
+        max_age=ACCESS_TOKEN_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path=cookie_path(),
+    )
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -134,10 +174,10 @@ async def get_current_user_from_token(access_token: str, db: AsyncSession) -> Us
         logger.warning("Empty access_token in cookie")
         raise credentials_exception
     
-    # Парсинг: Извлекаем чистый JWT (убираем "Bearer ")
-    token = access_token
-    if "Bearer " in token:
-        token = token.split("Bearer ")[-1].strip()  # Robust парсинг
+    token = parse_bearer_token(access_token)
+    if not token:
+        logger.warning("Empty JWT in access_token cookie")
+        raise credentials_exception
     logger.debug(f"Parsed token starts with: {token[:20]}...")
     
     try:

@@ -28,6 +28,13 @@
                 </div>
                 {% endif %}
                 
+                {% if expired %}
+                <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    Сессия истекла из-за длительного бездействия. Войдите в систему снова.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+
                 {% if error %}
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                     Неверный логин или пароль. Попробуйте снова.

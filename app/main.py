@@ -44,7 +44,17 @@ from app.models import (
 )
 from app.routers import router as user_router
 from app import docs
-from app.auth import get_current_user_from_token, authenticate_user, get_password_hash
+from app.auth import (
+    get_current_user_from_token,
+    authenticate_user,
+    get_password_hash,
+    create_access_token,
+    get_login_from_valid_token,
+    set_access_token_cookie,
+    SESSION_EXPIRED_DETAIL,
+    cookie_path,
+)
+from app.session_helpers import resolve_authenticated_user, session_expired_response
 from app.document_queries import fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_project_by_id, create_new_project
@@ -170,7 +180,7 @@ app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
 app.include_router(admin_router, prefix="/admin")
 
-_COOKIE_PATH = ROOT_PATH or "/"
+_COOKIE_PATH = cookie_path()
 _ACCESS_EXEMPT_PREFIXES = (
     "/login",
     "/register",
@@ -199,6 +209,21 @@ def _is_access_exempt(rel_path: str) -> bool:
         rel_path == prefix or rel_path.startswith(prefix + "/")
         for prefix in _ACCESS_EXEMPT_PREFIXES
     )
+
+
+@app.middleware("http")
+async def refresh_session_on_activity(request: Request, call_next):
+    rel_path = _request_relative_path(request.url.path)
+    login = None
+    if not _is_access_exempt(rel_path):
+        login = get_login_from_valid_token(request.cookies.get("access_token"))
+
+    response = await call_next(request)
+
+    if login:
+        set_access_token_cookie(response, create_access_token(data={"sub": login}))
+
+    return response
 
 
 @app.middleware("http")
@@ -243,8 +268,11 @@ async def _page_context(session: AsyncSession, user: User) -> dict:
 
 async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
     if not access_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Не авторизован")
-    return await get_current_user_from_token(access_token=access_token, db=session)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+    try:
+        return await get_current_user_from_token(access_token=access_token, db=session)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
 
 
 def _filter_params(request: Request) -> dict:
@@ -272,6 +300,18 @@ def _filter_params(request: Request) -> dict:
 @app.get("/version")
 async def version():
     return {"version": SERVICE_VERSION}
+
+
+@app.get("/session.js", response_class=PlainTextResponse)
+async def session_auth_script():
+    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "session.js")
+    with open(script_path, encoding="utf-8") as f:
+        content = f.read()
+    return PlainTextResponse(
+        content,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/sw.js", response_class=PlainTextResponse)
@@ -333,7 +373,7 @@ async def login_page(
                 return RedirectResponse(url=url_path("/access-code"), status_code=status.HTTP_303_SEE_OTHER)
             return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
         except HTTPException:
-            response = RedirectResponse(url=url_path("/login"))
+            response = RedirectResponse(url=url_path("/login?expired=1"))
             response.delete_cookie("access_token", path=_COOKIE_PATH)
             return response
 
@@ -343,6 +383,7 @@ async def login_page(
         {
             "request": request,
             "error": request.query_params.get("error") == "true",
+            "expired": request.query_params.get("expired") == "1",
             "success": success_param == "true",
             "verified": success_param == "verified",
             "service_version": SERVICE_VERSION,
@@ -362,14 +403,7 @@ async def handle_login(
         user = result.scalars().first()
         target = url_path("/access-code") if user and not user_has_full_access(user) else url_path("/documents")
         response = RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
-        response.set_cookie(
-            key="access_token",
-            value=f"Bearer {token_data['access_token']}",
-            max_age=3600,
-            httponly=True,
-            samesite="lax",
-            path=_COOKIE_PATH,
-        )
+        set_access_token_cookie(response, token_data["access_token"])
         return response
     except HTTPException as exc:
         if exc.status_code == status.HTTP_403_FORBIDDEN and exc.detail == "email_not_verified":
@@ -574,12 +608,10 @@ async def access_code_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-    try:
-        user = await get_current_user_from_token(access_token=access_token, db=session)
-    except HTTPException:
-        return RedirectResponse(url=url_path("/login"))
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if user_has_full_access(user):
         return RedirectResponse(url=url_path("/documents"))
     return templates.TemplateResponse(
@@ -594,16 +626,15 @@ async def access_code_page(
 
 @app.post("/access-code", response_class=RedirectResponse)
 async def access_code_submit(
+    request: Request,
     code: str = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-    try:
-        user = await get_current_user_from_token(access_token=access_token, db=session)
-    except HTTPException:
-        return RedirectResponse(url=url_path("/login"))
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     try:
         await verify_admin_access_code(session, user, code)
         return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
@@ -699,10 +730,10 @@ async def documents_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     filters = _filter_params(request)
     documents_from_db = await fetch_documents(session, **filters)
     projects_result = await session.execute(select(Project).order_by(Project.name))
@@ -736,10 +767,10 @@ async def create_document_record(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_create_document(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания документа.")
 
@@ -913,14 +944,15 @@ async def create_document_record(
 
 @app.post("/documents/{doc_id}/skip-upload", response_class=RedirectResponse)
 async def skip_upload(
+    request: Request,
     doc_id: int,
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     result = await session.execute(
         select(BaseDocument)
         .options(
@@ -951,10 +983,10 @@ async def upload_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     result = await session.execute(
         select(BaseDocument)
         .options(
@@ -997,6 +1029,7 @@ async def upload_page(
 
 @app.post("/documents/{doc_id}/upload", response_class=RedirectResponse)
 async def handle_upload(
+    request: Request,
     doc_id: int,
     file: Optional[UploadFile] = File(None),
     change_comment: str = Form(""),
@@ -1004,10 +1037,10 @@ async def handle_upload(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1141,10 +1174,10 @@ async def document_detail_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1185,10 +1218,10 @@ async def edit_document_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1207,16 +1240,17 @@ async def edit_document_page(
 
 @app.post("/documents/{doc_id}/edit", response_class=RedirectResponse)
 async def edit_document(
+    request: Request,
     doc_id: int,
     doc_name: str = Form(""),
     developed_by: str = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await session.get(BaseDocument, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1260,10 +1294,10 @@ async def set_document_status(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     require_status_change_permission(user)
 
     try:
@@ -1305,15 +1339,16 @@ async def set_document_status(
 
 @app.post("/documents/{doc_id}/request-correction", response_class=RedirectResponse)
 async def request_correction(
+    request: Request,
     doc_id: int,
     comment: str = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1327,16 +1362,17 @@ async def request_correction(
 
 @app.post("/documents/{doc_id}/respond-correction", response_class=RedirectResponse)
 async def respond_correction(
+    request: Request,
     doc_id: int,
     approved: str = Form(...),
     comment: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1356,10 +1392,10 @@ async def apply_change_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1447,10 +1483,10 @@ async def apply_change_submit(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1506,15 +1542,16 @@ async def apply_change_submit(
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
 async def delete_document(
+    request: Request,
     doc_id: int,
     comment: str = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     require_delete_permission(user)
 
     if not comment.strip():
@@ -1575,10 +1612,10 @@ async def projects_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     result = await session.execute(select(Project).order_by(Project.name))
     projects = result.scalars().all()
     ctx = await _page_context(session, user)
@@ -1603,10 +1640,10 @@ async def create_project_record(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_create_document(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -1641,10 +1678,10 @@ async def project_detail_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     result = await session.execute(
         select(Project)
         .options(
@@ -1679,15 +1716,16 @@ async def project_detail_page(
 
 @app.post("/projects/{project_id}/update", response_class=RedirectResponse)
 async def update_project(
+    request: Request,
     project_id: int,
     description: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -1702,16 +1740,17 @@ async def update_project(
 
 @app.post("/projects/{project_id}/upload-file", response_class=RedirectResponse)
 async def upload_project_file(
+    request: Request,
     project_id: int,
     title: str = Form(...),
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -1735,10 +1774,10 @@ async def upload_project_images(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -1762,14 +1801,15 @@ async def upload_project_images(
 
 @app.post("/projects/{project_id}/delete", response_class=RedirectResponse)
 async def delete_project_route(
+    request: Request,
     project_id: int,
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
@@ -1854,10 +1894,10 @@ async def profile_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     org_display_name = ""
     if user.preferred_org_code:
         org_info = await check_org_exists(session, user.preferred_org_code, user.preferred_org_okpo)
@@ -1904,10 +1944,10 @@ async def handle_profile(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     if department not in DEPARTMENTS:
         raise HTTPException(status_code=400, detail="Недопустимый отдел.")
 
@@ -1975,10 +2015,10 @@ async def notifications_page(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
     notifications = await get_notifications_for_user(session, user, limit=NOTIFICATIONS_PAGE_SIZE)
     total_count = await count_notifications_for_user(session, user.id)
     has_more = len(notifications) < total_count
@@ -2009,9 +2049,7 @@ async def list_notifications_api(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Не авторизован")
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    user = await _require_user(access_token, session)
     notifications = await get_notifications_for_user(session, user, limit=limit, offset=offset)
     total_count = await count_notifications_for_user(session, user.id)
     return {
@@ -2033,9 +2071,7 @@ async def poll_notifications_api(
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Не авторизован")
-    user = await get_current_user_from_token(access_token=access_token, db=session)
+    user = await _require_user(access_token, session)
     notifications = await poll_new_notifications(session, user, after_id=after)
     unread = await count_unread(session, user.id)
     return {"notifications": notifications, "unread_count": unread}
