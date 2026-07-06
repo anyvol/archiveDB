@@ -5,6 +5,7 @@ server {
     server_name localhost 127.0.0.1;
 
     location /archive/ {
+        client_max_body_size ${MAX_CLIENT_BODY_MB}m;
         proxy_pass http://api:8000/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
@@ -44,6 +45,7 @@ server {
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
     location /archive/ {
+        client_max_body_size ${MAX_CLIENT_BODY_MB}m;
         proxy_pass http://api:8000/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
