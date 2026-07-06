@@ -5,6 +5,8 @@ CERT_DIR="/etc/nginx/certs"
 CN="${SSL_CERT_CN:-localhost}"
 SSL_CERT_IP="${SSL_CERT_IP:-}"
 PUBLIC_HTTPS_PORT="${PUBLIC_HTTPS_PORT:-8443}"
+MAX_CLIENT_BODY_MB="${MAX_CLIENT_BODY_MB:-12}"
+export MAX_CLIENT_BODY_MB
 
 if [ "${PUBLIC_HTTPS_PORT}" = "443" ]; then
     REDIRECT_PORT=""
@@ -41,7 +43,7 @@ if [ ! -f "${CERT_DIR}/fullchain.pem" ] || [ ! -f "${CERT_DIR}/privkey.pem" ]; t
     echo "Open ${PUBLIC_URL} (accept browser security warning for self-signed cert)."
 fi
 
-envsubst '${REDIRECT_PORT}' \
+envsubst '${REDIRECT_PORT} ${MAX_CLIENT_BODY_MB}' \
     < /etc/nginx/templates/default.conf.template \
     > /etc/nginx/conf.d/default.conf
 

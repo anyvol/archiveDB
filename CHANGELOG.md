@@ -11,6 +11,11 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Push notifications:** profile toggles for correction-related events (`correction_request`, `correction_request_response`, `formal_change`); saving profile no longer clears hidden push preferences.
 - **Email verification UX:** after OTP from email, redirect to login with a clear message instead of raw API-style responses.
 
+## 0.13.3
+
+- Fixed HTTP 413 when creating a document with a new project and an attached development order file: nginx now allows request bodies up to `MAX_CLIENT_BODY_MB` (default 12 MB, above the 10 MB upload limit).
+- Document creation form shows a clearer message when the proxy rejects an oversized request.
+
 ## 0.13.0
 
 - Added **master_admin** role and **Администрирование** section in the header (containers/logs, users, traffic, timezone, backups, SMTP).
