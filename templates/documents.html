@@ -744,8 +744,10 @@
             const max = getClassMaxLen();
             if (this.value.length >= max && regNumberInput) regNumberInput.focus();
         });
-        setupAutoAdvance(regNumberInput, 4, docKindSelect);
+        setupAutoAdvance(regNumberInput, 4, executionInput);
+        setupAutoAdvance(executionInput, 2, docKindSelect);
         regNumberInput && regNumberInput.addEventListener('input', updateDesignationPreview);
+        executionInput && executionInput.addEventListener('input', updateDesignationPreview);
         docKindSelect && docKindSelect.addEventListener('change', updateDesignationPreview);
 
         designationFields.forEach(field => {
