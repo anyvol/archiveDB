@@ -25,6 +25,7 @@ from app.database import (
     check_prni_unique,
     check_prn_unique,
 )
+from app.designation_helpers import build_designation, parse_execution_input
 from app.models import (
     BaseDocument,
     DesignDocument,
@@ -758,6 +759,7 @@ async def create_document_record(
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
+    execution_raw = (form_data.get("execution") or "").strip()
     existing_project_id = (form_data.get("existing_project_id") or "").strip()
     new_project_name = (form_data.get("new_project_name") or "").strip()
     new_project_cipher = (form_data.get("new_project_cipher") or "").strip()
@@ -771,6 +773,11 @@ async def create_document_record(
         raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
     if doc_kind_code and doc_kind_code not in DOC_KIND_CODES:
         raise HTTPException(status_code=400, detail="Неверный код вида документа.")
+
+    is_kd = doc_type == "DD"
+    execution = parse_execution_input(execution_raw) if is_kd else None
+    if not is_kd and execution_raw:
+        raise HTTPException(status_code=400, detail="Исполнение доступно только для конструкторской документации.")
 
     if existing_project_id and new_project_name:
         raise HTTPException(status_code=400, detail="Выберите существующий проект или укажите новый, но не оба сразу.")
@@ -811,20 +818,40 @@ async def create_document_record(
     )
 
     org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name or None)
-    is_kd = doc_type == "DD"
     class_code_id = await get_or_create_class_id(session, class_code, is_kd=is_kd)
 
     if is_kd:
         if reg_number:
             prni_to_save = int(reg_number)
-            if not await check_prni_unique(session, org_id, class_code_id, prni_to_save):
-                raise HTTPException(status_code=400, detail="Указанный порядковый номер уже используется.")
+            if not await check_prni_unique(
+                session,
+                org_id,
+                class_code_id,
+                prni_to_save,
+                org_code,
+                class_code,
+                execution=execution,
+                doc_kind_code=doc_kind_code or None,
+            ):
+                raise HTTPException(status_code=400, detail="Указанное обозначение уже используется.")
         else:
-            prni_to_save = await get_next_prni(session, org_id, class_code_id)
+            prni_to_save = await get_next_prni(
+                session,
+                org_id,
+                class_code_id,
+                org_code,
+                class_code,
+                execution=execution,
+                doc_kind_code=doc_kind_code or None,
+            )
 
-        designation = f"{org_code}.{class_code}.{prni_to_save:03d}"
-        if doc_kind_code:
-            designation += doc_kind_code
+        designation = build_designation(
+            org_code,
+            class_code,
+            prni_to_save,
+            execution=execution,
+            doc_kind_code=doc_kind_code or None,
+        )
 
         session.add(
             DesignDocument(
@@ -835,18 +862,36 @@ async def create_document_record(
                 designation=designation,
                 org_code_str=org_code,
                 class_code_str=class_code,
+                execution=execution,
                 doc_kind_code=doc_kind_code or None,
             )
         )
     else:
         if reg_number:
             prn_to_save = int(reg_number)
-            if not await check_prn_unique(session, org_id, class_code_id, prn_to_save):
-                raise HTTPException(status_code=400, detail="Указанный ПРН уже используется.")
+            if not await check_prn_unique(
+                session,
+                org_id,
+                class_code_id,
+                prn_to_save,
+                org_code,
+                class_code,
+            ):
+                raise HTTPException(status_code=400, detail="Указанное обозначение уже используется.")
         else:
-            prn_to_save = await get_next_prn(session, org_id, class_code_id)
+            prn_to_save = await get_next_prn(
+                session,
+                org_id,
+                class_code_id,
+                org_code,
+                class_code,
+            )
 
-        designation = f"{org_code}.{class_code}.{prn_to_save:03d}"
+        designation = build_designation(
+            org_code,
+            class_code,
+            prn_to_save,
+        )
         session.add(
             TechDocument(
                 id=base_doc.id,

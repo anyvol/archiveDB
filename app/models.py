@@ -282,6 +282,7 @@ class DesignDocument(Base):
 
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(6), index=True)
+    execution = Column(String(4), nullable=True)
     doc_kind_code = Column(String(3), nullable=True)
 
     base_document = relationship("BaseDocument", back_populates="design_document")
