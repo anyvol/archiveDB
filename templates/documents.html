@@ -135,7 +135,7 @@
         .modal-box textarea { width: 100%; min-height: 80px; margin: 0.75rem 0; box-sizing: border-box; padding: 0.5rem; }
     </style>
 </head>
-<body>
+<body data-login-url="{{ url_path('/login?expired=1') }}">
     <div class="header">
         <h1>Архив документов {% include "_version_tag.html" %}</h1>
         {% include "_header_nav.html" %}
@@ -463,6 +463,7 @@
         </div>
     </div>
 
+    {% include "_session_auth.html" %}
     {% include "_notifications_widget.html" %}
 
     <script>
@@ -588,7 +589,13 @@
             formData.append('org_code', orgCode);
             formData.append('is_okpo_str', isOkpoCheckbox.checked ? 'true' : 'false');
             try {
-                const response = await fetch('{{ url_path('/api/check_org') }}', { method: 'POST', body: formData });
+                const result = await SessionAuth.authFetch('{{ url_path('/api/check_org') }}', { method: 'POST', body: formData });
+                if (result.sessionExpired) {
+                    showFormMessage(SessionAuth.sessionExpiredMessage(result.data), 'error');
+                    SessionAuth.redirectToLogin(2500);
+                    return;
+                }
+                const response = result.response;
                 const data = await response.json();
                 if (data.exists) {
                     orgNameInput.value = data.name;
@@ -821,12 +828,19 @@
                 try {
                     const formData = new FormData(createForm);
                     formData.append('_ajax', '1');
-                    const response = await fetch(createForm.action, {
+                    const result = await SessionAuth.authFetch(createForm.action, {
                         method: 'POST',
                         body: formData,
                         headers: { 'Accept': 'application/json' },
                     });
 
+                    if (result.sessionExpired) {
+                        showFormMessage(SessionAuth.sessionExpiredMessage(result.data), 'error');
+                        SessionAuth.redirectToLogin(2500);
+                        return;
+                    }
+
+                    const response = result.response;
                     const contentType = response.headers.get('content-type') || '';
                     if (contentType.includes('application/json')) {
                         const data = await response.json();
