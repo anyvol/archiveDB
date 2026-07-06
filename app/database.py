@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from fastapi import HTTPException, status
 
 
-from app.models import Organization, ClassCodeKD, ClassCodeTD, DesignDocument, TechDocument 
+from app.models import Organization, ClassCodeKD, ClassCodeTD, DesignDocument, TechDocument
+from app.designation_helpers import build_designation
 
 
 load_dotenv()
@@ -205,80 +206,109 @@ async def check_org_exists(session: AsyncSession, org_code: str, is_okpo: bool =
         return {'exists': False}
 
 
-async def get_next_prni(session: AsyncSession, org_id: int, kd_class_code_id: int) -> int:
+async def check_designation_unique(
+    session: AsyncSession,
+    designation: str,
+    *,
+    is_kd: bool = True,
+) -> bool:
+    """Returns True when no document with this designation exists yet."""
+    model = DesignDocument if is_kd else TechDocument
+    result = await session.execute(select(model).where(model.designation == designation))
+    return result.scalar_one_or_none() is None
+
+
+async def get_next_prni(
+    session: AsyncSession,
+    org_id: int,
+    kd_class_code_id: int,
+    org_code: str,
+    class_code: str,
+    *,
+    execution: Optional[str] = None,
+    doc_kind_code: Optional[str] = None,
+) -> int:
     """
-    Генерирует следующий доступный ПРНИ для DD, заполняя пробелы в последовательности.
-    Находит минимальное положительное целое число, отсутствующее в существующих prni.
+    Returns the minimum serial number whose full designation is not yet used
+    for the given org/class, execution, and document kind code.
     """
-    # Загружаем все существующие prni как множество
-    result = await session.execute(
-        select(DesignDocument.prni).where(
-            DesignDocument.org_id == org_id,
-            DesignDocument.kd_class_code_id == kd_class_code_id
+    prni = 1
+    while True:
+        designation = build_designation(
+            org_code,
+            class_code,
+            prni,
+            execution=execution,
+            doc_kind_code=doc_kind_code,
         )
-    )
-    used_prnis = {row[0] for row in result.fetchall() if row[0] is not None}
-    
-    # Находим минимальный свободный номер
-    next_prni = 1
-    while next_prni in used_prnis:
-        next_prni += 1
-    
-    return next_prni
+        if await check_designation_unique(session, designation, is_kd=True):
+            return prni
+        prni += 1
 
 
-
-async def get_next_prn(session: AsyncSession, org_id: int, td_class_code_id: int) -> int:
+async def get_next_prn(
+    session: AsyncSession,
+    org_id: int,
+    td_class_code_id: int,
+    org_code: str,
+    class_code: str,
+    *,
+    execution: Optional[str] = None,
+) -> int:
     """
-    Генерирует следующий доступный PRN для TD, заполняя пробелы в последовательности.
-    Аналогично ПРНИ, но для TechDocument.
+    Returns the minimum serial number whose full designation is not yet used
+    for the given org/class and execution.
     """
-    # Загружаем все существующие prn как множество
-    result = await session.execute(
-        select(TechDocument.prn).where(
-            TechDocument.org_id == org_id,
-            TechDocument.td_class_code_id == td_class_code_id
+    prn = 1
+    while True:
+        designation = build_designation(
+            org_code,
+            class_code,
+            prn,
+            execution=execution,
         )
+        if await check_designation_unique(session, designation, is_kd=False):
+            return prn
+        prn += 1
+
+
+async def check_prni_unique(
+    session: AsyncSession,
+    org_id: int,
+    kd_class_code_id: int,
+    prni: int,
+    org_code: str,
+    class_code: str,
+    *,
+    execution: Optional[str] = None,
+    doc_kind_code: Optional[str] = None,
+) -> bool:
+    """Checks whether the full designation for a manual serial number is free."""
+    designation = build_designation(
+        org_code,
+        class_code,
+        prni,
+        execution=execution,
+        doc_kind_code=doc_kind_code,
     )
-    used_prns = {row[0] for row in result.fetchall() if row[0] is not None}
-    
-    # Находим минимальный свободный номер
-    next_prn = 1
-    while next_prn in used_prns:
-        next_prn += 1
-    
-    return next_prn
+    return await check_designation_unique(session, designation, is_kd=True)
 
 
-
-async def check_prni_unique(session: AsyncSession, org_id: int, kd_class_code_id: int, prni: int) -> bool:
-    """
-    Проверяет уникальность ручного ПРНИ для DD.
-    Возвращает False, если номер уже используется.
-    """
-    result = await session.execute(
-        select(DesignDocument).where(
-            DesignDocument.org_id == org_id,
-            DesignDocument.kd_class_code_id == kd_class_code_id,
-            DesignDocument.prni == prni
-        )
+async def check_prn_unique(
+    session: AsyncSession,
+    org_id: int,
+    td_class_code_id: int,
+    prn: int,
+    org_code: str,
+    class_code: str,
+    *,
+    execution: Optional[str] = None,
+) -> bool:
+    """Checks whether the full designation for a manual serial number is free."""
+    designation = build_designation(
+        org_code,
+        class_code,
+        prn,
+        execution=execution,
     )
-    existing = result.scalar_one_or_none()
-    return existing is None
-
-
-
-async def check_prn_unique(session: AsyncSession, org_id: int, td_class_code_id: int, prn: int) -> bool:
-    """
-    Проверяет уникальность ручного PRN для TD.
-    Возвращает False, если номер уже используется.
-    """
-    result = await session.execute(
-        select(TechDocument).where(
-            TechDocument.org_id == org_id,
-            TechDocument.td_class_code_id == td_class_code_id,
-            TechDocument.prn == prn
-        )
-    )
-    existing = result.scalar_one_or_none()
-    return existing is None
+    return await check_designation_unique(session, designation, is_kd=False)

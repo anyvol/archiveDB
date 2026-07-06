@@ -58,6 +58,7 @@
         .field-org input { width: 12ch; min-width: 12ch; max-width: 12ch; }
         .field-class input { width: 9ch; min-width: 9ch; max-width: 9ch; }
         .field-reg input { width: calc(6ch * 1.2); min-width: calc(6ch * 1.2); max-width: calc(6ch * 1.2); }
+        .field-execution input { width: calc(4ch * 1.2); min-width: calc(4ch * 1.2); max-width: calc(4ch * 1.2); }
         .field-reg { position: relative; }
         .field-reg .reg-tooltip {
             display: none;
@@ -200,6 +201,10 @@
                         <label for="reg_number" id="reg_number_label">Порядковый №</label>
                         <span class="reg-tooltip">Для автоматического присвоения порядкового номера оставьте поле пустым</span>
                         <input type="text" id="reg_number" name="reg_number" maxlength="4" pattern="\d{0,4}" autocomplete="off">
+                    </div>
+                    <div class="form-group field-execution">
+                        <label for="execution">Исполнение</label>
+                        <input type="text" id="execution" name="execution" maxlength="4" pattern="\d{0,4}" autocomplete="off" placeholder="01">
                     </div>
                     <div class="form-group field-kind" id="doc-kind-group">
                         <label for="doc_kind_code">Код вида</label>
@@ -482,6 +487,7 @@
         const newProjectSection = document.getElementById('new-project-section');
         const existingProjectSection = document.getElementById('existing-project-section');
         const regNumberInput = document.getElementById('reg_number');
+        const executionInput = document.getElementById('execution');
         const docKindSelect = document.getElementById('doc_kind_code');
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
@@ -531,7 +537,15 @@
             });
         });
 
-        const designationFields = [orgCodeInput, classCodeInput, regNumberInput, docKindSelect].filter(Boolean);
+        const designationFields = [orgCodeInput, classCodeInput, regNumberInput, executionInput, docKindSelect].filter(Boolean);
+
+        function formatExecutionPreview(raw) {
+            const value = (raw || '').trim();
+            if (!value || !/^\d{1,4}$/.test(value)) return '';
+            const number = parseInt(value, 10);
+            if (!Number.isFinite(number) || number < 1) return '';
+            return '-' + String(number).padStart(2, '0');
+        }
 
         function getClassMaxLen() {
             return docTypeSelect.value === 'TD' ? 7 : 6;
@@ -541,6 +555,7 @@
             const org = orgCodeInput.value.trim();
             const cls = classCodeInput.value.trim();
             const reg = regNumberInput.value.trim();
+            const execution = formatExecutionPreview(executionInput ? executionInput.value : '');
             const kind = docKindSelect.value;
             const docName = docNameInput ? docNameInput.value.trim() : '';
             if (!org && !cls && !docName) {
@@ -550,6 +565,7 @@
             let preview = org || '____';
             preview += '.' + (cls || '?'.repeat(getClassMaxLen()));
             preview += '.' + (reg ? reg.padStart(3, '0') : '???');
+            if (execution) preview += execution;
             if (docTypeSelect.value === 'DD' && kind) preview += kind;
             if (docName) preview += ' — ' + docName;
             designationPreview.textContent = preview;
