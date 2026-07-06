@@ -32,11 +32,6 @@ def upgrade() -> None:
         if "execution" not in columns:
             op.add_column("design_documents", sa.Column("execution", sa.String(length=4), nullable=True))
 
-    if "tech_documents" in tables:
-        columns = _column_names(inspector, "tech_documents")
-        if "execution" not in columns:
-            op.add_column("tech_documents", sa.Column("execution", sa.String(length=4), nullable=True))
-
 
 def downgrade() -> None:
     bind = op.get_bind()
@@ -47,8 +42,3 @@ def downgrade() -> None:
         columns = _column_names(inspector, "design_documents")
         if "execution" in columns:
             op.drop_column("design_documents", "execution")
-
-    if "tech_documents" in tables:
-        columns = _column_names(inspector, "tech_documents")
-        if "execution" in columns:
-            op.drop_column("tech_documents", "execution")

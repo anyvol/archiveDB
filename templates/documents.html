@@ -202,7 +202,7 @@
                         <span class="reg-tooltip">Для автоматического присвоения порядкового номера оставьте поле пустым</span>
                         <input type="text" id="reg_number" name="reg_number" maxlength="4" pattern="\d{0,4}" autocomplete="off">
                     </div>
-                    <div class="form-group field-execution">
+                    <div class="form-group field-execution" id="execution-group">
                         <label for="execution">Исполнение</label>
                         <input type="text" id="execution" name="execution" maxlength="2" pattern="\d{0,2}" autocomplete="off">
                     </div>
@@ -488,6 +488,7 @@
         const existingProjectSection = document.getElementById('existing-project-section');
         const regNumberInput = document.getElementById('reg_number');
         const executionInput = document.getElementById('execution');
+        const executionGroup = document.getElementById('execution-group');
         const docKindSelect = document.getElementById('doc_kind_code');
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
@@ -537,7 +538,13 @@
             });
         });
 
-        const designationFields = [orgCodeInput, classCodeInput, regNumberInput, executionInput, docKindSelect].filter(Boolean);
+        function getDesignationFields() {
+            const fields = [orgCodeInput, classCodeInput, regNumberInput];
+            if (docTypeSelect.value === 'DD') {
+                fields.push(executionInput, docKindSelect);
+            }
+            return fields.filter(Boolean);
+        }
 
         function formatExecutionPreview(raw) {
             const value = (raw || '').trim();
@@ -555,7 +562,10 @@
             const org = orgCodeInput.value.trim();
             const cls = classCodeInput.value.trim();
             const reg = regNumberInput.value.trim();
-            const execution = formatExecutionPreview(executionInput ? executionInput.value : '');
+            let execution = '';
+            if (docTypeSelect.value === 'DD') {
+                execution = formatExecutionPreview(executionInput ? executionInput.value : '');
+            }
             const kind = docKindSelect.value;
             const docName = docNameInput ? docNameInput.value.trim() : '';
             if (!org && !cls && !docName) {
@@ -688,12 +698,15 @@
                 classCodeInput.maxLength = 6;
                 classCodeInput.pattern = '\\d{6}';
                 regNumberLabel.textContent = 'Порядковый №';
+                if (executionGroup) executionGroup.style.display = 'block';
                 docKindGroup.style.display = 'block';
             } else {
                 classCodeLabel.textContent = 'Характеристика (7)';
                 classCodeInput.maxLength = 7;
                 classCodeInput.pattern = '\\d{7}';
                 regNumberLabel.textContent = 'Порядковый №';
+                if (executionGroup) executionGroup.style.display = 'none';
+                if (executionInput) executionInput.value = '';
                 docKindGroup.style.display = 'none';
             }
             applyPreferredOrg();
@@ -702,10 +715,11 @@
             focusFirstEmpty();
         }
 
-        function setupAutoAdvance(input, maxLen, nextEl) {
+        function setupAutoAdvance(input, maxLen, getNextEl) {
             if (!input) return;
             input.addEventListener('input', function() {
                 updateDesignationPreview();
+                const nextEl = typeof getNextEl === 'function' ? getNextEl() : getNextEl;
                 if (this.value.length >= maxLen && nextEl) nextEl.focus();
             });
         }
@@ -744,20 +758,20 @@
             const max = getClassMaxLen();
             if (this.value.length >= max && regNumberInput) regNumberInput.focus();
         });
-        setupAutoAdvance(regNumberInput, 4, executionInput);
-        setupAutoAdvance(executionInput, 2, docKindSelect);
+        setupAutoAdvance(regNumberInput, 4, () => (docTypeSelect.value === 'DD' ? executionInput : null));
+        setupAutoAdvance(executionInput, 2, () => (docTypeSelect.value === 'DD' ? docKindSelect : null));
         regNumberInput && regNumberInput.addEventListener('input', updateDesignationPreview);
         executionInput && executionInput.addEventListener('input', updateDesignationPreview);
         docKindSelect && docKindSelect.addEventListener('change', updateDesignationPreview);
 
-        designationFields.forEach(field => {
-            if (!field) return;
+        [orgCodeInput, classCodeInput, regNumberInput, executionInput, docKindSelect].filter(Boolean).forEach(field => {
             field.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    const idx = designationFields.indexOf(this);
-                    if (idx >= 0 && idx < designationFields.length - 1) {
-                        designationFields[idx + 1].focus();
+                    const fields = getDesignationFields();
+                    const idx = fields.indexOf(this);
+                    if (idx >= 0 && idx < fields.length - 1) {
+                        fields[idx + 1].focus();
                     }
                 }
             });

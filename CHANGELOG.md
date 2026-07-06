@@ -5,7 +5,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.15.0
 
-- **Document registration — execution suffix:** optional «Исполнение» field before the document kind code; user enters digits from 1 to 99 (e.g. `1` → `-01`, `15` → `-15`) and the suffix is included in the designation preview and stored designation.
+- **Document registration — execution suffix (КД only):** optional «Исполнение» field before the document kind code when registering design documentation; user enters digits from 1 to 99 (e.g. `1` → `-01`, `15` → `-15`) and the suffix is included in the designation preview and stored designation. Not available for technological documentation.
 - **Designation uniqueness:** documents with the same serial number but different execution or document kind code are treated as distinct designations and can be registered separately (e.g. `ФЕТР.000000.001-01` vs `ФЕТР.000000.001-02`, or `ФЕТР.000000.001СБ` vs `ФЕТР.000000.001ГЧ`).
 - Duplicate registration now reports «Указанное обозначение уже используется» when the full designation collides.
 

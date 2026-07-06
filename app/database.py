@@ -252,21 +252,14 @@ async def get_next_prn(
     td_class_code_id: int,
     org_code: str,
     class_code: str,
-    *,
-    execution: Optional[str] = None,
 ) -> int:
     """
     Returns the minimum serial number whose full designation is not yet used
-    for the given org/class and execution.
+    for the given org/class.
     """
     prn = 1
     while True:
-        designation = build_designation(
-            org_code,
-            class_code,
-            prn,
-            execution=execution,
-        )
+        designation = build_designation(org_code, class_code, prn)
         if await check_designation_unique(session, designation, is_kd=False):
             return prn
         prn += 1
@@ -301,14 +294,7 @@ async def check_prn_unique(
     prn: int,
     org_code: str,
     class_code: str,
-    *,
-    execution: Optional[str] = None,
 ) -> bool:
     """Checks whether the full designation for a manual serial number is free."""
-    designation = build_designation(
-        org_code,
-        class_code,
-        prn,
-        execution=execution,
-    )
+    designation = build_designation(org_code, class_code, prn)
     return await check_designation_unique(session, designation, is_kd=False)

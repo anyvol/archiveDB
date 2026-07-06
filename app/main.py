@@ -773,7 +773,11 @@ async def create_document_record(
         raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
     if doc_kind_code and doc_kind_code not in DOC_KIND_CODES:
         raise HTTPException(status_code=400, detail="Неверный код вида документа.")
-    execution = parse_execution_input(execution_raw)
+
+    is_kd = doc_type == "DD"
+    execution = parse_execution_input(execution_raw) if is_kd else None
+    if not is_kd and execution_raw:
+        raise HTTPException(status_code=400, detail="Исполнение доступно только для конструкторской документации.")
 
     if existing_project_id and new_project_name:
         raise HTTPException(status_code=400, detail="Выберите существующий проект или укажите новый, но не оба сразу.")
@@ -814,7 +818,6 @@ async def create_document_record(
     )
 
     org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name or None)
-    is_kd = doc_type == "DD"
     class_code_id = await get_or_create_class_id(session, class_code, is_kd=is_kd)
 
     if is_kd:
@@ -873,7 +876,6 @@ async def create_document_record(
                 prn_to_save,
                 org_code,
                 class_code,
-                execution=execution,
             ):
                 raise HTTPException(status_code=400, detail="Указанное обозначение уже используется.")
         else:
@@ -883,14 +885,12 @@ async def create_document_record(
                 class_code_id,
                 org_code,
                 class_code,
-                execution=execution,
             )
 
         designation = build_designation(
             org_code,
             class_code,
             prn_to_save,
-            execution=execution,
         )
         session.add(
             TechDocument(
@@ -901,7 +901,6 @@ async def create_document_record(
                 designation=designation,
                 org_code_str=org_code,
                 class_code_str=class_code,
-                execution=execution,
             )
         )
 

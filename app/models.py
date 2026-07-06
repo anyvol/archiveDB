@@ -301,7 +301,6 @@ class TechDocument(Base):
 
     org_code_str = Column(String(8), index=True)
     class_code_str = Column(String(7), index=True)
-    execution = Column(String(4), nullable=True)
 
     base_document = relationship("BaseDocument", back_populates="tech_document")
     td_class_code = relationship("ClassCodeTD")
