@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.14.0
+
+- **Administration — users:** delete user (context menu, confirmation); send email to one user or broadcast to all verified emails; generate one-time admin access code (15 min) for new users awaiting first login.
+- **Projects:** delete project via context menu (confirmation); editing description, uploading photos and project documents restricted to administrators.
+- **First login gate:** after email verification, new users log in and must enter an admin-issued OTP before accessing the archive.
+- **Push notifications:** profile toggles for correction-related events (`correction_request`, `correction_request_response`, `formal_change`); saving profile no longer clears hidden push preferences.
+- **Email verification UX:** after OTP from email, redirect to login with a clear message instead of raw API-style responses.
+
 ## 0.13.3
 
 - Fixed HTTP 413 when creating a document with a new project and an attached development order file: nginx now allows request bodies up to `MAX_CLIENT_BODY_MB` (default 12 MB, above the 10 MB upload limit).

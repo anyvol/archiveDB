@@ -24,7 +24,16 @@
         .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
         .btn-primary { background: #007bff; color: white; }
         .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
         small { display: block; color: #6c757d; font-size: 0.875rem; margin-top: 0.25rem; }
+        .context-menu { display:none; position:fixed; z-index:2000; min-width:220px; background:white; border:1px solid #ddd; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.15); padding:0.35rem 0; }
+        .context-menu.active { display:block; }
+        .context-menu-item { display:block; width:100%; padding:0.55rem 1rem; border:none; background:none; text-align:left; cursor:pointer; font-size:0.9rem; }
+        .context-menu-item:hover { background:#f0f7ff; }
+        .context-menu-item--danger { color:#dc3545; }
+        .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center; }
+        .modal-overlay.active { display:flex; }
+        .modal-box { background:white; padding:1.5rem; border-radius:8px; max-width:420px; width:90%; }
     </style>
 </head>
 <body>
@@ -37,6 +46,11 @@
     <div class="container">
         {% if error == 'name_required' %}
         <div class="error">Укажите название и шифр проекта.</div>
+        {% elif error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        {% if request.query_params.get('success') == 'deleted' %}
+        <div class="success">Проект удалён.</div>
         {% endif %}
 
         {% if can_create %}
@@ -80,7 +94,11 @@
             </thead>
             <tbody>
                 {% for project in projects %}
-                <tr class="project-row" data-href="{{ url_path('/projects/' ~ project.id) }}">
+                <tr class="project-row"
+                    data-href="{{ url_path('/projects/' ~ project.id) }}"
+                    data-project-id="{{ project.id }}"
+                    data-project-name="{{ project.name }}"
+                    data-can-delete="{{ '1' if can_delete_project and project.slug != '_legacy' else '0' }}">
                     <td>{{ project.name }}</td>
                     <td>{{ project.slug }}</td>
                     <td>{{ (project.description or '—')[:120] }}{% if project.description and project.description|length > 120 %}…{% endif %}</td>
@@ -93,16 +111,62 @@
         </table>
     </div>
 
+    <div id="project-context-menu" class="context-menu"></div>
+    <div class="modal-overlay" id="delete-project-modal">
+        <div class="modal-box">
+            <h3>Удалить проект</h3>
+            <p id="delete-project-label"></p>
+            <p style="color:#721c24;">Проект с записями в архиве удалить нельзя. Папка проекта на сервере будет удалена.</p>
+            <form method="post" id="delete-project-form">
+                <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                    <button type="submit" class="btn btn-primary" style="background:#dc3545;">Удалить</button>
+                    <button type="button" class="btn btn-secondary" id="delete-project-cancel">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+        const deleteProjectBase = {{ url_path('/projects') | tojson }};
+        const contextMenu = document.getElementById('project-context-menu');
+        const deleteModal = document.getElementById('delete-project-modal');
+        const deleteForm = document.getElementById('delete-project-form');
+
+        function hideContextMenu() {
+            contextMenu.classList.remove('active');
+        }
+
+        document.addEventListener('click', hideContextMenu);
+        document.addEventListener('scroll', hideContextMenu, true);
+
         document.querySelectorAll('.project-row').forEach(row => {
             row.addEventListener('click', () => {
                 const href = row.dataset.href;
                 if (href) window.location.href = href;
             });
-            row.addEventListener('dblclick', () => {
-                const href = row.dataset.href;
-                if (href) window.location.href = href;
+            row.addEventListener('contextmenu', (e) => {
+                if (row.dataset.canDelete !== '1') return;
+                e.preventDefault();
+                contextMenu.innerHTML = '';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'context-menu-item context-menu-item--danger';
+                btn.textContent = 'Удалить проект';
+                btn.addEventListener('click', () => {
+                    hideContextMenu();
+                    deleteForm.action = deleteProjectBase + '/' + row.dataset.projectId + '/delete';
+                    document.getElementById('delete-project-label').textContent = 'Проект: ' + row.dataset.projectName;
+                    deleteModal.classList.add('active');
+                });
+                contextMenu.appendChild(btn);
+                contextMenu.style.left = e.clientX + 'px';
+                contextMenu.style.top = e.clientY + 'px';
+                contextMenu.classList.add('active');
             });
+        });
+
+        document.getElementById('delete-project-cancel').addEventListener('click', () => {
+            deleteModal.classList.remove('active');
         });
     </script>
 </body>

@@ -26,6 +26,24 @@ def is_owner(user: User, doc: BaseDocument) -> bool:
     return doc.uploaded_by == user.id
 
 
+def can_manage_project(user: User) -> bool:
+    return is_admin(user)
+
+
+def user_has_full_access(user: User) -> bool:
+    if user.role != UserRole.user:
+        return True
+    return bool(user.access_granted)
+
+
+def require_full_access(user: User) -> None:
+    if not user_has_full_access(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="access_code_required",
+        )
+
+
 def can_create_document(user: User) -> bool:
     return user.role in (UserRole.admin, UserRole.master_admin, UserRole.user)
 

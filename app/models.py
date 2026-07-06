@@ -110,6 +110,7 @@ class User(Base):
     email = Column(String(100), nullable=True, unique=True, index=True)
     email_verified = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=False, nullable=False)
+    access_granted = Column(Boolean, default=False, nullable=False)
     preferred_org_code = Column(String(8), nullable=True)
     preferred_org_okpo = Column(Boolean, default=False, nullable=False)
     visible_columns = Column(JSON, nullable=True)
@@ -383,6 +384,22 @@ class EmailVerificationCode(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User")
+
+
+class AdminAccessCode(Base):
+    __tablename__ = "admin_access_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class PasswordResetToken(Base):

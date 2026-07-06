@@ -2,21 +2,56 @@
 {% block title %}Пользователи{% endblock %}
 {% block content %}
 <h2>Пользователи</h2>
-{% if success %}<div class="alert alert-success">Изменения сохранены.</div>{% endif %}
+{% if success == '1' %}<div class="alert alert-success">Изменения сохранены.</div>{% endif %}
+{% if success == 'deleted' %}<div class="alert alert-success">Пользователь удалён.</div>{% endif %}
+{% if success == 'email_sent' %}<div class="alert alert-success">Письмо отправлено пользователю {{ request.query_params.get('for_login') }}.</div>{% endif %}
+{% if success == 'broadcast' %}<div class="alert alert-success">Рассылка отправлена ({{ request.query_params.get('count') }} получателей).</div>{% endif %}
+{% if success == 'access_code' %}
+<div class="alert alert-success">
+    Код доступа для <strong>{{ request.query_params.get('for_login') }}</strong>:
+    <strong style="font-size:1.2rem;letter-spacing:0.15em;">{{ request.query_params.get('code') }}</strong>
+    (действует 15 минут, одноразовый)
+</div>
+{% endif %}
 {% if error == 'master_admin' %}<div class="alert alert-error">Роль главного администратора нельзя назначить или снять через UI.</div>{% endif %}
+{% if error and error not in ['master_admin', 'not_found'] %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if error == 'not_found' %}<div class="alert alert-error">Пользователь не найден.</div>{% endif %}
+
 <div class="card">
-    <table>
+    <h3 style="margin-top:0;">Рассылка всем пользователям</h3>
+    <form method="post" action="{{ url_path('/admin/users/broadcast-email') }}">
+        <div class="form-group">
+            <label for="broadcast_subject">Тема</label>
+            <input type="text" id="broadcast_subject" name="subject" required maxlength="200">
+        </div>
+        <div class="form-group">
+            <label for="broadcast_body">Текст письма</label>
+            <textarea id="broadcast_body" name="body" required rows="5" style="width:100%;box-sizing:border-box;"></textarea>
+            <small style="color:#6c757d;">Подпись добавится автоматически: Администратор сервиса «Архив документов»</small>
+        </div>
+        <button type="submit" class="btn" onclick="return confirm('Отправить письмо всем пользователям с подтверждённым email?')">Отправить всем</button>
+    </form>
+</div>
+
+<div class="card">
+    <table id="users-table">
         <tr>
-            <th>Логин</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Активен</th><th>Email подтверждён</th><th></th>
+            <th>Логин</th><th>ФИО</th><th>Email</th><th>Роль</th><th>Активен</th><th>Email подтверждён</th><th>Доступ</th><th></th>
         </tr>
         {% for u in users %}
-        <tr>
+        <tr class="user-row"
+            data-user-id="{{ u.id }}"
+            data-login="{{ u.login }}"
+            data-email="{{ u.email or '' }}"
+            data-can-delete="{{ '1' if u.role.value != 'master_admin' else '0' }}"
+            data-needs-access="{{ '1' if u.email_verified and not u.access_granted and u.role.value == 'user' else '0' }}">
             <td>{{ u.login }}</td>
             <td>{{ u.full_name or '—' }}</td>
             <td>{{ u.email or '—' }}</td>
             <td>{{ USER_ROLE_LABELS.get(u.role, u.role.value) }}</td>
             <td>{{ 'да' if u.is_active else 'нет' }}</td>
             <td>{{ 'да' if u.email_verified else 'нет' }}</td>
+            <td>{% if u.access_granted or u.role.value != 'user' %}выдан{% else %}ожидает код{% endif %}</td>
             <td>
                 <form method="post" action="{{ url_path('/admin/users/' ~ u.id) }}" style="display:flex;gap:0.5rem;align-items:center;">
                     <select name="role">
@@ -34,4 +69,124 @@
         {% endfor %}
     </table>
 </div>
+
+<div id="user-context-menu" class="context-menu"></div>
+
+<div class="modal-overlay" id="email-modal">
+    <div class="modal-box">
+        <h3>Отправить письмо</h3>
+        <p id="email-modal-user"></p>
+        <form method="post" id="email-form">
+            <div class="form-group">
+                <label for="email_subject">Тема</label>
+                <input type="text" id="email_subject" name="subject" required maxlength="200" style="width:100%;">
+            </div>
+            <div class="form-group">
+                <label for="email_body">Текст</label>
+                <textarea id="email_body" name="body" required rows="5" style="width:100%;box-sizing:border-box;"></textarea>
+            </div>
+            <div style="display:flex;gap:0.5rem;">
+                <button type="submit" class="btn">Отправить</button>
+                <button type="button" class="btn btn-secondary" id="email-cancel">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal-box">
+        <h3>Удалить пользователя</h3>
+        <p id="delete-modal-user"></p>
+        <p style="color:#721c24;">Удаление необратимо. Пользователи с документами или файлами в системе удалить нельзя.</p>
+        <form method="post" id="delete-form">
+            <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                <button type="submit" class="btn" style="background:#dc3545;">Удалить</button>
+                <button type="button" class="btn btn-secondary" id="delete-cancel">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .context-menu { display:none; position:fixed; z-index:2000; min-width:260px; background:white; border:1px solid #ddd; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.15); padding:0.35rem 0; }
+    .context-menu.active { display:block; }
+    .context-menu-item { display:block; width:100%; padding:0.55rem 1rem; border:none; background:none; text-align:left; cursor:pointer; font-size:0.9rem; }
+    .context-menu-item:hover { background:#f0f7ff; }
+    .context-menu-item--danger { color:#dc3545; }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center; }
+    .modal-overlay.active { display:flex; }
+    .modal-box { background:white; padding:1.5rem; border-radius:8px; max-width:480px; width:90%; }
+    .user-row { cursor: context-menu; }
+</style>
+
+<script>
+(function() {
+    const menu = document.getElementById('user-context-menu');
+    const emailModal = document.getElementById('email-modal');
+    const deleteModal = document.getElementById('delete-modal');
+    const emailForm = document.getElementById('email-form');
+    const deleteForm = document.getElementById('delete-form');
+    const baseUrl = {{ url_path('/admin/users') | tojson }};
+
+    function hideMenu() { menu.classList.remove('active'); }
+
+    document.addEventListener('click', hideMenu);
+    document.addEventListener('scroll', hideMenu, true);
+
+    document.querySelectorAll('.user-row').forEach(row => {
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const items = [];
+            if (row.dataset.email) {
+                items.push({ label: 'Отправить письмо', action: 'email' });
+            }
+            if (row.dataset.needsAccess === '1') {
+                items.push({ label: 'Сгенерировать код доступа', action: 'access-code' });
+            }
+            if (row.dataset.canDelete === '1') {
+                items.push({ label: 'Удалить пользователя', action: 'delete', danger: true });
+            }
+            if (!items.length) return;
+
+            menu.innerHTML = '';
+            items.forEach(item => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'context-menu-item' + (item.danger ? ' context-menu-item--danger' : '');
+                btn.textContent = item.label;
+                btn.addEventListener('click', () => {
+                    hideMenu();
+                    const userId = row.dataset.userId;
+                    const login = row.dataset.login;
+                    if (item.action === 'email') {
+                        emailForm.action = baseUrl + '/' + userId + '/email';
+                        document.getElementById('email-modal-user').textContent = 'Получатель: ' + login;
+                        document.getElementById('email_subject').value = '';
+                        document.getElementById('email_body').value = '';
+                        emailModal.classList.add('active');
+                    } else if (item.action === 'access-code') {
+                        if (!confirm('Сгенерировать одноразовый код доступа для «' + login + '»?')) return;
+                        const form = document.createElement('form');
+                        form.method = 'post';
+                        form.action = baseUrl + '/' + userId + '/access-code';
+                        document.body.appendChild(form);
+                        form.submit();
+                    } else if (item.action === 'delete') {
+                        deleteForm.action = baseUrl + '/' + userId + '/delete';
+                        document.getElementById('delete-modal-user').textContent = 'Пользователь: ' + login;
+                        deleteModal.classList.add('active');
+                    }
+                });
+                menu.appendChild(btn);
+            });
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            menu.classList.add('active');
+        });
+    });
+
+    document.getElementById('email-cancel').addEventListener('click', () => emailModal.classList.remove('active'));
+    document.getElementById('delete-cancel').addEventListener('click', () => deleteModal.classList.remove('active'));
+})();
+</script>
 {% endblock %}

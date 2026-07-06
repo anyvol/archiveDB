@@ -76,6 +76,7 @@ async def register(
         role=UserRole.user,
         email_verified=False,
         is_active=False,
+        access_granted=False,
     )
     session.add(user)
     await session.commit()
