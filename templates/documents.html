@@ -204,7 +204,7 @@
                     </div>
                     <div class="form-group field-execution">
                         <label for="execution">Исполнение</label>
-                        <input type="text" id="execution" name="execution" maxlength="4" pattern="\d{0,4}" autocomplete="off" placeholder="01">
+                        <input type="text" id="execution" name="execution" maxlength="2" pattern="\d{0,2}" autocomplete="off">
                     </div>
                     <div class="form-group field-kind" id="doc-kind-group">
                         <label for="doc_kind_code">Код вида</label>
@@ -541,9 +541,9 @@
 
         function formatExecutionPreview(raw) {
             const value = (raw || '').trim();
-            if (!value || !/^\d{1,4}$/.test(value)) return '';
+            if (!value || !/^\d{1,2}$/.test(value)) return '';
             const number = parseInt(value, 10);
-            if (!Number.isFinite(number) || number < 1) return '';
+            if (!Number.isFinite(number) || number < 1 || number > 99) return '';
             return '-' + String(number).padStart(2, '0');
         }
 

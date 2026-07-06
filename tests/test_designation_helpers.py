@@ -18,7 +18,7 @@ def test_parse_execution_input_formats():
     assert parse_execution_input("1") == "01"
     assert parse_execution_input("01") == "01"
     assert parse_execution_input("15") == "15"
-    assert parse_execution_input("150") == "150"
+    assert parse_execution_input("99") == "99"
 
 
 def test_parse_execution_input_invalid():
@@ -28,6 +28,9 @@ def test_parse_execution_input_invalid():
 
     with pytest.raises(HTTPException):
         parse_execution_input("0")
+
+    with pytest.raises(HTTPException):
+        parse_execution_input("100")
 
 
 def test_format_execution_suffix():

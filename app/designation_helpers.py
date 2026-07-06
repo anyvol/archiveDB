@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import HTTPException
 
 
-EXECUTION_INPUT_PATTERN = re.compile(r"^\d{1,4}$")
-EXECUTION_MAX_VALUE = 9999
+EXECUTION_INPUT_PATTERN = re.compile(r"^\d{1,2}$")
+EXECUTION_MAX_VALUE = 99
 
 
 def parse_execution_input(raw: Optional[str]) -> Optional[str]:
@@ -22,7 +22,7 @@ def parse_execution_input(raw: Optional[str]) -> Optional[str]:
     if not EXECUTION_INPUT_PATTERN.match(value):
         raise HTTPException(
             status_code=400,
-            detail="Исполнение должно состоять из 1–4 цифр.",
+            detail="Исполнение должно состоять из 1–2 цифр.",
         )
     number = int(value)
     if number < 1 or number > EXECUTION_MAX_VALUE:
