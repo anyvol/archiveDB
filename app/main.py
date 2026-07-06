@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -16,6 +16,7 @@ from datetime import datetime
 from app.database import (
     engine,
     get_session,
+    async_session,
     get_or_create_org_id,
     get_or_create_class_id,
     check_org_exists,
@@ -57,8 +58,10 @@ from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS, is_val
 from app.metadata_helpers import detect_document_format_from_bytes
 from app.name_helpers import fetch_known_person_names, normalize_person_name
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
+from app.project_delete import delete_project as delete_project_record
 from app.permissions import (
     can_create_document,
+    can_manage_project,
     can_edit_document_metadata,
     can_set_document_status,
     can_upload_file,
@@ -69,6 +72,7 @@ from app.permissions import (
     is_admin,
     is_master_admin,
     is_owner,
+    user_has_full_access,
     require_delete_permission,
     require_edit_metadata_permission,
     require_status_change_permission,
@@ -121,6 +125,7 @@ from app.changelog import render_changelog_html
 from app.admin.router import router as admin_router
 from app.config import ALLOWED_EMAIL_DOMAINS
 from app.email_verification import issue_verification_code, normalize_email, verify_email_code
+from app.admin_access import verify_admin_access_code
 from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
 
@@ -154,6 +159,7 @@ templates.env.globals["get_document_display_status"] = get_document_display_stat
 templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
 templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
 templates.env.globals["is_governed_document"] = is_governed_document
+templates.env.globals["can_manage_project"] = can_manage_project
 templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
@@ -164,6 +170,57 @@ app.include_router(docs.router, prefix="/docs")
 app.include_router(admin_router, prefix="/admin")
 
 _COOKIE_PATH = ROOT_PATH or "/"
+_ACCESS_EXEMPT_PREFIXES = (
+    "/login",
+    "/register",
+    "/verify-email",
+    "/access-code",
+    "/logout",
+    "/forgot-password",
+    "/reset-password",
+    "/help",
+    "/cert",
+)
+
+
+def _request_relative_path(path: str) -> str:
+    if ROOT_PATH and path.startswith(ROOT_PATH):
+        path = path[len(ROOT_PATH) :] or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    return path
+
+
+def _is_access_exempt(rel_path: str) -> bool:
+    if rel_path.startswith("/admin") or rel_path.startswith("/users"):
+        return True
+    return any(
+        rel_path == prefix or rel_path.startswith(prefix + "/")
+        for prefix in _ACCESS_EXEMPT_PREFIXES
+    )
+
+
+@app.middleware("http")
+async def enforce_admin_access_code(request: Request, call_next):
+    rel_path = _request_relative_path(request.url.path)
+    if _is_access_exempt(rel_path):
+        return await call_next(request)
+
+    token = request.cookies.get("access_token")
+    if not token:
+        return await call_next(request)
+
+    async with async_session() as session:
+        try:
+            user = await get_current_user_from_token(access_token=token, db=session)
+        except HTTPException:
+            return await call_next(request)
+        if not user_has_full_access(user):
+            return RedirectResponse(url=url_path("/access-code"), status_code=303)
+
+    return await call_next(request)
+
+
 _CERT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nginx", "certs", "fullchain.pem")
 _SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts")
 _CERT_SCRIPT_FILES = {
@@ -270,19 +327,23 @@ async def login_page(
 ):
     if access_token:
         try:
-            await get_current_user_from_token(access_token=access_token, db=session)
+            user = await get_current_user_from_token(access_token=access_token, db=session)
+            if not user_has_full_access(user):
+                return RedirectResponse(url=url_path("/access-code"), status_code=status.HTTP_303_SEE_OTHER)
             return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
         except HTTPException:
             response = RedirectResponse(url=url_path("/login"))
             response.delete_cookie("access_token", path=_COOKIE_PATH)
             return response
 
+    success_param = request.query_params.get("success")
     return templates.TemplateResponse(
         "login.html",
         {
             "request": request,
             "error": request.query_params.get("error") == "true",
-            "success": request.query_params.get("success") == "true",
+            "success": success_param == "true",
+            "verified": success_param == "verified",
             "service_version": SERVICE_VERSION,
         },
     )
@@ -296,7 +357,10 @@ async def handle_login(
 ):
     try:
         token_data = await authenticate_user(session, username, password)
-        response = RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+        result = await session.execute(select(User).where(User.login == username))
+        user = result.scalars().first()
+        target = url_path("/access-code") if user and not user_has_full_access(user) else url_path("/documents")
+        response = RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
         response.set_cookie(
             key="access_token",
             value=f"Bearer {token_data['access_token']}",
@@ -436,6 +500,7 @@ async def handle_register(
             role=UserRole.user,
             email_verified=False,
             is_active=False,
+            access_granted=False,
         )
         session.add(new_user)
         await session.commit()
@@ -490,11 +555,61 @@ async def verify_email_submit(
         return RedirectResponse(url=url_path("/register"))
     try:
         await verify_email_code(session, user, code)
-        return RedirectResponse(url=url_path("/login?success=true"))
+        return RedirectResponse(
+            url=url_path("/login?success=verified"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     except HTTPException as exc:
         msg = exc.detail if isinstance(exc.detail, str) else "error"
         return RedirectResponse(
-            url=url_path(f"/verify-email?login={login}&error=1&message={msg}"),
+            url=url_path(f"/verify-email?login={login}&error=1&message={quote(msg)}"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+
+@app.get("/access-code", response_class=HTMLResponse)
+async def access_code_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await get_current_user_from_token(access_token=access_token, db=session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/login"))
+    if user_has_full_access(user):
+        return RedirectResponse(url=url_path("/documents"))
+    return templates.TemplateResponse(
+        "access_code.html",
+        {
+            "request": request,
+            "error": bool(request.query_params.get("error")),
+            "error_message": request.query_params.get("message"),
+        },
+    )
+
+
+@app.post("/access-code", response_class=RedirectResponse)
+async def access_code_submit(
+    code: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await get_current_user_from_token(access_token=access_token, db=session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        await verify_admin_access_code(session, user, code)
+        return RedirectResponse(url=url_path("/documents"), status_code=status.HTTP_303_SEE_OTHER)
+    except HTTPException as exc:
+        msg = exc.detail if isinstance(exc.detail, str) else "error"
+        return RedirectResponse(
+            url=url_path(f"/access-code?error=1&message={quote(msg)}"),
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -603,6 +718,7 @@ async def documents_page(
             "projects": projects,
             "known_person_names": known_person_names,
             "can_create": can_create_document(user),
+            "can_delete_project": can_manage_project(user),
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
             "default_developed_by": user.full_name or "",
@@ -1428,6 +1544,7 @@ async def projects_page(
             "request": request,
             "projects": projects,
             "can_create": can_create_document(user),
+            "can_delete_project": can_manage_project(user),
             "error": request.query_params.get("error"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -1506,7 +1623,7 @@ async def project_detail_page(
         {
             "request": request,
             "project": project,
-            "can_manage": can_create_document(user),
+            "can_manage": can_manage_project(user),
             "error": request.query_params.get("error"),
             "success": request.query_params.get("success"),
             "service_version": SERVICE_VERSION,
@@ -1526,7 +1643,7 @@ async def update_project(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    if not can_create_document(user):
+    if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
     project = await get_project_by_id(session, project_id)
@@ -1550,7 +1667,7 @@ async def upload_project_file(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    if not can_create_document(user):
+    if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
     project = await get_project_by_id(session, project_id)
@@ -1577,7 +1694,7 @@ async def upload_project_images(
         return RedirectResponse(url=url_path("/login"))
 
     user = await get_current_user_from_token(access_token=access_token, db=session)
-    if not can_create_document(user):
+    if not can_manage_project(user):
         raise HTTPException(status_code=403, detail="Недостаточно прав.")
 
     form_data = await request.form()
@@ -1596,6 +1713,28 @@ async def upload_project_images(
         url=url_path(f"/projects/{project_id}?success=images"),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@app.post("/projects/{project_id}/delete", response_class=RedirectResponse)
+async def delete_project_route(
+    project_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+
+    user = await get_current_user_from_token(access_token=access_token, db=session)
+    if not can_manage_project(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    project = await get_project_by_id(session, project_id)
+    try:
+        await delete_project_record(session, project)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "delete_failed"
+        return RedirectResponse(url=url_path(f"/projects?error={quote(detail)}"), status_code=303)
+    return RedirectResponse(url=url_path("/projects?success=deleted"), status_code=303)
 
 
 @app.get("/projects/{project_id}/files/{file_id}/download")
@@ -1776,7 +1915,9 @@ async def handle_profile(
     for key in DEFAULT_PUSH_PREFERENCES:
         if key == "enabled":
             continue
-        push_prefs[key] = form_data.get(f"push_{key}") == "true"
+        form_key = f"push_{key}"
+        if form_key in form_data:
+            push_prefs[key] = form_data.get(form_key) == "true"
     user.push_preferences = push_prefs
 
     await session.commit()

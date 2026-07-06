@@ -9,6 +9,7 @@ from app.permissions import (
     can_request_minor_correction,
     can_set_document_status,
     can_upload_file,
+    can_manage_project,
     is_master_admin,
 )
 
@@ -51,6 +52,13 @@ def test_only_admin_can_delete():
 def test_master_admin_flag():
     assert is_master_admin(_user(UserRole.master_admin))
     assert not is_master_admin(_user(UserRole.admin))
+
+
+def test_can_manage_project():
+    assert can_manage_project(_user(UserRole.admin))
+    assert can_manage_project(_user(UserRole.master_admin))
+    assert not can_manage_project(_user(UserRole.user))
+    assert not can_manage_project(_user(UserRole.reviewer))
 
 
 def test_user_first_upload_allowed():

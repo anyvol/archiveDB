@@ -20,6 +20,13 @@
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
                 {% endif %}
+
+                {% if verified %}
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    Email подтверждён. Войдите в систему. При первом входе потребуется код доступа от администратора.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
                 
                 {% if error %}
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">

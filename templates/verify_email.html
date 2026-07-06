@@ -22,6 +22,7 @@
         <label for="code">Код:</label>
         <input type="text" id="code" name="code" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric">
         <button type="submit">Подтвердить</button>
+        <p class="hint" style="margin-top:1rem;"><a href="{{ url_path('/login') }}">Перейти ко входу</a></p>
     </form>
     <form method="post" action="{{ url_path('/verify-email/resend') }}" style="margin-top:1rem;">
         <input type="hidden" name="login" value="{{ login }}">

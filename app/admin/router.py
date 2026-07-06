@@ -22,6 +22,9 @@ from app.mail.sender import send_email, smtp_configured, resolve_smtp_config
 from app.models import BackupRecord, User, UserRole, USER_ROLE_LABELS, DEPARTMENTS
 from app.notifications import count_unread
 from app.permissions import is_master_admin
+from app.admin.services.users import delete_user_account
+from app.admin.services.messaging import send_admin_email_to_user, send_admin_email_to_all
+from app.admin_access import issue_admin_access_code
 from app.settings_store import (
     SETTING_APP_TIMEZONE,
     SETTING_SMTP,
@@ -210,8 +213,113 @@ async def admin_update_user(
 
     target.role = new_role
     target.is_active = is_active == "true"
+    if new_role != UserRole.user:
+        target.access_granted = True
     await session.commit()
     return _see_other(url_path("/admin/users?success=1"))
+
+
+@router.post("/users/{user_id}/delete")
+async def admin_delete_user(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        actor = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    target = result.scalars().first()
+    if target is None:
+        return _see_other(url_path("/admin/users?error=not_found"))
+    try:
+        await delete_user_account(session, actor, target)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "delete_failed"
+        return _see_other(url_path(f"/admin/users?error={detail}"))
+    return _see_other(url_path("/admin/users?success=deleted"))
+
+
+@router.post("/users/{user_id}/access-code")
+async def admin_issue_access_code(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        actor = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    target = result.scalars().first()
+    if target is None:
+        return _see_other(url_path("/admin/users?error=not_found"))
+    try:
+        code = await issue_admin_access_code(session, target, created_by_id=actor.id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "access_code"
+        return _see_other(url_path(f"/admin/users?error={quote(str(detail))}"))
+    return _see_other(
+        url_path(
+            f"/admin/users?success=access_code&for_login={quote(target.login)}&code={code}"
+        )
+    )
+
+
+@router.post("/users/{user_id}/email")
+async def admin_email_user(
+    user_id: int,
+    subject: str = Form(...),
+    body: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    target = result.scalars().first()
+    if target is None:
+        return _see_other(url_path("/admin/users?error=not_found"))
+    try:
+        await send_admin_email_to_user(session, target, subject, body)
+    except Exception as exc:
+        logger.exception("Admin email to user failed")
+        return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
+    return _see_other(url_path(f"/admin/users?success=email_sent&for_login={quote(target.login)}"))
+
+
+@router.post("/users/broadcast-email")
+async def admin_broadcast_email(
+    subject: str = Form(...),
+    body: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    try:
+        sent = await send_admin_email_to_all(session, subject, body)
+    except Exception as exc:
+        logger.exception("Admin broadcast email failed")
+        return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
+    return _see_other(url_path(f"/admin/users?success=broadcast&count={sent}"))
 
 
 @router.get("/traffic", response_class=HTMLResponse)

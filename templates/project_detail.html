@@ -110,6 +110,7 @@
         {% if can_manage %}
         <div class="card">
             <h2>Редактирование проекта</h2>
+            <p class="hint">Изменение описания, загрузка фото и документов проекта доступны только администраторам.</p>
             <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/update') }}">
                 <div class="form-group">
                     <label for="description">Описание проекта</label>
