@@ -5,7 +5,7 @@
 {% if success %}<div class="alert alert-success">Часовой пояс обновлён.</div>{% endif %}
 {% if error %}<div class="alert alert-error">Недопустимый часовой пояс.</div>{% endif %}
 <div class="card">
-    <p>Текущее время в системе: <strong>{{ now_formatted }}</strong> ({{ timezone }})</p>
+    <p>Текущая дата в системе: <strong>{{ now_formatted }}</strong> ({{ timezone }})</p>
     <form method="post" action="{{ url_path('/admin/timezone') }}">
         <div class="form-group">
             <label for="timezone">Часовой пояс (IANA):</label>

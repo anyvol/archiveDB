@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from app.models import BaseDocument, DocumentStatus
 from app.document_display import get_document_display_status, format_field_change
+from app.timezone_utils import format_date
 
 
 def _doc(**kwargs) -> BaseDocument:
@@ -37,3 +40,8 @@ def test_display_status_pending_and_correction():
 def test_format_field_change():
     assert format_field_change("наименование", "A", "B") == "наименование: «A» → «B»"
     assert format_field_change("наименование", "A", "A") is None
+
+
+def test_format_date_uses_configured_timezone_and_day_month_year():
+    assert format_date(datetime(2026, 1, 1, 21, 30), "Europe/Moscow") == "02.01.2026"
+    assert format_date("2026-07-07") == "07.07.2026"

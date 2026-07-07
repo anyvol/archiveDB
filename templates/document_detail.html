@@ -14,8 +14,26 @@
         .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
         .card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
         .card h2 { margin-top: 0; font-size: 1.15rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
-        .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem 1.5rem; }
-        .meta-item label { display: block; font-size: 0.8rem; color: #6c757d; margin-bottom: 0.15rem; }
+        .record-card { line-height: 1.45; }
+        .record-top { display: flex; gap: 1rem; align-items: center; justify-content: space-between; min-width: 0; }
+        .record-title-button { flex: 1 1 auto; min-width: 0; border: 0; background: transparent; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 3rem), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 3rem), transparent); }
+        .record-designation { font-weight: 700; }
+        .record-name { font-weight: 400; }
+        .record-section { border-top: 1px solid #eee; padding-top: 1rem; margin-top: 1rem; }
+        .record-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; }
+        .record-line { margin: 0.25rem 0; }
+        .record-label { color: #6c757d; font-size: 0.85rem; }
+        .signature-line { margin: 0.25rem 0; }
+        .formal-change-list { display: grid; gap: 0.45rem; }
+        .formal-change-row { display: grid; grid-template-columns: 0.8fr 1fr 1.4fr 1.4fr 1fr; gap: 0.75rem; align-items: baseline; padding: 0.45rem 0; border-bottom: 1px solid #f1f3f5; }
+        .formal-change-row:last-child { border-bottom: none; }
+        .formal-change-head { color: #6c757d; font-size: 0.8rem; font-weight: 600; }
+        .registration-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1rem; }
+        .file-info { margin-top: 1rem; }
+        .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; align-items: center; }
+        .actions-left, .actions-right { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .actions-left { flex: 1 1 auto; }
+        .actions-right { margin-left: auto; }
         .status-badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500; }
         .status-no-file { color: #495057; background: #e9ecef; }
         .status-pending { color: #856404; background: #fff3cd; }
@@ -23,14 +41,13 @@
         .status-correction { color: #721c24; background: #f8d7da; }
         .status-correction-requested { color: #004085; background: #cce5ff; }
         .hint { font-size: 0.875rem; color: #6c757d; margin: 0.5rem 0 1rem; line-height: 1.45; }
-        .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
         .btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
         .btn-primary { background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-success { background: #28a745; color: white; }
         .btn-warning { background: #ffc107; color: #212529; }
         .btn-danger { background: #dc3545; color: white; }
-        .preview-frame { width: 100%; height: 520px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+        .preview-frame { width: 100%; height: 1040px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
         .preview-image { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
         .preview-unavailable { padding: 2rem; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 4px; }
         .history-list { list-style: none; padding: 0; margin: 0; }
@@ -52,6 +69,11 @@
         .form-group textarea, .form-group input { width: 100%; padding: 0.5rem; box-sizing: border-box; }
         .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
         .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        @media (max-width: 760px) {
+            .record-top, .record-split, .registration-grid { grid-template-columns: 1fr; display: grid; }
+            .formal-change-row { grid-template-columns: 1fr; gap: 0.2rem; }
+            .actions-right { margin-left: 0; }
+        }
     </style>
 </head>
 <body>
@@ -67,10 +89,17 @@
         <div class="error">{{ error }}</div>
         {% endif %}
 
-        <div class="card">
-            <h2>{{ designation }}</h2>
+        <div class="card record-card">
             {% set display_status = get_document_display_status(doc) %}
-            <p>Статус: <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span></p>
+            {% set full_title = designation ~ ' — ' ~ (doc.doc_name or '—') %}
+            <div class="record-top">
+                <button type="button" class="record-title-button" id="record-title-button" data-full-title="{{ full_title|e }}" title="Нажмите, чтобы увидеть полное наименование">
+                    <span class="record-designation">{{ designation }}</span>
+                    <span> — </span>
+                    <span class="record-name">{{ doc.doc_name or '—' }}</span>
+                </button>
+                <span class="status-badge {{ display_status[1] }}">{{ display_status[0] }}</span>
+            </div>
 
             {% if doc.status.value == 'correction_requested' and doc.correction_request_comment %}
             <div class="alert alert-info">
@@ -83,34 +112,52 @@
             </div>
             {% endif %}
 
-            <div class="meta-grid">
-                <div class="meta-item"><label>Тип</label><div>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div></div>
-                <div class="meta-item"><label>Наименование</label><div>{{ doc.doc_name or '—' }}</div></div>
-                <div class="meta-item"><label>Разработчик</label><div>{{ doc.developed_by or '—' }}</div></div>
-                {% if doc.developer_signed_date %}
-                <div class="meta-item"><label>Дата подписи разработчика</label><div>{{ doc.developer_signed_date }}</div></div>
-                {% endif %}
-                {% if doc.reviewed_by %}
-                <div class="meta-item"><label>Проверяющий</label><div>{{ doc.reviewed_by }}</div></div>
-                {% endif %}
-                {% if doc.reviewer_signed_date %}
-                <div class="meta-item"><label>Дата подписи проверяющего</label><div>{{ doc.reviewer_signed_date }}</div></div>
-                {% endif %}
-                {% if doc.approved_by %}
-                <div class="meta-item"><label>Утверждающий</label><div>{{ doc.approved_by }}</div></div>
-                {% endif %}
-                {% if doc.approver_signed_date %}
-                <div class="meta-item"><label>Дата подписи утвердившего</label><div>{{ doc.approver_signed_date }}</div></div>
-                {% endif %}
-                <div class="meta-item"><label>Проект</label><div>{{ doc.project.name if doc.project else '—' }}</div></div>
-                <div class="meta-item"><label>Файл</label><div>{{ doc.file_name or 'не загружен' }}</div></div>
-                {% if doc.document_format %}
-                <div class="meta-item"><label>Формат документа</label><div>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) }}</div></div>
-                {% endif %}
-                <div class="meta-item"><label>Зарегистрировал</label><div>{{ doc.created_by or '—' }}</div></div>
-                <div class="meta-item"><label>Дата регистрации</label><div>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</div></div>
-                <div class="meta-item"><label>Обновлено</label><div>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</div></div>
+            <div class="record-section record-split">
+                <div>
+                    <div class="record-line"><span class="record-label">Проект</span><br>{{ doc.project.name if doc.project else '—' }}</div>
+                    <div class="record-line"><span class="record-label">Тип документа</span><br>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div>
+                    <div class="record-line"><span class="record-label">Формат</span><br>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) if doc.document_format else '—' }}</div>
+                </div>
+                <div>
+                    <div class="signature-line">Разработчик. {{ doc.developed_by or '—' }} | {{ format_date(doc.developer_signed_date, app_timezone) }}</div>
+                    <div class="signature-line">Проверяющий. {{ doc.reviewed_by or '—' }} | {{ format_date(doc.reviewer_signed_date, app_timezone) }}</div>
+                    <div class="signature-line">Утвердивший. {{ doc.approved_by or '—' }} | {{ format_date(doc.approver_signed_date, app_timezone) }}</div>
+                </div>
             </div>
+
+            <div class="record-section">
+                {% if formal_changes %}
+                <div class="formal-change-list">
+                    <div class="formal-change-row formal-change-head">
+                        <div>Изм.</div>
+                        <div>Лист(ы)</div>
+                        <div>Документ об изменениях</div>
+                        <div>Изменил</div>
+                        <div>Дата</div>
+                    </div>
+                    {% for event in formal_changes %}
+                    <div class="formal-change-row">
+                        <div>{{ event.change_number or '—' }}</div>
+                        <div>—</div>
+                        <div>{{ event.change_notification.number }}</div>
+                        <div>{{ (event.actor.full_name or event.actor.login) if event.actor else '—' }}</div>
+                        <div>{{ format_date(event.change_date or event.change_notification.date, app_timezone) }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="hint">изменений по документу не найдено</p>
+                {% endif %}
+            </div>
+
+            <div class="record-section registration-grid">
+                <div><span class="record-label">Зарегистрировал</span><br>{{ doc.created_by or '—' }}</div>
+                <div><span class="record-label">Дата регистрации</span><br>{{ format_date(doc.created_at, app_timezone) }}</div>
+                <div><span class="record-label">Дата обновления записи</span><br>{{ format_date(doc.last_update, app_timezone) }}</div>
+            </div>
+
+            <div class="record-section">
+                <div class="file-info">{{ doc.file_name or 'Файл не загружен' }}{% if doc.file_name %} | {{ file_size_display }}{% endif %}</div>
 
             {% if is_governed %}
             <p class="hint">
@@ -119,11 +166,10 @@
                 незначительные правки — по запросу на исправление или после отправки на исправление проверяющим.
             </p>
             {% endif %}
+            </div>
 
-            <div class="actions">
-                {% if doc.file_name %}
-                <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}">Скачать файл</a>
-                {% endif %}
+            <div class="record-section actions">
+                <div class="actions-left">
                 {% if can_upload_file(user, doc) and not doc.file_name %}
                 <a class="btn btn-primary" href="{{ url_path('/documents/' ~ doc.id ~ '/upload') }}">Загрузить файл</a>
                 {% endif %}
@@ -144,9 +190,17 @@
                 <button type="button" class="btn btn-danger" id="open-reject-modal">Отклонить запрос</button>
                 {% endif %}
                 {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
-                <button type="button" class="btn btn-success" id="btn-approve">Утвердить</button>
                 <button type="button" class="btn btn-danger" id="btn-send-correction">Требуется исправление</button>
                 {% endif %}
+                </div>
+                <div class="actions-right">
+                {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
+                <button type="button" class="btn btn-success" id="btn-approve">Утвердить</button>
+                {% endif %}
+                {% if doc.file_name %}
+                <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}">Скачать файл</a>
+                {% endif %}
+                </div>
             </div>
         </div>
 
@@ -175,7 +229,7 @@
                 {% for event in change_history %}
                 <li class="history-item">
                     <div class="history-meta">
-                        {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '' }}
+                        {{ format_date(event.created_at, app_timezone) if event.created_at else '' }}
                         {% if event.actor %} · {{ event.actor.full_name or event.actor.login }}{% endif %}
                     </div>
                     <div class="history-title">{{ event.summary }}</div>
@@ -186,7 +240,7 @@
                     <div class="history-ii">
                         ИИ № {{ event.change_notification.number }}
                         {% if event.change_number %} · изменение № {{ event.change_number }}{% endif %}
-                        от {{ event.change_notification.date.strftime('%Y-%m-%d') }}
+                        от {{ format_date(event.change_notification.date, app_timezone) }}
                         · <a href="{{ url_path('/documents/' ~ doc.id ~ '/ii/' ~ event.change_notification.id ~ '/preview') }}" target="_blank">просмотр ИИ</a>
                     </div>
                     {% endif %}
@@ -275,6 +329,17 @@
     </div>
     {% endif %}
 
+    <div class="modal-overlay" id="title-modal">
+        <div class="modal">
+            <h3>Полное наименование</h3>
+            <p id="title-modal-text" style="white-space: pre-wrap;"></p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="title-copy">Скопировать</button>
+                <button type="button" class="btn btn-primary modal-cancel">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.querySelectorAll('.modal-cancel').forEach(btn => {
             btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.remove('active'));
@@ -303,6 +368,22 @@
                 form.appendChild(input);
                 document.body.appendChild(form);
                 form.submit();
+            });
+        }
+        const titleButton = document.getElementById('record-title-button');
+        const titleModal = document.getElementById('title-modal');
+        const titleModalText = document.getElementById('title-modal-text');
+        const titleCopy = document.getElementById('title-copy');
+        if (titleButton && titleModal && titleModalText) {
+            titleButton.addEventListener('click', () => {
+                titleModalText.textContent = titleButton.dataset.fullTitle || '';
+                titleModal.classList.add('active');
+            });
+        }
+        if (titleCopy && titleModalText) {
+            titleCopy.addEventListener('click', async () => {
+                const text = titleModalText.textContent || '';
+                if (navigator.clipboard && text) await navigator.clipboard.writeText(text);
             });
         }
     </script>

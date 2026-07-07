@@ -332,10 +332,10 @@
                     {% endfor %}
                 </select>
             </div>
-            <div><label>Дата рег. от</label><input name="created_from" placeholder="YYYY-MM-DD" value="{{ filters.created_from or '' }}"></div>
-            <div><label>Дата рег. до</label><input name="created_to" placeholder="YYYY-MM-DD" value="{{ filters.created_to or '' }}"></div>
-            <div><label>Обновлено от</label><input name="updated_from" placeholder="YYYY-MM-DD" value="{{ filters.updated_from or '' }}"></div>
-            <div><label>Обновлено до</label><input name="updated_to" placeholder="YYYY-MM-DD" value="{{ filters.updated_to or '' }}"></div>
+            <div><label>Дата рег. от</label><input type="date" name="created_from" value="{{ filters.created_from or '' }}"></div>
+            <div><label>Дата рег. до</label><input type="date" name="created_to" value="{{ filters.created_to or '' }}"></div>
+            <div><label>Обновлено от</label><input type="date" name="updated_from" value="{{ filters.updated_from or '' }}"></div>
+            <div><label>Обновлено до</label><input type="date" name="updated_to" value="{{ filters.updated_to or '' }}"></div>
             <input type="hidden" name="sort" value="{{ filters.sort }}">
             <input type="hidden" name="order" value="{{ filters.order }}">
             <div class="filters-actions">
@@ -390,8 +390,8 @@
                     {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
                     {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
                     {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
-                    {% if 'created_at' in visible_columns %}<td>{{ doc.created_at.strftime('%Y-%m-%d %H:%M') if doc.created_at else '—' }}</td>{% endif %}
-                    {% if 'last_update' in visible_columns %}<td>{{ doc.last_update.strftime('%Y-%m-%d %H:%M') if doc.last_update else '—' }}</td>{% endif %}
+                    {% if 'created_at' in visible_columns %}<td>{{ format_date(doc.created_at, app_timezone) }}</td>{% endif %}
+                    {% if 'last_update' in visible_columns %}<td>{{ format_date(doc.last_update, app_timezone) }}</td>{% endif %}
                     {% if 'status' in visible_columns %}
                     <td>
                         {% set display_status = get_document_display_status(doc) %}
