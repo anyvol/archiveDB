@@ -1,6 +1,6 @@
 # app/main.py
 
-from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query
+from fastapi import FastAPI, Request, Depends, Cookie, Form, HTTPException, status, File, UploadFile, Response, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, PlainTextResponse, Response, JSONResponse
 from fastapi.templating import Jinja2Templates
 from urllib.parse import urlencode, quote
@@ -2089,6 +2089,7 @@ async def download_project_file(
 @app.get("/projects/{project_id}/download-archive")
 async def download_project_archive(
     project_id: int,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -2097,7 +2098,7 @@ async def download_project_archive(
         raise HTTPException(status_code=403, detail="Скачивание архива проекта доступно только администратору.")
 
     project = await get_project_by_id(session, project_id)
-    return stream_project_archive(project)
+    return stream_project_archive(project, background_tasks)
 
 
 @app.get("/projects/{project_id}/images/{image_id}")

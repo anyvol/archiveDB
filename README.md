@@ -16,7 +16,11 @@ The system is built for teams that need a single place to register documents, at
 - Filter and sort all table columns
 - REST API (`/docs`) and web UI
 - Browser push notifications (HTTPS required)
-- Changelog page linked from the header
+- Changelog page opened by clicking the version tag in the header
+- **Applicability (GOST 2.501-2013):** apply a record to other registered projects; file copied to target project folder
+- **Document links:** cross-references between archive records with designation search
+- **Project archive:** admins can download all project files as ZIP (folder structure preserved)
+- Header hover menu, bell notifications icon, enlarged home icon
 
 ## Roles and permissions
 
@@ -29,6 +33,7 @@ The system is built for teams that need a single place to register documents, at
 | Set **Verified** / **Requires correction** | no | yes | yes |
 | Edit metadata | no | no | yes |
 | Delete | no | no | yes |
+| Manage projects (edit, upload photos/docs, delete, download archive) | no | no | yes |
 
 Roles **admin** and **reviewer** are assigned manually (not via registration).
 

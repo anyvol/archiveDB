@@ -233,4 +233,21 @@ From the host, use `ALEMBIC_DATABASE_URL` pointing to `localhost` (see comments 
 
 ## Changelog
 
-Release notes are available at `/archive/changelog` (from the **changelog** link next to the version in the page header). The page lists versions from the current release onward.
+Release notes are available at `/archive/changelog` (click the **version tag** in the page header). The page lists versions from the current release onward.
+
+---
+
+## Project archive download
+
+Administrators can download all files of a project as a ZIP archive from the project page. The archive preserves the server folder structure (document kind folders, `versions`, «Извещения об изменении», «Прочие документы», `изображения`).
+
+The archive is built in a temporary file inside the API container and streamed with `FileResponse`, so it works whether Docker runs in WSL2 or directly on Windows. ZIP entry paths always use forward slashes for compatibility when extracting on Windows.
+
+Filename format: `{project_slug}_{YYYYMMDD_HHMMSS}_{project_id}.zip`.
+
+---
+
+## Applicability and document links (0.17.0)
+
+- **Applicability (GOST 2.501-2013):** from a document card or context menu, apply a record to another registered project. The file is copied into the appropriate folder of the target project. Status is unchanged; the change log and notifications are updated.
+- **Links:** any role can add links to other archive records (search by designation). The source record status becomes **Pending review**; the change log and notifications are updated. Administrators can remove links or applicability entries.

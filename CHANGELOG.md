@@ -12,6 +12,9 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Applicability (GOST 2.501-2013):** records can be applied to other registered projects; applicability is stored in the database, shown on the document card, and the file is copied into the target project folder. Admins can remove applicability. Adding applicability writes to the change log and sends a notification without changing document status.
 - **Project archive download:** admins can download all files of a project as a ZIP archive preserving folder structure; the archive name includes formation date and project id.
 - **Document links:** document cards show linked records; any role can add links via search by designation with confirmation; admins can remove links. Adding links sets the source record status to «На проверке», writes to the change log, and sends a notification.
+- **Header menu:** added «Документы» link to the archive; home icon tooltip is «Перейти в документы».
+- **Project archive download:** fixed internal server error when downloading project ZIP (stream from a temp file via `FileResponse`; portable path separators inside the archive).
+- **Help and documentation:** updated for 0.17.0 features (menu, applicability, links, project archive).
 
 ## 0.16.0
 
