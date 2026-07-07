@@ -10,7 +10,7 @@ from app.document_applicability import (
     get_available_applicability_projects,
 )
 from app.document_links import add_document_links, search_documents_by_designation
-from app.models import BaseDocument, DesignDocument, DocumentApplicability, Project
+from app.models import BaseDocument, DesignDocument, DocumentStatus, Project, User, UserRole
 
 
 def _doc_with_file(project_id: int = 1) -> BaseDocument:
@@ -42,9 +42,10 @@ async def test_add_document_applicability_rejects_same_project():
     session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
     session.get = AsyncMock()
     doc = _doc_with_file(project_id=5)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
 
     with pytest.raises(HTTPException) as exc:
-        await add_document_applicability(session, doc, 5, 1)
+        await add_document_applicability(session, doc, 5, user)
     assert exc.value.status_code == 400
 
 
@@ -52,9 +53,73 @@ async def test_add_document_applicability_rejects_same_project():
 async def test_add_document_links_rejects_self_reference():
     session = AsyncMock()
     doc = _doc_with_file()
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
     with pytest.raises(HTTPException) as exc:
-        await add_document_links(session, doc, [doc.id], 1)
+        await add_document_links(session, doc, [doc.id], user)
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_add_document_links_sets_pending_review_status():
+    session = AsyncMock()
+    source = _doc_with_file()
+    source.status = DocumentStatus.approved
+    target = BaseDocument(id=20, type="TD")
+    target.tech_document = MagicMock(designation="TD.000001.001")
+    target.design_document = None
+    user = User(id=1, login="tester", password_hash="x")
+
+    existing_result = MagicMock()
+    existing_result.all.return_value = []
+
+    found_result = MagicMock()
+    found_result.all.return_value = [(20,)]
+
+    target_docs_result = MagicMock()
+    target_docs_result.scalars.return_value.unique.return_value.all.return_value = [target]
+
+    session.execute = AsyncMock(side_effect=[existing_result, found_result, target_docs_result])
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    with patch("app.document_links.log_change_event", new_callable=AsyncMock) as log_event, patch(
+        "app.document_links.log_document_status_change", new_callable=AsyncMock
+    ) as log_status, patch("app.document_links.notify_document_edit", new_callable=AsyncMock) as notify_edit:
+        await add_document_links(session, source, [20], user)
+
+    assert source.status == DocumentStatus.pending_review
+    log_event.assert_awaited_once()
+    log_status.assert_awaited_once()
+    notify_edit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_add_document_applicability_logs_and_notifies_without_status_change(tmp_path):
+    session = AsyncMock()
+    source_file = tmp_path / "source.pdf"
+    source_file.write_bytes(b"pdf-content")
+    doc = _doc_with_file(project_id=1)
+    doc.file_path = str(source_file)
+    doc.status = DocumentStatus.approved
+    project = Project(id=2, name="Target", slug="target")
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=existing_result)
+    session.get = AsyncMock(return_value=project)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+
+    with patch("app.document_applicability.UPLOAD_DIR", str(tmp_path)), patch(
+        "app.document_applicability.log_change_event", new_callable=AsyncMock
+    ) as log_event, patch("app.document_applicability.notify_document_edit", new_callable=AsyncMock) as notify_edit:
+        await add_document_applicability(session, doc, 2, user)
+
+    assert doc.status == DocumentStatus.approved
+    log_event.assert_awaited_once()
+    notify_edit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

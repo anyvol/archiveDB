@@ -11,8 +11,9 @@ from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.document_helpers import _resolve_upload_subdirectory, _sanitize_storage_name
-from app.models import BaseDocument, DocumentApplicability, Project
-from app.notifications import get_document_designation
+from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Project, User
+from app.notifications import get_document_designation, notify_document_edit
+from app.change_log import log_change_event
 
 
 def _resolve_doc_kind_code(doc: BaseDocument) -> Optional[str]:
@@ -85,7 +86,7 @@ async def add_document_applicability(
     session: AsyncSession,
     doc: BaseDocument,
     project_id: int,
-    user_id: int,
+    user: User,
 ) -> DocumentApplicability:
     if project_id == doc.project_id:
         raise HTTPException(status_code=400, detail="Запись уже относится к этому проекту.")
@@ -109,11 +110,26 @@ async def add_document_applicability(
         project_id=project.id,
         file_path=file_path,
         file_name=file_name,
-        created_by=user_id,
+        created_by=user.id,
     )
     session.add(entry)
     await session.flush()
     await session.refresh(entry, ["project"])
+
+    await log_change_event(
+        session,
+        doc,
+        user,
+        DocumentChangeEventType.metadata_edit,
+        comment=f"Добавлена применяемость: {project.name}",
+    )
+    await notify_document_edit(
+        session,
+        doc,
+        user,
+        [f"добавлена применяемость: {project.name}"],
+    )
+
     return entry
 
 

@@ -1345,7 +1345,7 @@ async def add_applicability_route(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     try:
-        await add_document_applicability(session, doc, project_id, user.id)
+        await add_document_applicability(session, doc, project_id, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
@@ -1404,7 +1404,7 @@ async def add_links_route(
     target_ids = [int(value) for value in form.getlist("target_ids") if str(value).isdigit()]
 
     try:
-        await add_document_links(session, doc, target_ids, user.id)
+        await add_document_links(session, doc, target_ids, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "links_error"
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)

@@ -5,8 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from app.models import BaseDocument, DesignDocument, DocumentLink, TechDocument
-from app.notifications import get_document_designation
+from app.models import (
+    BaseDocument,
+    DesignDocument,
+    DocumentChangeEventType,
+    DocumentLink,
+    DocumentStatus,
+    TechDocument,
+    User,
+)
+from app.notifications import get_document_designation, notify_document_edit
+from app.change_log import log_change_event, log_document_status_change
 
 
 async def search_documents_by_designation(
@@ -65,7 +74,7 @@ async def add_document_links(
     session: AsyncSession,
     source_doc: BaseDocument,
     target_ids: list[int],
-    user_id: int,
+    user: User,
 ) -> list[DocumentLink]:
     if not target_ids:
         raise HTTPException(status_code=400, detail="Выберите хотя бы одну запись.")
@@ -103,10 +112,44 @@ async def add_document_links(
         link = DocumentLink(
             source_document_id=source_doc.id,
             target_document_id=target_id,
-            created_by=user_id,
+            created_by=user.id,
         )
         session.add(link)
         created.append(link)
+
+    target_docs_result = await session.execute(
+        select(BaseDocument)
+        .options(
+            joinedload(BaseDocument.design_document),
+            joinedload(BaseDocument.tech_document),
+        )
+        .where(BaseDocument.id.in_(to_add))
+    )
+    target_docs = target_docs_result.scalars().unique().all()
+    designations = [get_document_designation(doc) for doc in target_docs]
+    old_status = source_doc.status
+    source_doc.status = DocumentStatus.pending_review
+
+    await log_change_event(
+        session,
+        source_doc,
+        user,
+        DocumentChangeEventType.metadata_edit,
+        comment="Добавлены ссылки: " + ", ".join(designations),
+    )
+    await log_document_status_change(
+        session,
+        source_doc,
+        user,
+        old_status,
+        DocumentStatus.pending_review,
+    )
+    await notify_document_edit(
+        session,
+        source_doc,
+        user,
+        [f"добавлены ссылки: {', '.join(designations)}"],
+    )
 
     await session.flush()
     return created

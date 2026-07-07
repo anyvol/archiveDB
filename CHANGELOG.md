@@ -9,9 +9,9 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Notifications:** removed from the menu; a bell icon with unread count in parentheses appears next to the menu button.
 - **Home icon:** doubled in size in the header.
 - **Version tag:** the changelog link was removed; clicking the version opens the changelog page.
-- **Applicability (GOST 2.501-2013):** records can be applied to other registered projects; applicability is stored in the database, shown on the document card, and the file is copied into the target project folder. Admins can remove applicability.
+- **Applicability (GOST 2.501-2013):** records can be applied to other registered projects; applicability is stored in the database, shown on the document card, and the file is copied into the target project folder. Admins can remove applicability. Adding applicability writes to the change log and sends a notification without changing document status.
 - **Project archive download:** admins can download all files of a project as a ZIP archive preserving folder structure; the archive name includes formation date and project id.
-- **Document links:** document cards show linked records; any role can add links via search by designation with confirmation; admins can remove links.
+- **Document links:** document cards show linked records; any role can add links via search by designation with confirmation; admins can remove links. Adding links sets the source record status to «На проверке», writes to the change log, and sends a notification.
 
 ## 0.16.0
 
