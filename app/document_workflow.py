@@ -147,6 +147,7 @@ async def apply_cosmetic_file_replace(
         doc.file_path if not is_governed_document(doc) else None,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation if (doc.design_document or doc.tech_document) else None,
+        doc_name=doc.doc_name,
     )
 
     old_status = doc.status
@@ -201,7 +202,11 @@ async def apply_formal_document_change(
     project_slug = doc.project.slug if doc.project else "_legacy"
     designation = get_document_designation(doc)
 
-    expected_name = compute_stored_file_name(designation, os.path.basename(new_doc_file.filename or ""))
+    expected_name = compute_stored_file_name(
+        designation,
+        os.path.basename(new_doc_file.filename or ""),
+        doc.doc_name,
+    )
     if doc.file_name and expected_name != doc.file_name:
         raise HTTPException(
             status_code=400,
@@ -226,6 +231,7 @@ async def apply_formal_document_change(
         None,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation,
+        doc_name=doc.doc_name,
     )
 
     ii_record = ChangeNotification(

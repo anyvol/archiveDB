@@ -14,6 +14,12 @@
         .notification-item { padding: 1rem 1.25rem; border-bottom: 1px solid #eee; }
         .notification-item.unread { background-color: #e8f5e9; }
         .notification-item:last-child { border-bottom: none; }
+        .notification-item a.notification-link {
+            display: block;
+            color: inherit;
+            text-decoration: none;
+        }
+        .notification-item a.notification-link:hover .notification-message { text-decoration: underline; }
         .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
         .empty { padding: 2rem; text-align: center; color: #6c757d; }
         .load-more-wrap { padding: 1rem; text-align: center; border-top: 1px solid #eee; }
@@ -25,18 +31,23 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Уведомления {% include "_version_tag.html" %}</h1>
-        {% include "_header_nav.html" %}
-    </div>
+    {% set page_title = 'Уведомления' %}
+    {% include "_page_header.html" %}
 
     <div class="container">
         <div class="notification-list">
             <div id="notification-items">
                 {% for n in notifications %}
                 <div class="notification-item{% if n.id in unread_ids %} unread{% endif %}">
-                    <div>{{ n.message }}</div>
-                    <div class="notification-time">{{ format_date(n.created_at, app_timezone) if n.created_at else '' }}</div>
+                    {% if n.document_id %}
+                    <a class="notification-link" href="{{ url_path('/documents/' ~ n.document_id) }}">
+                        <div class="notification-message">{{ n.message }}</div>
+                        <div class="notification-time">{{ format_datetime(n.created_at, app_timezone) if n.created_at else '' }}</div>
+                    </a>
+                    {% else %}
+                    <div class="notification-message">{{ n.message }}</div>
+                    <div class="notification-time">{{ format_datetime(n.created_at, app_timezone) if n.created_at else '' }}</div>
+                    {% endif %}
                 </div>
                 {% else %}
                 <div class="empty" id="empty-message">Нет уведомлений</div>
@@ -59,12 +70,30 @@
         const pageSize = {{ notifications_page_size }};
         let loadedCount = {{ notifications|length }};
         const listUrl = '{{ url_path('/api/notifications') }}';
+        const documentUrlPrefix = '{{ url_path('/documents/') }}';
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         function appendNotification(n) {
             if (emptyMessage) emptyMessage.remove();
             const item = document.createElement('div');
             item.className = 'notification-item';
-            item.innerHTML = '<div>' + n.message + '</div><div class="notification-time">' + n.created_at + '</div>';
+            const timeHtml = '<div class="notification-time">' + escapeHtml(n.created_at || '') + '</div>';
+            if (n.document_id) {
+                item.innerHTML =
+                    '<a class="notification-link" href="' + documentUrlPrefix + n.document_id + '">' +
+                    '<div class="notification-message">' + escapeHtml(n.message) + '</div>' +
+                    timeHtml +
+                    '</a>';
+            } else {
+                item.innerHTML =
+                    '<div class="notification-message">' + escapeHtml(n.message) + '</div>' +
+                    timeHtml;
+            }
             itemsContainer.appendChild(item);
         }
 

@@ -30,6 +30,7 @@
 (function() {
     const pollUrl = '{{ url_path("/api/notifications/poll") }}';
     const notificationsUrl = '{{ url_path("/notifications") }}';
+    const documentUrlPrefix = '{{ url_path("/documents/") }}';
     const linkEl = document.getElementById('notifications-link');
     const toastContainer = document.getElementById('toast-container');
     const storageKey = 'last_notification_id';
@@ -41,12 +42,19 @@
         linkEl.textContent = count > 0 ? `Уведомления (${count})` : 'Уведомления';
     }
 
-    function showToast(message) {
+    function notificationTargetUrl(notification) {
+        if (notification.document_id) {
+            return documentUrlPrefix + notification.document_id;
+        }
+        return notificationsUrl;
+    }
+
+    function showToast(notification) {
         if (!toastContainer) return;
         const el = document.createElement('div');
         el.className = 'toast-notification';
-        el.textContent = message;
-        el.addEventListener('click', () => { window.location.href = notificationsUrl; });
+        el.textContent = notification.message;
+        el.addEventListener('click', () => { window.location.href = notificationTargetUrl(notification); });
         toastContainer.appendChild(el);
         setTimeout(() => el.remove(), 8000);
     }
@@ -62,7 +70,7 @@
             const isFirst = !sessionStorage.getItem(initKey);
             if (data.notifications && data.notifications.length) {
                 data.notifications.forEach(n => {
-                    if (!isFirst) showToast(n.message);
+                    if (!isFirst) showToast(n);
                     if (n.id > lastId) lastId = n.id;
                 });
                 sessionStorage.setItem(storageKey, String(lastId));

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from app.models import BaseDocument, DocumentStatus
 from app.document_display import get_document_display_status, format_field_change
-from app.timezone_utils import format_date
+from app.timezone_utils import format_date, format_datetime
 
 
 def _doc(**kwargs) -> BaseDocument:
@@ -45,3 +45,8 @@ def test_format_field_change():
 def test_format_date_uses_configured_timezone_and_day_month_year():
     assert format_date(datetime(2026, 1, 1, 21, 30), "Europe/Moscow") == "02.01.2026"
     assert format_date("2026-07-07") == "07.07.2026"
+
+
+def test_format_datetime_includes_time_with_timezone():
+    assert format_datetime(datetime(2026, 1, 1, 21, 30), "Europe/Moscow") == "02.01.2026 00:30"
+    assert format_datetime(datetime(2026, 7, 7, 12, 0), "UTC") == "07.07.2026 12:00"

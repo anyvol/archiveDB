@@ -140,7 +140,7 @@ from app.admin_access import verify_admin_access_code
 from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
 from app.settings_store import get_app_timezone
-from app.timezone_utils import format_date
+from app.timezone_utils import format_date, format_datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -178,6 +178,7 @@ templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 templates.env.globals["format_date"] = format_date
+templates.env.globals["format_datetime"] = format_datetime
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -269,6 +270,7 @@ async def _page_context(session: AsyncSession, user: User) -> dict:
         "unread_count": await count_unread(session, user.id),
         "app_timezone": app_timezone,
         "format_date": format_date,
+        "format_datetime": format_datetime,
     }
 
 
@@ -1111,6 +1113,7 @@ async def handle_upload(
             doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
+            doc_name=doc.doc_name,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)
@@ -2091,7 +2094,8 @@ async def list_notifications_api(
             {
                 "id": n.id,
                 "message": n.message,
-                "created_at": format_date(n.created_at, app_timezone) if n.created_at else "",
+                "created_at": format_datetime(n.created_at, app_timezone) if n.created_at else "",
+                "document_id": n.document_id,
             }
             for n in notifications
         ],
@@ -2106,7 +2110,8 @@ async def poll_notifications_api(
     access_token: Optional[str] = Cookie(None),
 ):
     user = await _require_user(access_token, session)
-    notifications = await poll_new_notifications(session, user, after_id=after)
+    app_timezone = await get_app_timezone(session)
+    notifications = await poll_new_notifications(session, user, after_id=after, timezone_name=app_timezone)
     unread = await count_unread(session, user.id)
     return {"notifications": notifications, "unread_count": unread}
 

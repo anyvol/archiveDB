@@ -28,10 +28,8 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Администрирование {% include "_version_tag.html" %}</h1>
-        {% include "_header_nav.html" %}
-    </div>
+    {% set page_title = 'Администрирование' %}
+    {% include "_page_header.html" %}
     <div class="layout">
         <nav class="sidebar">
             <a href="{{ url_path('/admin') }}" class="{% if admin_nav == 'dashboard' %}active{% endif %}">Обзор</a>

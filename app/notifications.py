@@ -64,7 +64,9 @@ async def _create_notifications(
             )
         )
     if send_push:
-        await send_push_to_users(session, recipient_ids, message, event_type)
+        await send_push_to_users(
+            session, recipient_ids, message, event_type, document_id=document_id
+        )
 
 
 async def _notify_admin_reviewers(
@@ -301,8 +303,14 @@ async def get_notifications_for_user(
 
 
 async def poll_new_notifications(
-    session: AsyncSession, user: User, after_id: int = 0
+    session: AsyncSession,
+    user: User,
+    after_id: int = 0,
+    *,
+    timezone_name: str | None = "UTC",
 ) -> list[dict]:
+    from app.timezone_utils import format_datetime
+
     query = (
         select(Notification)
         .where(
@@ -319,7 +327,7 @@ async def poll_new_notifications(
         {
             "id": n.id,
             "message": n.message,
-            "created_at": n.created_at.isoformat() if n.created_at else None,
+            "created_at": format_datetime(n.created_at, timezone_name) if n.created_at else None,
             "document_id": n.document_id,
         }
         for n in notifications

@@ -153,10 +153,10 @@ See [.env.example](.env.example):
 If the uploaded file name (without extension) does not match the document designation, the file is stored as:
 
 ```text
-{designation}({original_basename}){extension}
+{designation} - {doc_name}{extension}
 ```
 
-Example: designation `ORG.123456.001`, file `report.pdf` → stored as `ORG.123456.001(report).pdf`.
+Example: designation `ORG.123456.001`, document name `Report`, file `drawing.pdf` → stored as `ORG.123456.001 - Report.pdf`.
 
 ## Tests
 

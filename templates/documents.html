@@ -136,10 +136,8 @@
     </style>
 </head>
 <body data-login-url="{{ url_path('/login?expired=1') }}">
-    <div class="header">
-        <h1>Архив документов {% include "_version_tag.html" %}</h1>
-        {% include "_header_nav.html" %}
-    </div>
+    {% set page_title = 'Архив документов' %}
+    {% include "_page_header.html" %}
 
     <div class="container">
         {% if can_create %}
@@ -390,8 +388,8 @@
                     {% if 'file_name' in visible_columns %}<td>{{ doc.file_name or '' }}</td>{% endif %}
                     {% if 'type' in visible_columns %}<td>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</td>{% endif %}
                     {% if 'created_by' in visible_columns %}<td>{{ doc.created_by or '—' }}</td>{% endif %}
-                    {% if 'created_at' in visible_columns %}<td>{{ format_date(doc.created_at, app_timezone) }}</td>{% endif %}
-                    {% if 'last_update' in visible_columns %}<td>{{ format_date(doc.last_update, app_timezone) }}</td>{% endif %}
+                    {% if 'created_at' in visible_columns %}<td>{{ format_datetime(doc.created_at, app_timezone) }}</td>{% endif %}
+                    {% if 'last_update' in visible_columns %}<td>{{ format_datetime(doc.last_update, app_timezone) }}</td>{% endif %}
                     {% if 'status' in visible_columns %}
                     <td>
                         {% set display_status = get_document_display_status(doc) %}

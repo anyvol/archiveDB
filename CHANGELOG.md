@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.16.0
+
+- **File naming on upload:** when the uploaded file name does not match the designation, it is renamed to `{designation} - {doc_name}.{ext}` (dash with spaces on both sides, document title, source file extension).
+- **Date and time display:** registration date, last update, change log entries, and notification timestamps now show `DD.MM.YYYY HH:MM` in the timezone configured in the admin panel.
+- **Header navigation:** the same links appear in the same order on every page; the «Архив документов» nav link was removed in favor of a home icon to the left of the page title.
+- **Notifications:** clicking a notification opens the corresponding document card when the record still exists.
+
 ## 0.15.2
 
 - **Dates:** user-facing dates now render as `DD.MM.YYYY` and use the timezone selected in the admin panel.
