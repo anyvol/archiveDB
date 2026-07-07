@@ -234,7 +234,7 @@
                     <label class="section-label">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
                     <div class="metadata-grid">
                         <div class="metadata-person-row">
-                            <label for="developed_by">Разработчик *</label>
+                            <label for="developed_by">Разработал *</label>
                             <div class="metadata-field">
                                 <input type="text" id="developed_by" name="developed_by" class="metadata-input" required value="{{ default_developed_by }}" placeholder="Фамилия И.О.">
                             </div>
@@ -251,7 +251,7 @@
                             </div>
                         </div>
                         <div class="metadata-person-row">
-                            <label for="reviewed_by">Проверяющий</label>
+                            <label for="reviewed_by">Проверил</label>
                             <div class="metadata-field">
                                 <input type="text" id="reviewed_by" name="reviewed_by" class="metadata-input" placeholder="Фамилия И.О.">
                             </div>
@@ -268,7 +268,7 @@
                             </div>
                         </div>
                         <div class="metadata-person-row">
-                            <label for="approved_by">Утверждающий</label>
+                            <label for="approved_by">Утвердил</label>
                             <div class="metadata-field">
                                 <input type="text" id="approved_by" name="approved_by" class="metadata-input" placeholder="Фамилия И.О.">
                             </div>
@@ -356,7 +356,7 @@
                     {{ sort_link('org_name', 'Компания') }}
                     {{ sort_link('project', 'Проект') }}
                     {{ sort_link('okpo', 'ОКПО') }}
-                    {{ sort_link('developed_by', 'Разработчик') }}
+                    {{ sort_link('developed_by', 'Разработал') }}
                     {{ sort_link('doc_name', 'Наименование') }}
                     {{ sort_link('file_name', 'Файл') }}
                     {{ sort_link('type', 'Тип') }}

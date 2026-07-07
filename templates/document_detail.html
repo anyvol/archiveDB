@@ -118,9 +118,9 @@
                     <div class="record-line"><span class="record-label">Формат</span><br>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) if doc.document_format else '—' }}</div>
                 </div>
                 <div>
-                    <div class="record-line"><span class="record-label">Разработчик</span><br>{{ doc.developed_by or '—' }} | {{ format_date(doc.developer_signed_date, app_timezone) }}</div>
-                    <div class="record-line"><span class="record-label">Проверяющий</span><br>{{ doc.reviewed_by or '—' }} | {{ format_date(doc.reviewer_signed_date, app_timezone) }}</div>
-                    <div class="record-line"><span class="record-label">Утвердивший</span><br>{{ doc.approved_by or '—' }} | {{ format_date(doc.approver_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Разработал</span><br>{{ doc.developed_by or '—' }} | {{ format_date(doc.developer_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Проверил</span><br>{{ doc.reviewed_by or '—' }} | {{ format_date(doc.reviewer_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Утвердил</span><br>{{ doc.approved_by or '—' }} | {{ format_date(doc.approver_signed_date, app_timezone) }}</div>
                 </div>
             </div>
 
@@ -145,7 +145,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="hint">изменений по документу не найдено</p>
+                <p class="hint">Изменений по документу не найдено</p>
                 {% endif %}
             </div>
 
