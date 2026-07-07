@@ -22,6 +22,7 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
 from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.document_applicability import cleanup_document_applicability_files
 from app.notifications import (
     notify_file_upload,
     notify_status_change,
@@ -253,6 +254,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     push_info = await notify_document_delete(session, doc, current_user, comment.strip())
+    await cleanup_document_applicability_files(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await clear_document_references(session, doc_id)
     await session.delete(doc)

@@ -31,15 +31,15 @@
     const pollUrl = '{{ url_path("/api/notifications/poll") }}';
     const notificationsUrl = '{{ url_path("/notifications") }}';
     const documentUrlPrefix = '{{ url_path("/documents/") }}';
-    const linkEl = document.getElementById('notifications-link');
+    const countEl = document.getElementById('notifications-count');
     const toastContainer = document.getElementById('toast-container');
     const storageKey = 'last_notification_id';
     const initKey = 'notifications_initialized';
     let lastId = parseInt(sessionStorage.getItem(storageKey) || '0', 10);
 
     function updateCounter(count) {
-        if (!linkEl) return;
-        linkEl.textContent = count > 0 ? `Уведомления (${count})` : 'Уведомления';
+        if (!countEl) return;
+        countEl.textContent = count > 0 ? `(${count})` : '';
     }
 
     function notificationTargetUrl(notification) {

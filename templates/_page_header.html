@@ -11,11 +11,20 @@
         text-decoration: none;
     }
     .home-link:hover { opacity: 1; }
+    .version-tag {
+        font-size: 0.75rem;
+        opacity: 0.85;
+        margin-left: 0.5rem;
+        font-weight: normal;
+        color: inherit;
+        text-decoration: none;
+    }
+    .version-tag:hover { opacity: 1; text-decoration: underline; }
 </style>
 <div class="header">
     <div class="header-left">
         <a href="{{ url_path('/documents') }}" class="home-link" title="Архив документов" aria-label="Архив документов">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
             </svg>
         </a>

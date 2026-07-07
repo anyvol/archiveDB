@@ -1,19 +1,107 @@
-<nav>
+<style>
+    .header-nav {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        position: relative;
+    }
+    .notifications-bell {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: white;
+        text-decoration: none;
+        opacity: 0.92;
+        padding: 0.25rem 0.35rem;
+        border-radius: 4px;
+    }
+    .notifications-bell:hover { opacity: 1; background: rgba(255,255,255,0.12); }
+    .notifications-bell-count { font-size: 0.9rem; }
+    .header-menu { position: relative; }
+    .header-menu-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: rgba(255,255,255,0.12);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 4px;
+        padding: 0.35rem 0.75rem;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.9rem;
+    }
+    .header-menu-trigger:hover,
+    .header-menu:hover .header-menu-trigger {
+        background: rgba(255,255,255,0.2);
+    }
+    .header-menu-dropdown {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: calc(100% + 0.35rem);
+        min-width: 220px;
+        background: white;
+        color: #212529;
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        padding: 0.35rem 0;
+        z-index: 2500;
+    }
+    .header-menu:hover .header-menu-dropdown { display: block; }
+    .header-menu-user {
+        padding: 0.65rem 1rem 0.55rem;
+        font-size: 0.82rem;
+        color: #6c757d;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 0.25rem;
+    }
+    .header-menu-dropdown a {
+        display: block;
+        color: #212529;
+        text-decoration: none;
+        padding: 0.55rem 1rem;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+    .header-menu-dropdown a:hover { background: #f0f7ff; }
+    .header-guest-links a {
+        color: white;
+        text-decoration: none;
+        margin-left: 1rem;
+    }
+</style>
+<div class="header-nav">
     {% if user %}
-        {% if user.role.value == 'master_admin' %}
-        <a href="{{ url_path('/admin') }}">Администрирование</a>
-        {% endif %}
-        <a href="{{ url_path('/profile') }}">Личный кабинет</a>
-        <a href="{{ url_path('/notifications') }}" id="notifications-link">
-            Уведомления{% if unread_count %} ({{ unread_count }}){% endif %}
-        </a>
-        <a href="{{ url_path('/projects') }}">Проекты</a>
+    <a href="{{ url_path('/notifications') }}" class="notifications-bell" id="notifications-link" title="Уведомления" aria-label="Уведомления">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+        </svg>
+        {% if unread_count %}<span class="notifications-bell-count" id="notifications-count">({{ unread_count }})</span>{% else %}<span class="notifications-bell-count" id="notifications-count"></span>{% endif %}
+    </a>
+    <div class="header-menu">
+        <button type="button" class="header-menu-trigger" aria-haspopup="true" aria-expanded="false">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+            </svg>
+            Меню
+        </button>
+        <div class="header-menu-dropdown" role="menu">
+            <div class="header-menu-user">Вы вошли как {{ user.full_name or user.login }}</div>
+            {% if user.role.value == 'master_admin' %}
+            <a href="{{ url_path('/admin') }}" role="menuitem">Администрирование</a>
+            {% endif %}
+            <a href="{{ url_path('/profile') }}" role="menuitem">Личный кабинет</a>
+            <a href="{{ url_path('/projects') }}" role="menuitem">Проекты</a>
+            <a href="{{ url_path('/help') }}" target="_blank" rel="noopener noreferrer" role="menuitem">Помощь</a>
+            <a href="{{ url_path('/logout') }}" role="menuitem">Выйти</a>
+        </div>
+    </div>
     {% else %}
+    <div class="header-guest-links">
         <a href="{{ url_path('/login') }}">Вход</a>
         <a href="{{ url_path('/register') }}">Регистрация</a>
+        <a href="{{ url_path('/help') }}" target="_blank" rel="noopener noreferrer">Помощь</a>
+    </div>
     {% endif %}
-    <a href="{{ url_path('/help') }}" target="_blank" rel="noopener noreferrer">Помощь</a>
-    {% if user %}
-    <a href="{{ url_path('/logout') }}">Выйти ({{ user.full_name or user.login }})</a>
-    {% endif %}
-</nav>
+</div>

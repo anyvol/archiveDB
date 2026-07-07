@@ -68,6 +68,16 @@
         .form-group textarea, .form-group input { width: 100%; padding: 0.5rem; box-sizing: border-box; }
         .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
         .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .record-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
+        .record-list li { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .record-list a { color: #0056b3; text-decoration: none; }
+        .record-list a:hover { text-decoration: underline; }
+        .search-results { max-height: 240px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem; }
+        .search-result-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #eee; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item label { flex: 1; cursor: pointer; }
+        .search-empty { padding: 0.75rem; color: #6c757d; font-size: 0.9rem; }
         @media (max-width: 760px) {
             .record-top, .record-split, .registration-grid { grid-template-columns: 1fr; display: grid; }
             .formal-change-row { grid-template-columns: 1fr; gap: 0.2rem; }
@@ -84,6 +94,15 @@
 
         {% if error %}
         <div class="error">{{ error }}</div>
+        {% endif %}
+        {% if success == 'applicability_added' %}
+        <div class="success">Применяемость добавлена. Файл скопирован в папку проекта.</div>
+        {% elif success == 'applicability_removed' %}
+        <div class="success">Применяемость удалена.</div>
+        {% elif success == 'links_added' %}
+        <div class="success">Ссылки добавлены.</div>
+        {% elif success == 'link_removed' %}
+        <div class="success">Ссылка удалена.</div>
         {% endif %}
 
         <div class="card record-card">
@@ -168,6 +187,48 @@
             {% endif %}
             </div>
 
+            <div class="record-section">
+                <div class="record-label">Применяемость</div>
+                {% if applicability_entries %}
+                <ul class="record-list">
+                    {% for entry in applicability_entries %}
+                    <li>
+                        <a href="{{ url_path('/projects/' ~ entry.project.id) }}">{{ entry.project.name }}</a>
+                        {% if is_admin(user) %}
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в проекте «{{ entry.project.name|e }}»?');">
+                            <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="hint">Запись не применена в других проектах.</p>
+                {% endif %}
+            </div>
+
+            <div class="record-section">
+                <div class="record-label">Ссылки</div>
+                {% if outgoing_links %}
+                <ul class="record-list">
+                    {% for link in outgoing_links %}
+                    {% set target = link.target_document %}
+                    {% set target_designation = target.design_document.designation if target.design_document else (target.tech_document.designation if target.tech_document else ('#' ~ target.id)) %}
+                    <li>
+                        <a href="{{ url_path('/documents/' ~ target.id) }}">{{ target_designation }}{% if target.doc_name %} — {{ target.doc_name }}{% endif %}</a>
+                        {% if is_admin(user) %}
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить ссылку?');">
+                            <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="hint">Ссылки на другие записи не добавлены.</p>
+                {% endif %}
+            </div>
+
             <div class="record-section actions">
                 <div class="actions-left">
                 {% if can_upload_file(user, doc) and not doc.file_name %}
@@ -189,6 +250,8 @@
                 <button type="button" class="btn btn-success" id="open-approve-modal">Одобрить запрос</button>
                 <button type="button" class="btn btn-danger" id="open-reject-modal">Отклонить запрос</button>
                 {% endif %}
+                <button type="button" class="btn btn-secondary" id="open-applicability-modal">Применяемость</button>
+                <button type="button" class="btn btn-secondary" id="open-links-modal">Ссылки</button>
                 {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
                 <button type="button" class="btn btn-danger" id="btn-send-correction">Требуется исправление</button>
                 {% endif %}
@@ -329,6 +392,56 @@
     </div>
     {% endif %}
 
+    <div class="modal-overlay" id="applicability-modal">
+        <div class="modal">
+            <h3>Применяемость</h3>
+            <p class="hint">Добавьте применение записи в другом зарегистрированном проекте. Файл будет скопирован в соответствующую папку проекта на сервере.</p>
+            {% if available_applicability_projects %}
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability') }}">
+                <div class="form-group">
+                    <label for="applicability-project">Проект</label>
+                    <select id="applicability-project" name="project_id" required style="width:100%; padding:0.5rem; box-sizing:border-box;">
+                        <option value="">Выберите проект</option>
+                        {% for project in available_applicability_projects %}
+                        <option value="{{ project.id }}">{{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="hint">Нет доступных проектов для добавления применяемости.</p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary modal-cancel">Закрыть</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="links-modal">
+        <div class="modal">
+            <h3>Ссылки на записи</h3>
+            <p class="hint">Найдите записи по обозначению и выберите одну или несколько.</p>
+            <div class="form-group">
+                <label for="links-search">Поиск по обозначению</label>
+                <input type="text" id="links-search" placeholder="Начните вводить обозначение…" autocomplete="off">
+                <div class="search-results" id="links-search-results">
+                    <div class="search-empty">Введите обозначение для поиска.</div>
+                </div>
+            </div>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links') }}" id="links-form">
+                <div id="links-selected-inputs"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-primary" id="links-submit">Добавить ссылки</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="title-modal">
         <div class="modal">
             <h3>Полное наименование</h3>
@@ -386,6 +499,112 @@
                 if (navigator.clipboard && text) await navigator.clipboard.writeText(text);
             });
         }
+
+        const applicabilityModal = document.getElementById('applicability-modal');
+        const openApplicabilityBtn = document.getElementById('open-applicability-modal');
+        if (applicabilityModal && openApplicabilityBtn) {
+            openApplicabilityBtn.addEventListener('click', () => applicabilityModal.classList.add('active'));
+        }
+
+        const linksModal = document.getElementById('links-modal');
+        const openLinksBtn = document.getElementById('open-links-modal');
+        const linksSearch = document.getElementById('links-search');
+        const linksResults = document.getElementById('links-search-results');
+        const linksSelectedInputs = document.getElementById('links-selected-inputs');
+        const linksForm = document.getElementById('links-form');
+        const searchApiUrl = '{{ url_path('/api/documents/search-designations') }}';
+        const currentDocId = {{ doc.id }};
+        const selectedLinks = new Map();
+        let searchTimer = null;
+
+        function renderSelectedInputs() {
+            if (!linksSelectedInputs) return;
+            linksSelectedInputs.innerHTML = '';
+            selectedLinks.forEach((_label, id) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'target_ids';
+                input.value = String(id);
+                linksSelectedInputs.appendChild(input);
+            });
+        }
+
+        function renderSearchResults(items) {
+            if (!linksResults) return;
+            if (!items.length) {
+                linksResults.innerHTML = '<div class="search-empty">Записи не найдены.</div>';
+                return;
+            }
+            linksResults.innerHTML = '';
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'search-result-item';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = 'link-target-' + item.id;
+                checkbox.checked = selectedLinks.has(item.id);
+                checkbox.addEventListener('change', () => {
+                    const label = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
+                    if (checkbox.checked) selectedLinks.set(item.id, label);
+                    else selectedLinks.delete(item.id);
+                    renderSelectedInputs();
+                });
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
+                row.appendChild(checkbox);
+                row.appendChild(label);
+                linksResults.appendChild(row);
+            });
+        }
+
+        async function runLinksSearch(query) {
+            if (!query.trim()) {
+                linksResults.innerHTML = '<div class="search-empty">Введите обозначение для поиска.</div>';
+                return;
+            }
+            try {
+                const resp = await fetch(searchApiUrl + '?q=' + encodeURIComponent(query) + '&exclude_id=' + currentDocId);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                renderSearchResults(data.results || []);
+            } catch (e) { /* ignore */ }
+        }
+
+        if (linksModal && openLinksBtn) {
+            openLinksBtn.addEventListener('click', () => {
+                selectedLinks.clear();
+                renderSelectedInputs();
+                if (linksSearch) linksSearch.value = '';
+                if (linksResults) linksResults.innerHTML = '<div class="search-empty">Введите обозначение для поиска.</div>';
+                linksModal.classList.add('active');
+                if (linksSearch) linksSearch.focus();
+            });
+        }
+
+        if (linksSearch) {
+            linksSearch.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => runLinksSearch(linksSearch.value), 250);
+            });
+        }
+
+        if (linksForm) {
+            linksForm.addEventListener('submit', (e) => {
+                if (!selectedLinks.size) {
+                    e.preventDefault();
+                    alert('Выберите хотя бы одну запись.');
+                    return;
+                }
+                const labels = Array.from(selectedLinks.values()).join('\n');
+                if (!confirm('Добавить ссылки на выбранные записи?\n\n' + labels)) {
+                    e.preventDefault();
+                }
+            });
+        }
+
+        if (openModal === 'applicability' && applicabilityModal) applicabilityModal.classList.add('active');
+        if (openModal === 'links' && linksModal && openLinksBtn) openLinksBtn.click();
     </script>
 </body>
 </html>

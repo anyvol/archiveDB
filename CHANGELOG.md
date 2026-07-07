@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.17.0
+
+- **Header menu:** navigation links moved into a hover menu on the right; the signed-in user is shown as «Вы вошли как {ФИО}», logout is labeled «Выйти».
+- **Notifications:** removed from the menu; a bell icon with unread count in parentheses appears next to the menu button.
+- **Home icon:** doubled in size in the header.
+- **Version tag:** the changelog link was removed; clicking the version opens the changelog page.
+- **Applicability (GOST 2.501-2013):** records can be applied to other registered projects; applicability is stored in the database, shown on the document card, and the file is copied into the target project folder. Admins can remove applicability.
+- **Project archive download:** admins can download all files of a project as a ZIP archive preserving folder structure; the archive name includes formation date and project id.
+- **Document links:** document cards show linked records; any role can add links via search by designation with confirmation; admins can remove links.
+
 ## 0.16.0
 
 - **File naming on upload:** if the uploaded base name differs from the designation, store as `{designation} ({original_basename}) - {doc_name}{extension}`; if it matches, store as `{designation} - {doc_name}{extension}`.
