@@ -36,7 +36,13 @@ def format_date(value: date | datetime | str | None, timezone_name: str | None =
 
 
 def format_datetime(value: datetime | None, timezone_name: str | None = "UTC") -> str:
-    return format_date(value, timezone_name)
+    if value is None:
+        return "—"
+    tz = resolve_timezone(timezone_name)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("UTC"))
+    value = value.astimezone(tz)
+    return value.strftime("%d.%m.%Y %H:%M")
 
 
 def common_timezones() -> list[str]:

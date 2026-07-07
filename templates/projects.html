@@ -37,11 +37,8 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Проекты {% include "_version_tag.html" %}</h1>
-        {% set nav_context = 'projects' %}
-        {% include "_header_nav.html" %}
-    </div>
+    {% set page_title = 'Проекты' %}
+    {% include "_page_header.html" %}
 
     <div class="container">
         {% if error == 'name_required' %}

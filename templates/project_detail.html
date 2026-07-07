@@ -35,11 +35,8 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Проект {% include "_version_tag.html" %}</h1>
-        {% set nav_context = 'projects' %}
-        {% include "_header_nav.html" %}
-    </div>
+    {% set page_title = 'Проект' %}
+    {% include "_page_header.html" %}
 
     <div class="container">
         <p><a href="{{ url_path('/projects') }}">← К списку проектов</a></p>

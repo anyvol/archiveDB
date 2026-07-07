@@ -58,13 +58,21 @@ def user_wants_push(user: User, event_type: NotificationEventType) -> bool:
     return prefs.get(event_key, True)
 
 
-def send_web_push(subscription: dict[str, Any], message: str) -> bool:
+def send_web_push(
+    subscription: dict[str, Any],
+    message: str,
+    *,
+    document_id: int | None = None,
+) -> bool:
     if not VAPID_PRIVATE_KEY:
         return False
+    payload: dict[str, Any] = {"message": message}
+    if document_id is not None:
+        payload["document_id"] = document_id
     try:
         webpush(
             subscription_info=subscription,
-            data=json.dumps({"message": message}),
+            data=json.dumps(payload),
             vapid_private_key=VAPID_PRIVATE_KEY,
             vapid_claims=VAPID_CLAIMS,
         )
@@ -79,6 +87,8 @@ async def send_push_to_users(
     user_ids: set[int],
     message: str,
     event_type: NotificationEventType,
+    *,
+    document_id: int | None = None,
 ) -> None:
     if not VAPID_PRIVATE_KEY or not user_ids:
         return
@@ -92,7 +102,7 @@ async def send_push_to_users(
     for user in users:
         if not user.push_subscription or not user_wants_push(user, event_type):
             continue
-        if not send_web_push(user.push_subscription, message):
+        if not send_web_push(user.push_subscription, message, document_id=document_id):
             stale_user_ids.append(user.id)
 
     for user_id in stale_user_ids:

@@ -1,0 +1,25 @@
+<style>
+    .header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+    .header-left h1 { margin: 0; }
+    .home-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: inherit;
+        opacity: 0.92;
+        flex-shrink: 0;
+        text-decoration: none;
+    }
+    .home-link:hover { opacity: 1; }
+</style>
+<div class="header">
+    <div class="header-left">
+        <a href="{{ url_path('/documents') }}" class="home-link" title="Архив документов" aria-label="Архив документов">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+        </a>
+        <h1>{{ page_title }} {% include "_version_tag.html" %}</h1>
+    </div>
+    {% include "_header_nav.html" %}
+</div>
