@@ -23,7 +23,6 @@
         .record-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; }
         .record-line { margin: 0.25rem 0; }
         .record-label { color: #6c757d; font-size: 0.85rem; }
-        .signature-line { margin: 0.25rem 0; }
         .formal-change-list { display: grid; gap: 0.45rem; }
         .formal-change-row { display: grid; grid-template-columns: 0.8fr 1fr 1.4fr 1.4fr 1fr; gap: 0.75rem; align-items: baseline; padding: 0.45rem 0; border-bottom: 1px solid #f1f3f5; }
         .formal-change-row:last-child { border-bottom: none; }
@@ -119,9 +118,9 @@
                     <div class="record-line"><span class="record-label">Формат</span><br>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) if doc.document_format else '—' }}</div>
                 </div>
                 <div>
-                    <div class="signature-line">Разработчик. {{ doc.developed_by or '—' }} | {{ format_date(doc.developer_signed_date, app_timezone) }}</div>
-                    <div class="signature-line">Проверяющий. {{ doc.reviewed_by or '—' }} | {{ format_date(doc.reviewer_signed_date, app_timezone) }}</div>
-                    <div class="signature-line">Утвердивший. {{ doc.approved_by or '—' }} | {{ format_date(doc.approver_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Разработчик</span><br>{{ doc.developed_by or '—' }} | {{ format_date(doc.developer_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Проверяющий</span><br>{{ doc.reviewed_by or '—' }} | {{ format_date(doc.reviewer_signed_date, app_timezone) }}</div>
+                    <div class="record-line"><span class="record-label">Утвердивший</span><br>{{ doc.approved_by or '—' }} | {{ format_date(doc.approver_signed_date, app_timezone) }}</div>
                 </div>
             </div>
 
@@ -157,7 +156,10 @@
             </div>
 
             <div class="record-section">
-                <div class="file-info">{{ doc.file_name or 'Файл не загружен' }}{% if doc.file_name %} | {{ file_size_display }}{% endif %}</div>
+                <div class="record-line">
+                    <span class="record-label">Имя файла и размер</span><br>
+                    {{ doc.file_name or 'Файл не загружен' }}{% if doc.file_name %} | {{ file_size_display }}{% endif %}
+                </div>
 
             {% if is_governed %}
             <p class="hint">
