@@ -104,6 +104,7 @@
     {% if can_upload %}
     <script>
         const DESIGNATION = {{ (designation or '')|tojson }};
+        const DOC_NAME = {{ (doc.doc_name or '')|tojson }};
         const IS_REPLACE = {{ is_replace|tojson }};
         const DETECT_FORMAT_URL = {{ url_path('/api/detect-document-format')|tojson }};
         const dropZone = document.getElementById('drop-zone');
@@ -120,19 +121,16 @@
             return lastDot > 0 ? name.slice(0, lastDot) : name;
         }
 
-        function namesMatch(fileName, designation) {
-            if (!designation) return true;
-            const base = fileBaseName(fileName).trim().toLowerCase();
-            const des = designation.trim().toLowerCase();
-            if (base === des) return true;
-            return base.startsWith(des + ' (') && base.endsWith(')');
-        }
-
         function buildStoredFileName(designation, fileName) {
+            if (!designation) return fileName;
             const lastDot = fileName.lastIndexOf('.');
             const baseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
             const ext = lastDot > 0 ? fileName.slice(lastDot) : '';
-            return designation + ' (' + baseName + ')' + ext;
+            const title = (DOC_NAME || '').trim() || baseName;
+            if (baseName.trim().toLowerCase() === designation.trim().toLowerCase()) {
+                return designation + ' - ' + title + ext;
+            }
+            return designation + ' (' + baseName + ') - ' + title + ext;
         }
 
         async function detectFormatFromFile(file) {
@@ -189,7 +187,7 @@
             submitBtn.disabled = false;
             detectFormatFromFile(file);
 
-            if (DESIGNATION && !namesMatch(file.name, DESIGNATION)) {
+            if (DESIGNATION && buildStoredFileName(DESIGNATION, file.name) !== file.name) {
                 renameWarning.textContent = 'Файл будет переименован в ' + buildStoredFileName(DESIGNATION, file.name);
                 renameWarning.style.display = 'block';
             } else {

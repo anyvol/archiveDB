@@ -200,15 +200,24 @@ Users enable push in **Profile** → **Connect push** and choose event types.
 
 ## Document file naming
 
-When a file is uploaded, if its base name does not match the registered designation, it is **physically renamed** on disk and in the database to:
+When a file is uploaded:
+
+- if the uploaded base name **does not match** the designation:
 
 ```text
-{designation} ({original_basename}){extension}
+{designation} ({original_basename}) - {doc_name}{extension}
 ```
 
-Example: designation `ABCD.123456.001`, uploaded file `drawing.pdf` → `ABCD.123456.001 (drawing).pdf`.
+- if the uploaded base name **matches** the designation:
 
-If the file name already matches the designation (e.g. `ABCD.123456.001.pdf`) or the `{designation} ({basename})` pattern, no rename is applied.
+```text
+{designation} - {doc_name}{extension}
+```
+
+Example: designation `ABCD.123456.001`, document name `Drawing`, uploaded file `drawing.pdf` → `ABCD.123456.001 (drawing) - Drawing.pdf`.  
+If the uploaded file is `ABCD.123456.001.pdf`, it becomes `ABCD.123456.001 - Drawing.pdf`.
+
+If the file name already matches the expected stored pattern, no rename is applied.
 
 ---
 
