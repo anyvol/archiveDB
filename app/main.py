@@ -41,6 +41,8 @@ from app.models import (
     ProjectFile,
     ProjectImage,
     DOC_KIND_CODES,
+    DocumentApplicability,
+    DocumentLink,
 )
 from app.routers import router as user_router
 from app import docs
@@ -141,6 +143,20 @@ from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
 from app.settings_store import get_app_timezone
 from app.timezone_utils import format_date, format_datetime
+from app.document_applicability import (
+    add_document_applicability,
+    get_applicability_entries,
+    get_available_applicability_projects,
+    remove_document_applicability,
+    cleanup_document_applicability_files,
+)
+from app.document_links import (
+    add_document_links,
+    get_outgoing_links,
+    remove_document_link,
+    search_documents_by_designation,
+)
+from app.project_archive import stream_project_archive
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -174,6 +190,7 @@ templates.env.globals["can_respond_correction_request"] = can_respond_correction
 templates.env.globals["is_governed_document"] = is_governed_document
 templates.env.globals["can_manage_project"] = can_manage_project
 templates.env.globals["is_master_admin"] = is_master_admin
+templates.env.globals["is_admin"] = is_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
@@ -1277,6 +1294,10 @@ async def document_detail_page(
         if event.event_type == DocumentChangeEventType.file_replace_formal and event.change_notification
     ]
 
+    applicability_entries = await get_applicability_entries(session, doc_id)
+    outgoing_links = await get_outgoing_links(session, doc_id)
+    available_applicability_projects = await get_available_applicability_projects(session, doc)
+
     can_preview = bool(doc.file_path and preview_media_type(doc.file_path))
     preview_is_image = bool(
         doc.file_path and preview_media_type(doc.file_path or "").startswith("image/")
@@ -1296,10 +1317,147 @@ async def document_detail_page(
             "preview_is_image": preview_is_image,
             "file_size_display": _format_file_size(doc.file_path),
             "error": request.query_params.get("error"),
+            "success": request.query_params.get("success"),
+            "applicability_entries": applicability_entries,
+            "outgoing_links": outgoing_links,
+            "available_applicability_projects": available_applicability_projects,
+            "open_modal": request.query_params.get("modal"),
             "service_version": SERVICE_VERSION,
             **ctx,
         },
     )
+
+
+@app.post("/documents/{doc_id}/applicability", response_class=RedirectResponse)
+async def add_applicability_route(
+    doc_id: int,
+    request: Request,
+    project_id: int = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    try:
+        await add_document_applicability(session, doc, project_id, user)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/documents/{doc_id}?success=applicability_added"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/documents/{doc_id}/applicability/{applicability_id}/delete", response_class=RedirectResponse)
+async def delete_applicability_route(
+    doc_id: int,
+    applicability_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Удаление применяемости доступно только администратору.")
+
+    try:
+        await remove_document_applicability(session, applicability_id, doc_id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/documents/{doc_id}?success=applicability_removed"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/documents/{doc_id}/links", response_class=RedirectResponse)
+async def add_links_route(
+    doc_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    form = await request.form()
+    target_ids = [int(value) for value in form.getlist("target_ids") if str(value).isdigit()]
+
+    try:
+        await add_document_links(session, doc, target_ids, user)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "links_error"
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/documents/{doc_id}?success=links_added"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/documents/{doc_id}/links/{link_id}/delete", response_class=RedirectResponse)
+async def delete_link_route(
+    doc_id: int,
+    link_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Удаление ссылок доступно только администратору.")
+
+    try:
+        await remove_document_link(session, link_id, doc_id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "links_error"
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/documents/{doc_id}?success=link_removed"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/api/documents/search-designations")
+async def search_designations_api(
+    q: str = Query(""),
+    exclude_id: Optional[int] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    results = await search_documents_by_designation(
+        session,
+        q,
+        exclude_document_id=exclude_id,
+    )
+    return {"results": results}
 
 
 @app.get("/documents/{doc_id}/edit", response_class=HTMLResponse)
@@ -1661,6 +1819,7 @@ async def delete_document(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     push_info = await notify_document_delete(session, doc, user, comment.strip())
+    await cleanup_document_applicability_files(session, doc_id)
     await clear_document_references(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
@@ -1925,6 +2084,20 @@ async def download_project_file(
     if not record or record.project_id != project_id or not os.path.exists(record.file_path):
         raise HTTPException(status_code=404, detail="Файл не найден.")
     return FileResponse(path=record.file_path, filename=record.file_name, media_type="application/octet-stream")
+
+
+@app.get("/projects/{project_id}/download-archive")
+async def download_project_archive(
+    project_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Скачивание архива проекта доступно только администратору.")
+
+    project = await get_project_by_id(session, project_id)
+    return stream_project_archive(project)
 
 
 @app.get("/projects/{project_id}/images/{image_id}")

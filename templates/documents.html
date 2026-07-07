@@ -907,6 +907,8 @@
             const correctionId = row.dataset.actionCorrection;
             const requestCorrectionId = row.dataset.actionRequestCorrection;
             const deleteId = row.dataset.actionDelete;
+            const applicabilityUrl = row.dataset.actionApplicability;
+            const linksUrl = row.dataset.actionLinks;
             const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
 
             if (openUrl) items.push({ label: 'Открыть запись', href: openUrl });
@@ -915,6 +917,8 @@
             if (replaceUrl) items.push({ label: 'Заменить файл', href: replaceUrl });
             if (applyChangeUrl) items.push({ label: 'Внести изменения в документ', href: applyChangeUrl });
             if (editUrl) items.push({ label: 'Изменить метаданные', href: editUrl });
+            if (applicabilityUrl) items.push({ label: 'Применяемость', href: applicabilityUrl });
+            if (linksUrl) items.push({ label: 'Ссылки', href: linksUrl });
             if (verifyId) items.push({ label: 'Утвердить', action: 'verify', docId: verifyId });
             if (correctionId) items.push({ label: 'Требуется исправление', action: 'correction', docId: correctionId });
             if (requestCorrectionId) items.push({ label: 'Запрос на исправление', action: 'request-correction', docId: requestCorrectionId });

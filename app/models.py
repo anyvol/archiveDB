@@ -152,6 +152,11 @@ class Project(Base):
         back_populates="project",
         order_by="ProjectImage.created_at.desc()",
     )
+    applicability_entries = relationship(
+        "DocumentApplicability",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class ProjectFile(Base):
@@ -179,6 +184,40 @@ class ProjectImage(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     project = relationship("Project", back_populates="project_images")
+
+
+class DocumentApplicability(Base):
+    """Учёт применяемости документа в других проектах (ГОСТ 2.501-2013)."""
+
+    __tablename__ = "document_applicability"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_path = Column(String, nullable=False)
+    file_name = Column(String, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    document = relationship("BaseDocument", back_populates="applicability_entries", foreign_keys=[document_id])
+    project = relationship("Project", back_populates="applicability_entries")
+    creator = relationship("User")
+
+
+class DocumentLink(Base):
+    """Ссылки между записями архива."""
+
+    __tablename__ = "document_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    source_document = relationship("BaseDocument", back_populates="outgoing_links", foreign_keys=[source_document_id])
+    target_document = relationship("BaseDocument", back_populates="incoming_links", foreign_keys=[target_document_id])
+    creator = relationship("User")
 
 
 class Organization(Base):
@@ -267,6 +306,24 @@ class BaseDocument(Base):
         "TechDocument",
         back_populates="base_document",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    applicability_entries = relationship(
+        "DocumentApplicability",
+        back_populates="document",
+        foreign_keys="DocumentApplicability.document_id",
+        cascade="all, delete-orphan",
+    )
+    outgoing_links = relationship(
+        "DocumentLink",
+        back_populates="source_document",
+        foreign_keys="DocumentLink.source_document_id",
+        cascade="all, delete-orphan",
+    )
+    incoming_links = relationship(
+        "DocumentLink",
+        back_populates="target_document",
+        foreign_keys="DocumentLink.target_document_id",
         cascade="all, delete-orphan",
     )
 

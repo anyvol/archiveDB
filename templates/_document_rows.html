@@ -11,7 +11,9 @@
     {% if can_edit_document_metadata(user, doc) %}data-action-edit="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}"{% endif %}
     {% if can_set_document_status(user) %}data-action-verify="{{ doc.id }}" data-action-correction="{{ doc.id }}"{% endif %}
     {% if can_request_minor_correction(user, doc) %}data-action-request-correction="{{ doc.id }}"{% endif %}
-    {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}>
+    {% if can_delete_document(user) %}data-action-delete="{{ doc.id }}"{% endif %}
+    data-action-applicability="{{ url_path('/documents/' ~ doc.id ~ '?modal=applicability') }}"
+    data-action-links="{{ url_path('/documents/' ~ doc.id ~ '?modal=links') }}">
     {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
     {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
     {% if 'project' in visible_columns %}<td>{{ doc.project.name if doc.project else '—' }}</td>{% endif %}

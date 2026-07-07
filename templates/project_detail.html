@@ -55,6 +55,11 @@
                 <div class="meta-item"><label>Дата создания</label><div>{{ format_date(project.created_at, app_timezone) }}</div></div>
                 <div class="meta-item"><label>Записей в архиве</label><div>{{ project.documents|length }}</div></div>
             </div>
+            {% if can_manage %}
+            <div class="actions">
+                <a class="btn btn-secondary" href="{{ url_path('/projects/' ~ project.id ~ '/download-archive') }}">Скачать архив проекта</a>
+            </div>
+            {% endif %}
             {% if project.description %}
             <p>{{ project.description }}</p>
             {% else %}
