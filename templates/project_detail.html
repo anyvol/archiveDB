@@ -55,7 +55,7 @@
             <h2>{{ project.name }}</h2>
             <div class="meta-grid">
                 <div class="meta-item"><label>Slug (папка на сервере)</label><div>{{ project.slug }}</div></div>
-                <div class="meta-item"><label>Дата создания</label><div>{{ project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else '—' }}</div></div>
+                <div class="meta-item"><label>Дата создания</label><div>{{ format_date(project.created_at, app_timezone) }}</div></div>
                 <div class="meta-item"><label>Записей в архиве</label><div>{{ project.documents|length }}</div></div>
             </div>
             {% if project.description %}
@@ -96,7 +96,7 @@
                     <tr>
                         <td>{{ pf.title }}</td>
                         <td>{{ pf.file_name }}</td>
-                        <td>{{ pf.created_at.strftime('%Y-%m-%d %H:%M') if pf.created_at else '—' }}</td>
+                        <td>{{ format_date(pf.created_at, app_timezone) }}</td>
                         <td><a class="btn btn-secondary" href="{{ url_path('/projects/' ~ project.id ~ '/files/' ~ pf.id ~ '/download') }}">Скачать</a></td>
                     </tr>
                     {% endfor %}

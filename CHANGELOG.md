@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.15.2
+
+- **Dates:** user-facing dates now render as `DD.MM.YYYY` and use the timezone selected in the admin panel.
+- **Document filters:** registration and update date filters use native calendar inputs and timezone-aware local day ranges.
+- **Document card:** redesigned the record card into readable sections with metadata, formal change rows, registration data, file information, and right-aligned approve/download actions.
+- **Preview:** doubled the vertical size of the document preview frame.
+
 ## 0.15.1
 
 - **Sliding session:** the `access_token` JWT cookie is refreshed on each authenticated request while the user remains active, using `ACCESS_TOKEN_EXPIRE_MINUTES` for both token lifetime and cookie `max_age`.

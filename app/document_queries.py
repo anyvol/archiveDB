@@ -1,6 +1,6 @@
 """Build filtered and sorted document queries."""
 
-from datetime import datetime
+from datetime import datetime, time, timezone
 from typing import Optional
 
 from sqlalchemy import asc, desc, or_
@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Organization, Project, TechDocument
+from app.timezone_utils import resolve_timezone
 
 SORTABLE_COLUMNS = {
     "designation": "designation",
@@ -37,6 +38,16 @@ def _parse_date(value: Optional[str]) -> Optional[datetime]:
     return None
 
 
+def _local_date_boundary(value: Optional[str], timezone_name: str, *, end_of_day: bool = False) -> Optional[datetime]:
+    parsed = _parse_date(value)
+    if parsed is None:
+        return None
+    local_tz = resolve_timezone(timezone_name)
+    boundary_time = time.max if end_of_day else time.min
+    local_dt = datetime.combine(parsed.date(), boundary_time, tzinfo=local_tz)
+    return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def build_documents_query(
     *,
     designation: Optional[str] = None,
@@ -55,6 +66,7 @@ def build_documents_query(
     updated_to: Optional[str] = None,
     sort: str = "created_at",
     order: str = "desc",
+    timezone_name: str = "UTC",
 ):
     query = select(BaseDocument).options(
         joinedload(BaseDocument.project),
@@ -122,15 +134,15 @@ def build_documents_query(
         except ValueError:
             pass
 
-    created_from_dt = _parse_date(created_from)
-    created_to_dt = _parse_date(created_to)
+    created_from_dt = _local_date_boundary(created_from, timezone_name)
+    created_to_dt = _local_date_boundary(created_to, timezone_name, end_of_day=True)
     if created_from_dt:
         query = query.where(BaseDocument.created_at >= created_from_dt)
     if created_to_dt:
         query = query.where(BaseDocument.created_at <= created_to_dt)
 
-    updated_from_dt = _parse_date(updated_from)
-    updated_to_dt = _parse_date(updated_to)
+    updated_from_dt = _local_date_boundary(updated_from, timezone_name)
+    updated_to_dt = _local_date_boundary(updated_to, timezone_name, end_of_day=True)
     if updated_from_dt:
         query = query.where(BaseDocument.last_update >= updated_from_dt)
     if updated_to_dt:

@@ -139,6 +139,8 @@ from app.email_verification import issue_verification_code, normalize_email, ver
 from app.admin_access import verify_admin_access_code
 from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
+from app.settings_store import get_app_timezone
+from app.timezone_utils import format_date
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -175,6 +177,7 @@ templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
+templates.env.globals["format_date"] = format_date
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -260,10 +263,29 @@ _GENERATED_CERT_SCRIPTS = {
 
 
 async def _page_context(session: AsyncSession, user: User) -> dict:
+    app_timezone = await get_app_timezone(session)
     return {
         "user": user,
         "unread_count": await count_unread(session, user.id),
+        "app_timezone": app_timezone,
+        "format_date": format_date,
     }
+
+
+def _format_file_size(path: str | None) -> str:
+    if not path or not os.path.exists(path):
+        return "—"
+    size = os.path.getsize(path)
+    units = ("Б", "КБ", "МБ", "ГБ")
+    value = float(size)
+    unit = units[0]
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            break
+        value /= 1024
+    if unit == units[0]:
+        return f"{int(value)} {unit}"
+    return f"{value:.1f} {unit}"
 
 
 async def _require_user(access_token: Optional[str], session: AsyncSession) -> User:
@@ -735,7 +757,10 @@ async def documents_page(
         return auth
     user = auth
     filters = _filter_params(request)
+    app_timezone = await get_app_timezone(session)
+    filters["timezone_name"] = app_timezone
     documents_from_db = await fetch_documents(session, **filters)
+    filters.pop("timezone_name", None)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     known_person_names = await fetch_known_person_names(session)
@@ -756,6 +781,7 @@ async def documents_page(
             "default_developed_by": user.full_name or "",
             "visible_columns": get_visible_columns(user),
             "service_version": SERVICE_VERSION,
+            "app_timezone": app_timezone,
             **ctx,
         },
     )
@@ -1187,6 +1213,11 @@ async def document_detail_page(
     for event in history:
         await session.refresh(event, ["actor", "change_notification"])
         event.summary = format_change_event_summary(event)
+    formal_changes = [
+        event
+        for event in history
+        if event.event_type == DocumentChangeEventType.file_replace_formal and event.change_notification
+    ]
 
     can_preview = bool(doc.file_path and preview_media_type(doc.file_path))
     preview_is_image = bool(
@@ -1201,9 +1232,11 @@ async def document_detail_page(
             "doc": doc,
             "designation": designation,
             "change_history": history,
+            "formal_changes": formal_changes,
             "is_governed": is_governed_document(doc),
             "can_preview": can_preview,
             "preview_is_image": preview_is_image,
+            "file_size_display": _format_file_size(doc.file_path),
             "error": request.query_params.get("error"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -2050,6 +2083,7 @@ async def list_notifications_api(
     access_token: Optional[str] = Cookie(None),
 ):
     user = await _require_user(access_token, session)
+    app_timezone = await get_app_timezone(session)
     notifications = await get_notifications_for_user(session, user, limit=limit, offset=offset)
     total_count = await count_notifications_for_user(session, user.id)
     return {
@@ -2057,7 +2091,7 @@ async def list_notifications_api(
             {
                 "id": n.id,
                 "message": n.message,
-                "created_at": n.created_at.strftime("%Y-%m-%d %H:%M") if n.created_at else "",
+                "created_at": format_date(n.created_at, app_timezone) if n.created_at else "",
             }
             for n in notifications
         ],
