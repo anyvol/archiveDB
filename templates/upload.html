@@ -104,7 +104,6 @@
     {% if can_upload %}
     <script>
         const DESIGNATION = {{ (designation or '')|tojson }};
-        const DOC_NAME = {{ (doc.doc_name or '')|tojson }};
         const IS_REPLACE = {{ is_replace|tojson }};
         const DETECT_FORMAT_URL = {{ url_path('/api/detect-document-format')|tojson }};
         const dropZone = document.getElementById('drop-zone');
@@ -126,20 +125,14 @@
             const base = fileBaseName(fileName).trim().toLowerCase();
             const des = designation.trim().toLowerCase();
             if (base === des) return true;
-            if (DOC_NAME) {
-                const expected = (des + ' - ' + DOC_NAME.trim()).toLowerCase();
-                if (base === expected) return true;
-            }
-            if (base.startsWith(des + ' (') && base.endsWith(')')) return true;
-            return base.startsWith(des + ' - ');
+            return base.startsWith(des + ' (') && base.endsWith(')');
         }
 
         function buildStoredFileName(designation, fileName) {
             const lastDot = fileName.lastIndexOf('.');
             const baseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
             const ext = lastDot > 0 ? fileName.slice(lastDot) : '';
-            const namePart = (DOC_NAME || '').trim() || baseName;
-            return designation + ' - ' + namePart + ext;
+            return designation + ' (' + baseName + ')' + ext;
         }
 
         async function detectFormatFromFile(file) {

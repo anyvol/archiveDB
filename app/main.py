@@ -55,7 +55,7 @@ from app.auth import (
     cookie_path,
 )
 from app.session_helpers import resolve_authenticated_user, session_expired_response
-from app.document_queries import fetch_documents
+from app.document_queries import DOCUMENTS_PAGE_SIZE, fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists
 from app.project_helpers import get_project_by_id, create_new_project
 from app.project_files import (
@@ -297,6 +297,15 @@ async def _require_user(access_token: Optional[str], session: AsyncSession) -> U
         return await get_current_user_from_token(access_token=access_token, db=session)
     except HTTPException:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESSION_EXPIRED_DETAIL)
+
+
+def _filters_query_string(filters: dict) -> str:
+    parts: list[str] = []
+    for key, value in filters.items():
+        if value is None or key in ("timezone_name",):
+            continue
+        parts.append(f"{key}={quote(str(value))}")
+    return "&".join(parts)
 
 
 def _filter_params(request: Request) -> dict:
@@ -761,8 +770,14 @@ async def documents_page(
     filters = _filter_params(request)
     app_timezone = await get_app_timezone(session)
     filters["timezone_name"] = app_timezone
-    documents_from_db = await fetch_documents(session, **filters)
+    documents_from_db, total_count = await fetch_documents(
+        session,
+        limit=DOCUMENTS_PAGE_SIZE,
+        offset=0,
+        **filters,
+    )
     filters.pop("timezone_name", None)
+    has_more = total_count > len(documents_from_db)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     known_person_names = await fetch_known_person_names(session)
@@ -784,9 +799,49 @@ async def documents_page(
             "visible_columns": get_visible_columns(user),
             "service_version": SERVICE_VERSION,
             "app_timezone": app_timezone,
+            "has_more": has_more,
+            "documents_page_size": DOCUMENTS_PAGE_SIZE,
+            "filters_query_string": _filters_query_string(filters),
             **ctx,
         },
     )
+
+
+@app.get("/api/documents")
+async def list_documents_api(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(DOCUMENTS_PAGE_SIZE, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    filters = _filter_params(request)
+    app_timezone = await get_app_timezone(session)
+    filters["timezone_name"] = app_timezone
+    documents, total_count = await fetch_documents(
+        session,
+        limit=limit,
+        offset=offset,
+        **filters,
+    )
+    filters.pop("timezone_name", None)
+    ctx = await _page_context(session, user)
+    rows_html = templates.get_template("_document_rows.html").render(
+        {
+            "request": request,
+            "documents": documents,
+            "visible_columns": get_visible_columns(user),
+            "app_timezone": app_timezone,
+            "filters": filters,
+            **ctx,
+        }
+    )
+    return {
+        "rows_html": rows_html,
+        "count": len(documents),
+        "has_more": offset + len(documents) < total_count,
+    }
 
 
 @app.post("/documents/create", response_class=RedirectResponse)
@@ -1113,7 +1168,6 @@ async def handle_upload(
             doc.file_path if not is_governed_document(doc) else None,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
-            doc_name=doc.doc_name,
         )
     except HTTPException:
         return RedirectResponse(url=url_path(f"/documents/{doc_id}/upload?error=invalid"), status_code=303)

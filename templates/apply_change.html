@@ -98,7 +98,6 @@
     <script>
         const CURRENT_FILE = {{ (doc.file_name or '')|tojson }};
         const DESIGNATION = {{ designation|tojson }};
-        const DOC_NAME = {{ (doc.doc_name or '')|tojson }};
         const newDocInput = document.getElementById('new_doc_file');
         const warning = document.getElementById('filename-warning');
 
@@ -107,15 +106,10 @@
             const lastDot = base.lastIndexOf('.');
             const filenameBase = lastDot > 0 ? base.slice(0, lastDot) : base;
             const ext = lastDot > 0 ? base.slice(lastDot) : '';
-            if (!DESIGNATION) return base;
-            const des = DESIGNATION.trim().toLowerCase();
-            const fileBase = filenameBase.trim().toLowerCase();
-            if (fileBase === des) return base;
-            if (DOC_NAME && fileBase === (des + ' - ' + DOC_NAME.trim()).toLowerCase()) return base;
-            if (fileBase.startsWith(des + ' (') && filenameBase.endsWith(')')) return base;
-            if (fileBase.startsWith(des + ' - ')) return base;
-            const namePart = (DOC_NAME || '').trim() || filenameBase;
-            return DESIGNATION + ' - ' + namePart + ext;
+            if (DESIGNATION && filenameBase.trim().toLowerCase() !== DESIGNATION.trim().toLowerCase()) {
+                return DESIGNATION + ' (' + filenameBase + ')' + ext;
+            }
+            return base;
         }
 
         newDocInput.addEventListener('change', () => {
