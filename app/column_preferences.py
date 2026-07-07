@@ -5,7 +5,7 @@ DOCUMENT_COLUMNS = [
     ("org_name", "Компания"),
     ("project", "Проект"),
     ("okpo", "ОКПО"),
-    ("developed_by", "Разработчик"),
+    ("developed_by", "Разработал"),
     ("doc_name", "Наименование"),
     ("file_name", "Файл"),
     ("type", "Тип"),
