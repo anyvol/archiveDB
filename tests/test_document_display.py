@@ -6,7 +6,7 @@ from app.document_display import (
     get_document_display_status,
     format_field_change,
 )
-from app.timezone_utils import format_date, format_datetime
+from app.timezone_utils import format_date, format_datetime, date_input_value
 
 
 def _doc(**kwargs) -> BaseDocument:
@@ -54,6 +54,13 @@ def test_format_date_uses_configured_timezone_and_day_month_year():
 def test_format_datetime_includes_time_with_timezone():
     assert format_datetime(datetime(2026, 1, 1, 21, 30), "Europe/Moscow") == "02.01.2026 00:30"
     assert format_datetime(datetime(2026, 7, 7, 12, 0), "UTC") == "07.07.2026 12:00"
+
+
+def test_date_input_value():
+    assert date_input_value("2026-07-07") == "2026-07-07"
+    assert date_input_value("07.07.2026") == "2026-07-07"
+    assert date_input_value(None) == ""
+    assert date_input_value("") == ""
 
 
 def test_format_document_products_cell_includes_own_and_applicability_products():

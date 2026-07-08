@@ -9,11 +9,22 @@
         .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 1.25rem; }
         .header nav a { color: white; text-decoration: none; margin-left: 1rem; }
-        .container { max-width: 600px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { max-width: 720px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         label { display: block; margin-bottom: 0.5rem; }
-        input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; }
+        input[type="text"] { width: 100%; padding: 0.5rem; margin-bottom: 1rem; box-sizing: border-box; }
         button { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; }
         .info-box { background: #fff3cd; color: #856404; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .metadata-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; display: block; }
+        .metadata-grid { display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.5rem; }
+        .metadata-person-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .metadata-person-row > label { flex: 0 0 130px; margin: 0; font-size: 0.9rem; }
+        .metadata-person-row .metadata-field { flex: 1 1 140px; min-width: 120px; max-width: 220px; }
+        .metadata-person-row .metadata-select-wrap { flex: 0 0 52px; min-width: 52px; max-width: 52px; }
+        .metadata-person-row .metadata-date-wrap { flex: 0 0 168px; min-width: 168px; max-width: 168px; }
+        .metadata-person-row input[type="date"].metadata-input { cursor: help; width: 100%; min-width: 0; color: #212529; padding: 0.5rem 0.35rem; }
+        .metadata-person-row select.known-name-select { cursor: help; padding-left: 0.35rem; padding-right: 0.35rem; text-align: center; color: #6c757d; }
+        .metadata-input { width: 100%; padding: 0.5rem; box-sizing: border-box; height: 2.5rem; font-size: 0.95rem; }
+        .metadata-person-row select.metadata-input { height: 2.5rem; }
     </style>
 </head>
 <body>
@@ -22,14 +33,84 @@
     <div class="container">
         <div class="info-box">
             После сохранения документ будет отправлен на проверку. Новое изменение можно сделать только после проверки или отправки на исправление.
+            {% if doc.file_name %}
+            При изменении наименования файл будет переименован в соответствии с правилами архива.
+            {% endif %}
         </div>
         <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post">
             <label for="doc_name">Наименование документа:</label>
             <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">
-            <label for="developed_by">ФИО разработчика:</label>
-            <input type="text" id="developed_by" name="developed_by" value="{{ doc.developed_by or '' }}" required>
+
+            <div class="metadata-section">
+                <label class="section-label">Метаданные документа (укажите ФИО и даты, допускается указывать только фамилии):</label>
+                <div class="metadata-grid">
+                    <div class="metadata-person-row">
+                        <label for="developed_by">Разработал *</label>
+                        <div class="metadata-field">
+                            <input type="text" id="developed_by" name="developed_by" class="metadata-input" required value="{{ doc.developed_by or '' }}" placeholder="Фамилия И.О.">
+                        </div>
+                        <div class="metadata-select-wrap">
+                            <select id="known_name_select_developed" class="metadata-input known-name-select" data-target="developed_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                <option value="">…</option>
+                                {% for name in known_person_names %}
+                                <option value="{{ name }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="metadata-date-wrap">
+                            <input type="date" id="developer_signed_date" name="developer_signed_date" class="metadata-input" value="{{ date_input_value(doc.developer_signed_date) }}" title="Дата подписи разработчика" aria-label="Дата подписи разработчика">
+                        </div>
+                    </div>
+                    <div class="metadata-person-row">
+                        <label for="reviewed_by">Проверил</label>
+                        <div class="metadata-field">
+                            <input type="text" id="reviewed_by" name="reviewed_by" class="metadata-input" value="{{ doc.reviewed_by or '' }}" placeholder="Фамилия И.О.">
+                        </div>
+                        <div class="metadata-select-wrap">
+                            <select id="known_name_select_reviewed" class="metadata-input known-name-select" data-target="reviewed_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                <option value="">…</option>
+                                {% for name in known_person_names %}
+                                <option value="{{ name }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="metadata-date-wrap">
+                            <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" class="metadata-input" value="{{ date_input_value(doc.reviewer_signed_date) }}" title="Дата подписи проверяющего" aria-label="Дата подписи проверяющего">
+                        </div>
+                    </div>
+                    <div class="metadata-person-row">
+                        <label for="approved_by">Утвердил</label>
+                        <div class="metadata-field">
+                            <input type="text" id="approved_by" name="approved_by" class="metadata-input" value="{{ doc.approved_by or '' }}" placeholder="Фамилия И.О.">
+                        </div>
+                        <div class="metadata-select-wrap">
+                            <select id="known_name_select_approved" class="metadata-input known-name-select" data-target="approved_by" title="Выбрать из существующих" aria-label="Выбрать из существующих">
+                                <option value="">…</option>
+                                {% for name in known_person_names %}
+                                <option value="{{ name }}">{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="metadata-date-wrap">
+                            <input type="date" id="approver_signed_date" name="approver_signed_date" class="metadata-input" value="{{ date_input_value(doc.approver_signed_date) }}" title="Дата подписи утвердившего" aria-label="Дата подписи утвердившего">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <button type="submit">Сохранить</button>
         </form>
     </div>
+    <script>
+        document.querySelectorAll('.known-name-select').forEach(select => {
+            select.addEventListener('change', function() {
+                if (!this.value) return;
+                const target = document.getElementById(this.dataset.target);
+                if (target) target.value = this.value;
+                this.value = '';
+                target && target.focus();
+            });
+        });
+    </script>
 </body>
 </html>

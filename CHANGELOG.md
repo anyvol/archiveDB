@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.18.2
+
+- **Metadata editing:** the edit form now allows changing all person names (developer, reviewer, approver), all signature dates, and the document title. Known names can be selected from a dropdown, matching the registration form.
+- **File rename on title change:** when the document title is changed and a file is attached, the stored file is renamed according to the archive naming rules (`{designation} - {title}` or `{designation} ({basename}) - {title}`).
+
 ## 0.18.1
 
 - **Project archive download:** fixed a 500 error when downloading archives for projects whose slug contains non-ASCII characters (Cyrillic in `Content-Disposition`).

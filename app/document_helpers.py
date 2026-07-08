@@ -166,6 +166,81 @@ async def save_upload_file(
     return file_path, stored_name
 
 
+def compute_renamed_file_name_for_doc_name_change(
+    designation: Optional[str],
+    current_file_name: str,
+    new_doc_name: Optional[str],
+) -> str:
+    """Compute a new stored file name when only doc_name changes."""
+    current_file_name = os.path.basename(current_file_name)
+    if not designation:
+        return current_file_name
+
+    new_title = (new_doc_name or "").strip()
+    if not new_title:
+        return current_file_name
+
+    filename_base, extension = os.path.splitext(current_file_name)
+    des = designation.strip()
+
+    simple_prefix = f"{des} - "
+    if filename_base.casefold().startswith(simple_prefix.casefold()):
+        stored = f"{des} - {new_title}{extension}"
+        if current_file_name.casefold() == stored.casefold():
+            return current_file_name
+        return stored
+
+    paren_prefix = f"{des} ("
+    paren_suffix = ") - "
+    base = filename_base.strip()
+    if base.casefold().startswith(paren_prefix.casefold()) and paren_suffix in base:
+        inner_end = base.rfind(paren_suffix)
+        inner_part = base[len(paren_prefix):inner_end]
+        stored = f"{des} ({inner_part}) - {new_title}{extension}"
+        if current_file_name.casefold() == stored.casefold():
+            return current_file_name
+        return stored
+
+    return compute_stored_file_name(designation, current_file_name, new_doc_name)
+
+
 def remove_file_if_exists(file_path: Optional[str]) -> None:
     if file_path and os.path.exists(file_path):
         os.remove(file_path)
+
+
+def rename_document_file_for_doc_name(
+    doc,
+    new_doc_name: Optional[str],
+    designation: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Rename the stored file when doc_name changes.
+
+    Returns (old_file_name, new_file_name) when a rename was performed,
+    otherwise (None, None). Raises HTTPException on disk conflicts.
+    """
+    if not doc.file_path or not doc.file_name or not os.path.exists(doc.file_path):
+        return None, None
+
+    new_file_name = compute_renamed_file_name_for_doc_name_change(
+        designation, doc.file_name, new_doc_name
+    )
+    if new_file_name.casefold() == doc.file_name.casefold():
+        return None, None
+
+    new_disk_name = _sanitize_storage_name(new_file_name)
+    new_path = os.path.join(os.path.dirname(doc.file_path), new_disk_name)
+    if (
+        os.path.exists(new_path)
+        and os.path.normcase(new_path) != os.path.normcase(doc.file_path)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Файл «{new_file_name}» уже существует на сервере.",
+        )
+
+    os.rename(doc.file_path, new_path)
+    old_file_name = doc.file_name
+    doc.file_path = new_path
+    doc.file_name = new_file_name
+    return old_file_name, new_file_name
