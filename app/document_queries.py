@@ -8,7 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from app.models import BaseDocument, DesignDocument, DocumentStatus, Organization, Project, TechDocument
+from app.models import (
+    BaseDocument,
+    DesignDocument,
+    DocumentApplicability,
+    DocumentStatus,
+    Organization,
+    Product,
+    Project,
+    TechDocument,
+)
+from app.document_display import get_document_primary_product_name
 from app.timezone_utils import resolve_timezone
 
 DOCUMENTS_PAGE_SIZE = 20
@@ -18,6 +28,7 @@ SORTABLE_COLUMNS = {
     "okpo": "okpo",
     "org_name": "org_name",
     "project": "project",
+    "product": "product",
     "developed_by": BaseDocument.developed_by,
     "doc_name": BaseDocument.doc_name,
     "file_name": BaseDocument.file_name,
@@ -56,6 +67,7 @@ def build_documents_query(
     okpo: Optional[str] = None,
     org_name: Optional[str] = None,
     project_id: Optional[int] = None,
+    product_id: Optional[int] = None,
     developed_by: Optional[str] = None,
     doc_name: Optional[str] = None,
     file_name: Optional[str] = None,
@@ -72,6 +84,10 @@ def build_documents_query(
 ):
     query = select(BaseDocument).options(
         joinedload(BaseDocument.project),
+        joinedload(BaseDocument.product).joinedload(Product.project),
+        joinedload(BaseDocument.applicability_entries)
+        .joinedload(DocumentApplicability.product)
+        .joinedload(Product.project),
         joinedload(BaseDocument.design_document).joinedload(DesignDocument.org),
         joinedload(BaseDocument.tech_document).joinedload(TechDocument.org),
     )
@@ -118,6 +134,20 @@ def build_documents_query(
         except (TypeError, ValueError):
             pass
 
+    if product_id is not None:
+        try:
+            prod_id = int(product_id)
+            query = query.where(
+                or_(
+                    BaseDocument.product_id == prod_id,
+                    BaseDocument.applicability_entries.any(
+                        DocumentApplicability.product_id == prod_id
+                    ),
+                )
+            )
+        except (TypeError, ValueError):
+            pass
+
     if developed_by:
         query = query.where(BaseDocument.developed_by.ilike(f"%{developed_by.strip()}%"))
     if doc_name:
@@ -151,7 +181,7 @@ def build_documents_query(
         query = query.where(BaseDocument.last_update <= updated_to_dt)
 
     sort_key = SORTABLE_COLUMNS.get(sort, BaseDocument.created_at)
-    if sort_key in ("designation", "okpo", "org_name", "project"):
+    if sort_key in ("designation", "okpo", "org_name", "project", "product"):
         sort_col = BaseDocument.created_at
     else:
         sort_col = sort_key
@@ -211,6 +241,12 @@ async def fetch_documents(
         documents = sorted(
             documents,
             key=lambda d: d.project.name if d.project else "",
+            reverse=reverse,
+        )
+    elif sort == "product":
+        documents = sorted(
+            documents,
+            key=get_document_primary_product_name,
             reverse=reverse,
         )
 

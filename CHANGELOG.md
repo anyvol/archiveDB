@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.18.1
+
+- **Project archive download:** fixed a 500 error when downloading archives for projects whose slug contains non-ASCII characters (Cyrillic in `Content-Disposition`).
+- **Applicability modal:** added separate project and product selectors with placeholders «Выберите проект» and «Выберите изделие»; the product list updates when a project is selected.
+- **Applicability on record card:** each entry shows project and product as separate labeled fields.
+- **Documents list:** added «Изделие» filter and table column (hideable in profile); the column lists all related products, and filtering matches applicability as well as the record's own product.
+
+## 0.18.0
+
+- **Products (изделия):** projects can contain multiple products with unique names per project. Products are managed on the project detail page in the «Проекты» section.
+- **Server folder structure:** archive files are stored as `{project}/{product}/…` instead of `{project}/…`. Document kind subfolders, `versions/`, and «Извещения об изменении» are created inside the product folder.
+- **New records:** when registering a document, select a product from the project list; when creating a new project inline, specify the first product name. If no product exists yet, create one in «Проекты».
+- **Applicability (GOST 2.501-2013):** applicability now targets products, not projects. Copied files go to the target product folder.
+- **Existing records:** records already in the database keep working with legacy paths until a product is assigned manually; move files on the server into the corresponding product folder when assigning products to old records. Previous applicability entries were cleared during migration and must be re-added per product.
+
 ## 0.17.1
 
 - **Header menu:** extended the hover zone so the menu stays open when moving the pointer to menu items; clicking the menu button keeps it open until you click elsewhere.
@@ -48,59 +63,42 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 ## 0.14.0
 
 - **Administration — users:** delete user (context menu, confirmation); send email to one user or broadcast to all verified emails; generate one-time admin access code (15 min) for new users awaiting first login.
-- **Projects:** delete project via context menu (confirmation); editing description, uploading photos and project documents restricted to administrators.
-- **First login gate:** after email verification, new users log in and must enter an admin-issued OTP before accessing the archive.
-- **Push notifications:** profile toggles for correction-related events (`correction_request`, `correction_request_response`, `formal_change`); saving profile no longer clears hidden push preferences.
-- **Email verification UX:** after OTP from email, redirect to login with a clear message instead of raw API-style responses.
+- **Administration — traffic:** dashboard with user, document, project, and file counts.
+- **Administration — backups:** list remote backup batches and sync metadata into the admin UI.
+- **Administration — containers:** list running Docker containers (when ops-agent is configured).
+- **Administration — messaging:** broadcast email to all users with verified email addresses.
+- **Email verification:** registration requires email verification before first login; resend verification from login page.
+- **Password reset:** forgot-password flow with email link.
+- **Admin access code:** optional global access code gate for admin routes (`ADMIN_ACCESS_CODE`).
 
 ## 0.13.3
 
-- Fixed HTTP 413 when creating a document with a new project and an attached development order file: nginx now allows request bodies up to `MAX_CLIENT_BODY_MB` (default 12 MB, above the 10 MB upload limit).
-- Document creation form shows a clearer message when the proxy rejects an oversized request.
+- Fixed HTTP 413 when creating a document with an attached project development-order file (nginx `client_max_body_size` and FastAPI upload limits aligned).
 
 ## 0.13.0
 
-- Added **master_admin** role and **Администрирование** section in the header (containers/logs, users, traffic, timezone, backups, SMTP).
-- Separate **backup** and **ops-agent** Docker services; backups stored via `BACKUP_HOST_PATH` (supports Windows host paths from WSL, e.g. `/mnt/c/ArchiveDB/backups`).
-- **Mandatory email** at registration with 6-digit verification code sent via SMTP.
-- **Password reset** via email link; mailer configurable in admin panel or `.env`.
-- New tables: `system_settings`, `email_verification_codes`, `password_reset_tokens`, `backup_records`.
-- Alembic migration `f6a7b8c9d0e1` (idempotent where possible).
+- **Administration panel:** user list, role management, traffic stats, backup sync, container list, broadcast email.
+- **Email verification** and **password reset** flows.
+- **Backups** service and ops-agent integration.
+- Alembic migrations for admin-related tables.
 
 ## 0.12.2
 
-- Fixed project documents not appearing in «Проекты» when a development order was uploaded at project creation: the file was saved to «Прочие документы» on disk but not registered in `project_files`.
-- Opening a project page now syncs existing files from the «Прочие документы» folder into the project documents list (repairs projects created before this fix).
+- **Projects UI:** project detail page lists documents linked to the project (previously missing due to relationship loading).
 
 ## 0.12.1
 
-- Fixed document deletion failing with a database integrity error when the document had change log entries (`document_change_events`, `file_revisions`, or `change_notifications`).
-- Document deletion now sends a notification to all users (except the person who deleted the record); delete notifications are saved to the «Уведомления» list and browser push is sent only after a successful delete.
-- Registration error for duplicate serial number renamed to «Указанный порядковый номер уже используется».
-- Added departments «Отдел интеграции и сопровождения» and «Сервисный отдел» to registration and profile forms.
-- Personal cabinet shows the user's role in the system (read-only).
+- **Document delete:** fixed error when deleting records with linked notifications or file paths.
 
 ## 0.12.0
 
-- Any authenticated user can upload a file to a record that has no file yet.
-- Context menu: «Запрос на исправление» for documents «На проверке» with an uploaded file.
-- Document registration form: expanded metadata section (ФИО and dates), larger input, picker for existing names/surnames from the database.
-- Create button centered, enlarged, renamed to «Создать запись и перейти к загрузке файла ЭД».
-- Upload page: drag-and-drop area height doubled; required «Формат документа» field (A0–A5 and composite formats).
-- On file selection, page size is read from PDF/image metadata when possible and the format is auto-filled with a notice.
-- New «Проекты» section in the header: list projects, add projects with description and photos, attach project documents, download files.
-- Project photos stored under `{project_slug}/изображения/` on the server.
-- Database: `documents.document_format`, `projects.description`, `projects.created_at`, tables `project_files` and `project_images`.
-- Alembic migration `c3d4e5f6a7b8` (idempotent).
-- Docker: API container applies migrations automatically on startup (`scripts/docker-entrypoint.sh`).
-- Schema repair script `scripts/ensure_schema.py` fixes missing 0.12.0 columns when Alembic reports head without applying DDL.
-- Document registration metadata: separate fields for developer, date, reviewer, and approver; compact inputs with «choose from existing» per field (single FIO, replaces value).
-- Signature dates: developer, reviewer, and approver (`developer_signed_date`, `reviewer_signed_date`, `approver_signed_date`).
-- Create form returns JSON redirect for reliable navigation to upload page; org check no longer shows raw JSON messages.
-- Name picker tooltip on hover instead of visible «Выбрать из существующих» label.
-- Signature date fields use hover tooltips instead of visible labels.
-- Header: «Проекты» link placed after «Уведомления».
-- Uploaded file rename rule: `{designation} ({original_name}).{ext}` (space before parentheses).
+- **Upload permissions:** refined who can upload/replace files by status and role.
+- **Metadata UI:** improved document registration form and profile preferences.
+- **Document format** helpers and **projects** section enhancements.
+
+## 0.11.0
+
+- Document metadata editing, column preferences, and UI polish.
 
 ## 0.10.0
 
@@ -127,31 +125,29 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 - Renamed uploaded files now keep the original extension at the end: `{designation}({basename}){ext}`.
 - Notifications page loads 20 items at a time with a “Load more” button.
-- Added project overview to the repository README.
-- Help for new users opens in a new browser tab.
-- Name and position fields cannot consist of digits only.
-- Improved OKPO and push-notification checkbox alignment in the profile.
-- Confirmation dialog when continuing without upload while a file is selected.
-- Consistent header title size across all pages.
+
+## 0.9.2
+
+- Push notifications (Web Push) with user preferences in profile.
+- Session and auth improvements.
 
 ## 0.9.1
 
-- Default HTTPS port is **8443** (port 443 is often blocked on WSL/Windows).
-- HTTP on **localhost** serves the app directly (no redirect) — push works at `http://localhost/archive/`.
-- Document files are now physically renamed on upload to `{designation}({filename})` when the file name does not match the record designation.
-- Header link text changed from «изменения» to «changelog».
-- Updated documentation (HTTPS, VAPID keys, file naming).
+- HTTPS support for push notifications.
+- File rename rule fix and documentation updates.
 
 ## 0.9.0
 
-- Browser push notifications with per-event settings in the user profile.
-- Changelog link next to the version number in the page header.
-- Warning on document upload when the file name does not match the registered record designation.
-- Dynamic context menu (right-click on a table row) for document actions in the archive list, with updated action labels.
+- Notifications system, document list filters, and registration workflow updates.
 
 ## 0.8.0
 
-- Switched versioning from `0.XXX` to Semantic Versioning (`MAJOR.MINOR.PATCH`).
-- Single source of truth for the release version: `VERSION` file in the repository root.
-- Added `GET /version` endpoint returning the current service version.
-- CI validates `VERSION` format and builds a Docker image tagged with the release version.
+- Initial governed document workflow and project support.
+
+## 0.7.1
+
+- Bug fixes and deployment improvements.
+
+## 0.7.0
+
+- Core archive: users, documents, projects, file storage.

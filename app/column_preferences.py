@@ -4,6 +4,7 @@ DOCUMENT_COLUMNS = [
     ("designation", "Обозначение"),
     ("org_name", "Компания"),
     ("project", "Проект"),
+    ("product", "Изделие"),
     ("okpo", "ОКПО"),
     ("developed_by", "Разработал"),
     ("doc_name", "Наименование"),

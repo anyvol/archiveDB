@@ -8,10 +8,11 @@ from app.document_queries import _local_date_boundary, build_documents_query, SO
 def test_sortable_columns_include_org_and_project():
     assert "org_name" in SORTABLE_COLUMNS
     assert "project" in SORTABLE_COLUMNS
+    assert "product" in SORTABLE_COLUMNS
 
 
-def test_build_query_accepts_org_name_and_project_id():
-    query = build_documents_query(org_name="Организация", project_id=1)
+def test_build_query_accepts_org_name_project_id_and_product_id():
+    query = build_documents_query(org_name="Организация", project_id=1, product_id=5)
     assert query is not None
 
 

@@ -1,7 +1,7 @@
 # app/models.py
 
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON, UniqueConstraint
 import enum
 from datetime import datetime
 
@@ -142,6 +142,12 @@ class Project(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     documents = relationship("BaseDocument", back_populates="project")
+    products = relationship(
+        "Product",
+        back_populates="project",
+        order_by="Product.name",
+        cascade="all, delete-orphan",
+    )
     project_files = relationship(
         "ProjectFile",
         back_populates="project",
@@ -152,9 +158,28 @@ class Project(Base):
         back_populates="project",
         order_by="ProjectImage.created_at.desc()",
     )
+
+
+class Product(Base):
+    """Изделие внутри проекта."""
+
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_products_project_name"),
+        UniqueConstraint("project_id", "slug", name="uq_products_project_slug"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="products")
+    documents = relationship("BaseDocument", back_populates="product")
     applicability_entries = relationship(
         "DocumentApplicability",
-        back_populates="project",
+        back_populates="product",
         cascade="all, delete-orphan",
     )
 
@@ -187,20 +212,23 @@ class ProjectImage(Base):
 
 
 class DocumentApplicability(Base):
-    """Учёт применяемости документа в других проектах (ГОСТ 2.501-2013)."""
+    """Учёт применяемости документа в других изделиях (ГОСТ 2.501-2013)."""
 
     __tablename__ = "document_applicability"
+    __table_args__ = (
+        UniqueConstraint("document_id", "product_id", name="uq_document_applicability_doc_product"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     file_path = Column(String, nullable=False)
     file_name = Column(String, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     document = relationship("BaseDocument", back_populates="applicability_entries", foreign_keys=[document_id])
-    project = relationship("Project", back_populates="applicability_entries")
+    product = relationship("Product", back_populates="applicability_entries")
     creator = relationship("User")
 
 
@@ -268,6 +296,7 @@ class BaseDocument(Base):
     doc_name = Column(String, nullable=True)
     document_format = Column(String(32), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     status = Column(
         SAEnum(DocumentStatus),
         default=DocumentStatus.pending_review,
@@ -278,6 +307,7 @@ class BaseDocument(Base):
     registration_notified_at = Column(DateTime, nullable=True)
 
     project = relationship("Project", back_populates="documents")
+    product = relationship("Product", back_populates="documents")
     change_events = relationship(
         "DocumentChangeEvent",
         back_populates="document",

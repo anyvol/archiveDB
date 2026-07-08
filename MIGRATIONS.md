@@ -17,7 +17,8 @@ docker compose exec api alembic upgrade head
 | — | `b1c2d3e4f5a6_add_user_org_and_projects.py` | User preferred org and projects |
 | 0.7.0 | `c2d3e4f5a6b7_v0700_notifications_and_columns.py` | Notifications and column preferences |
 | — | `d3e4f5a6b7c8_doc_review_comment_and_register_flag.py` | Review comment and registration notification flag on documents |
-| **0.13.0** | `f6a7b8c9d0e1_v1300_admin_platform.py` | master_admin, email verification, system settings, backups (current head) |
+| **0.17.0** | `j0k1l2m3n4o5_v1700_applicability_and_links.py` | Document applicability and links |
+| **0.18.0** | `k1l2m3n4o5p6_v1800_products_and_applicability.py` | Products and applicability by product (current head) |
 | **0.12.0** | `e5f6a7b8c9d0_v1210_signature_dates.py` | Signature dates for developer, reviewer, approver |
 | **0.12.0** | `d4e5f6a7b8c9_v1210_document_metadata_fields.py` | Document metadata: reviewer, approver |
 | **0.12.0** | `c3d4e5f6a7b8_v1200_projects_and_format.py` | Document format, project description, project files and images |

@@ -17,6 +17,7 @@
     {% if 'designation' in visible_columns %}<td>{% if doc.design_document %}{{ doc.design_document.designation }}{% elif doc.tech_document %}{{ doc.tech_document.designation }}{% else %}N/A{% endif %}</td>{% endif %}
     {% if 'org_name' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ doc.design_document.org.name }}{% elif doc.tech_document and doc.tech_document.org %}{{ doc.tech_document.org.name }}{% else %}—{% endif %}</td>{% endif %}
     {% if 'project' in visible_columns %}<td>{{ doc.project.name if doc.project else '—' }}</td>{% endif %}
+    {% if 'product' in visible_columns %}<td>{{ format_document_products_cell(doc) }}</td>{% endif %}
     {% if 'okpo' in visible_columns %}<td>{% if doc.design_document and doc.design_document.org %}{{ 'Да' if doc.design_document.org.code_okpo else 'Нет' }}{% elif doc.tech_document and doc.tech_document.org %}{{ 'Да' if doc.tech_document.org.code_okpo else 'Нет' }}{% else %}—{% endif %}</td>{% endif %}
     {% if 'developed_by' in visible_columns %}<td>{{ doc.developed_by or '—' }}</td>{% endif %}
     {% if 'doc_name' in visible_columns %}<td>{{ doc.doc_name or '—' }}</td>{% endif %}
