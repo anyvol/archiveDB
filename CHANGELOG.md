@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.17.1
+
+- **Header menu:** extended the hover zone so the menu stays open when moving the pointer to menu items; clicking the menu button keeps it open until you click elsewhere.
+- **Notifications:** moved the bell icon further left so it is not covered by the menu hover area.
+
 ## 0.17.0
 
 - **Header menu:** navigation links moved into a hover menu on the right; the signed-in user is shown as «Вы вошли как {ФИО}», logout is labeled «Выйти».

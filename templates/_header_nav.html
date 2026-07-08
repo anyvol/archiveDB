@@ -2,7 +2,7 @@
     .header-nav {
         display: flex;
         align-items: center;
-        gap: 0.85rem;
+        gap: 1.5rem;
         position: relative;
     }
     .notifications-bell {
@@ -14,6 +14,7 @@
         opacity: 0.92;
         padding: 0.25rem 0.35rem;
         border-radius: 4px;
+        margin-right: 0.5rem;
     }
     .notifications-bell:hover { opacity: 1; background: rgba(255,255,255,0.12); }
     .notifications-bell-count { font-size: 0.9rem; }
@@ -32,23 +33,34 @@
         font-size: 0.9rem;
     }
     .header-menu-trigger:hover,
-    .header-menu:hover .header-menu-trigger {
+    .header-menu:hover .header-menu-trigger,
+    .header-menu.open .header-menu-trigger {
         background: rgba(255,255,255,0.2);
     }
     .header-menu-dropdown {
         display: none;
         position: absolute;
         right: 0;
-        top: calc(100% + 0.35rem);
+        top: 100%;
         min-width: 220px;
         background: white;
         color: #212529;
         border-radius: 6px;
         box-shadow: 0 8px 24px rgba(0,0,0,0.18);
         padding: 0.35rem 0;
+        margin-top: 0.35rem;
         z-index: 2500;
     }
-    .header-menu:hover .header-menu-dropdown { display: block; }
+    .header-menu-dropdown::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -0.35rem;
+        height: 0.35rem;
+    }
+    .header-menu:hover .header-menu-dropdown,
+    .header-menu.open .header-menu-dropdown { display: block; }
     .header-menu-user {
         padding: 0.65rem 1rem 0.55rem;
         font-size: 0.82rem;
@@ -79,8 +91,8 @@
         </svg>
         {% if unread_count %}<span class="notifications-bell-count" id="notifications-count">({{ unread_count }})</span>{% else %}<span class="notifications-bell-count" id="notifications-count"></span>{% endif %}
     </a>
-    <div class="header-menu">
-        <button type="button" class="header-menu-trigger" aria-haspopup="true" aria-expanded="false">
+    <div class="header-menu" id="header-menu">
+        <button type="button" class="header-menu-trigger" id="header-menu-trigger" aria-haspopup="true" aria-expanded="false">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
             </svg>
@@ -105,3 +117,32 @@
     </div>
     {% endif %}
 </div>
+<script>
+(function () {
+    var menu = document.getElementById('header-menu');
+    var trigger = document.getElementById('header-menu-trigger');
+    if (!menu || !trigger) return;
+
+    function setOpen(open) {
+        menu.classList.toggle('open', open);
+        trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        setOpen(!menu.classList.contains('open'));
+    });
+
+    menu.addEventListener('click', function (e) {
+        e.stopPropagation();
+    });
+
+    document.addEventListener('click', function () {
+        setOpen(false);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setOpen(false);
+    });
+})();
+</script>
