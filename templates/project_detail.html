@@ -43,6 +43,8 @@
 
         {% if success %}
         <div class="success">Изменения сохранены.</div>
+        {% elif request.query_params.get('success') == 'product' %}
+        <div class="success">Изделие добавлено.</div>
         {% endif %}
         {% if error %}
         <div class="error">Не удалось выполнить операцию. Проверьте данные и повторите попытку.</div>
@@ -54,6 +56,7 @@
                 <div class="meta-item"><label>Slug (папка на сервере)</label><div>{{ project.slug }}</div></div>
                 <div class="meta-item"><label>Дата создания</label><div>{{ format_date(project.created_at, app_timezone) }}</div></div>
                 <div class="meta-item"><label>Записей в архиве</label><div>{{ project.documents|length }}</div></div>
+                <div class="meta-item"><label>Изделий</label><div>{{ project.products|length }}</div></div>
             </div>
             {% if can_manage %}
             <div class="actions">
@@ -64,6 +67,44 @@
             <p>{{ project.description }}</p>
             {% else %}
             <p class="hint">Описание проекта не указано.</p>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>Изделия проекта</h2>
+            <p class="hint">Изделия определяют подпапки на сервере: {проект}/{изделие}/… Файлы записей архива и применяемости хранятся в папке изделия.</p>
+            {% if project.products %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Наименование</th>
+                        <th>Slug (папка)</th>
+                        <th>Дата создания</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in project.products %}
+                    <tr>
+                        <td>{{ product.name }}</td>
+                        <td>{{ product.slug }}</td>
+                        <td>{{ format_date(product.created_at, app_timezone) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="hint">Изделия пока не добавлены. Создайте изделие перед регистрацией записей в архиве.</p>
+            {% endif %}
+
+            {% if can_manage %}
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/products/create') }}" style="margin-top: 1.5rem;">
+                <div class="form-group">
+                    <label for="product_name">Добавить изделие</label>
+                    <input type="text" id="product_name" name="product_name" required placeholder="Наименование изделия">
+                    <small>Наименование должно быть уникальным в рамках проекта.</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Создать изделие</button>
+            </form>
             {% endif %}
         </div>
 

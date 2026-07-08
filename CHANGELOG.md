@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.18.0
+
+- **Products (изделия):** projects can contain multiple products with unique names per project. Products are managed on the project detail page in the «Проекты» section.
+- **Server folder structure:** archive files are stored as `{project}/{product}/…` instead of `{project}/…`. Document kind subfolders, `versions/`, and «Извещения об изменении» are created inside the product folder.
+- **New records:** when registering a document, select a product from the project list; when creating a new project inline, specify the first product name. If no product exists yet, create one in «Проекты».
+- **Applicability (GOST 2.501-2013):** applicability now targets products, not projects. The applicability modal lists products as «{project} / {product}»; copied files go to the target product folder.
+- **Existing records:** records already in the database keep working with legacy paths until a product is assigned manually; move files on the server into the corresponding product folder when assigning products to old records. Previous applicability entries were cleared during migration and must be re-added per product.
+
 ## 0.17.1
 
 - **Header menu:** extended the hover zone so the menu stays open when moving the pointer to menu items; clicking the menu button keeps it open until you click elsewhere.

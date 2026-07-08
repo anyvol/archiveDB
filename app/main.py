@@ -38,6 +38,7 @@ from app.models import (
     DEPARTMENTS,
     USER_ROLE_LABELS,
     Project,
+    Product,
     ProjectFile,
     ProjectImage,
     DOC_KIND_CODES,
@@ -58,8 +59,9 @@ from app.auth import (
 )
 from app.session_helpers import resolve_authenticated_user, session_expired_response
 from app.document_queries import DOCUMENTS_PAGE_SIZE, fetch_documents
-from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.document_helpers import save_upload_file, remove_file_if_exists, resolve_document_storage_slugs
 from app.project_helpers import get_project_by_id, create_new_project
+from app.product_helpers import create_product, get_products_for_project, validate_product_belongs_to_project
 from app.project_files import (
     save_development_order_file,
     save_project_file,
@@ -146,7 +148,7 @@ from app.timezone_utils import format_date, format_datetime
 from app.document_applicability import (
     add_document_applicability,
     get_applicability_entries,
-    get_available_applicability_projects,
+    get_available_applicability_products,
     remove_document_applicability,
     cleanup_document_applicability_files,
 )
@@ -892,8 +894,10 @@ async def create_document_record(
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
     execution_raw = (form_data.get("execution") or "").strip()
     existing_project_id = (form_data.get("existing_project_id") or "").strip()
+    existing_product_id = (form_data.get("existing_product_id") or "").strip()
     new_project_name = (form_data.get("new_project_name") or "").strip()
     new_project_cipher = (form_data.get("new_project_cipher") or "").strip()
+    new_product_name = (form_data.get("new_product_name") or "").strip()
     project_dev_order = form_data.get("project_dev_order")
 
     if not developed_by:
@@ -912,10 +916,20 @@ async def create_document_record(
 
     if existing_project_id and new_project_name:
         raise HTTPException(status_code=400, detail="Выберите существующий проект или укажите новый, но не оба сразу.")
+    product = None
     if existing_project_id:
         project = await get_project_by_id(session, int(existing_project_id))
+        if not existing_product_id:
+            raise HTTPException(status_code=400, detail="Необходимо выбрать изделие.")
+        product = await validate_product_belongs_to_project(session, int(existing_product_id), project.id)
     elif new_project_name:
         project = await create_new_project(session, new_project_name, new_project_cipher)
+        if not new_product_name:
+            raise HTTPException(
+                status_code=400,
+                detail="При создании нового проекта укажите наименование первого изделия.",
+            )
+        product = await create_product(session, project, new_product_name)
         if project_dev_order and getattr(project_dev_order, "filename", None):
             await save_development_order_file(session, project, project_dev_order, user)
     else:
@@ -935,6 +949,7 @@ async def create_document_record(
         position=user.position,
         department=user.department,
         project_id=project.id,
+        product_id=product.id,
         status=DocumentStatus.pending_review,
     )
     session.add(base_doc)
@@ -1146,8 +1161,8 @@ async def handle_upload(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     require_upload_permission(user, doc)
-    await session.refresh(doc, ["project"])
-    project_slug = doc.project.slug if doc.project else "_legacy"
+    await session.refresh(doc, ["project", "product"])
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
     is_replace = had_file_before
@@ -1183,6 +1198,7 @@ async def handle_upload(
             file,
             project_slug,
             doc.file_path if not is_governed_document(doc) else None,
+            product_slug=product_slug,
             doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
             designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
             doc_name=doc.doc_name,
@@ -1296,7 +1312,7 @@ async def document_detail_page(
 
     applicability_entries = await get_applicability_entries(session, doc_id)
     outgoing_links = await get_outgoing_links(session, doc_id)
-    available_applicability_projects = await get_available_applicability_projects(session, doc)
+    available_applicability_products = await get_available_applicability_products(session, doc)
 
     can_preview = bool(doc.file_path and preview_media_type(doc.file_path))
     preview_is_image = bool(
@@ -1320,7 +1336,7 @@ async def document_detail_page(
             "success": request.query_params.get("success"),
             "applicability_entries": applicability_entries,
             "outgoing_links": outgoing_links,
-            "available_applicability_projects": available_applicability_projects,
+            "available_applicability_products": available_applicability_products,
             "open_modal": request.query_params.get("modal"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -1332,7 +1348,7 @@ async def document_detail_page(
 async def add_applicability_route(
     doc_id: int,
     request: Request,
-    project_id: int = Form(...),
+    product_id: int = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -1345,7 +1361,7 @@ async def add_applicability_route(
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     try:
-        await add_document_applicability(session, doc, project_id, user)
+        await add_document_applicability(session, doc, product_id, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
@@ -1938,6 +1954,7 @@ async def project_detail_page(
             joinedload(Project.project_files),
             joinedload(Project.project_images),
             joinedload(Project.documents),
+            joinedload(Project.products),
         )
         .where(Project.id == project_id)
     )
@@ -1947,7 +1964,7 @@ async def project_detail_page(
 
     await sync_project_misc_files(session, project, user)
     await session.commit()
-    await session.refresh(project, ["project_files", "project_images", "documents"])
+    await session.refresh(project, ["project_files", "project_images", "documents", "products"])
 
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
@@ -1962,6 +1979,50 @@ async def project_detail_page(
             **ctx,
         },
     )
+
+
+@app.post("/projects/{project_id}/products/create", response_class=RedirectResponse)
+async def create_project_product(
+    request: Request,
+    project_id: int,
+    product_name: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not can_manage_project(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+
+    project = await get_project_by_id(session, project_id)
+    try:
+        await create_product(session, project, product_name)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "product_error"
+        return RedirectResponse(url=url_path(f"/projects/{project_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    return RedirectResponse(
+        url=url_path(f"/projects/{project_id}?success=product"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.get("/api/projects/{project_id}/products")
+async def list_project_products_api(
+    project_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    project = await get_project_by_id(session, project_id)
+    products = await get_products_for_project(session, project.id)
+    return [
+        {"id": product.id, "name": product.name, "slug": product.slug}
+        for product in products
+    ]
 
 
 @app.post("/projects/{project_id}/update", response_class=RedirectResponse)

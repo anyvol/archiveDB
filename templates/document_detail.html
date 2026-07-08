@@ -131,6 +131,7 @@
             <div class="record-section record-split">
                 <div>
                     <div class="record-line"><span class="record-label">Проект</span><br>{{ doc.project.name if doc.project else '—' }}</div>
+                    <div class="record-line"><span class="record-label">Изделие</span><br>{{ doc.product.name if doc.product else '— (требуется назначение)' }}</div>
                     <div class="record-line"><span class="record-label">Тип документа</span><br>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div>
                     <div class="record-line"><span class="record-label">Формат</span><br>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) if doc.document_format else '—' }}</div>
                 </div>
@@ -193,9 +194,9 @@
                 <ul class="record-list">
                     {% for entry in applicability_entries %}
                     <li>
-                        <a href="{{ url_path('/projects/' ~ entry.project.id) }}">{{ entry.project.name }}</a>
+                        <a href="{{ url_path('/projects/' ~ entry.product.project.id) }}">{{ entry.product.project.name }} / {{ entry.product.name }}</a>
                         {% if is_admin(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в проекте «{{ entry.project.name|e }}»?');">
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в изделии «{{ entry.product.name|e }}»?');">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
                         {% endif %}
@@ -203,7 +204,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="hint">Запись не применена в других проектах.</p>
+                <p class="hint">Запись не применена в других изделиях.</p>
                 {% endif %}
             </div>
 
@@ -395,15 +396,15 @@
     <div class="modal-overlay" id="applicability-modal">
         <div class="modal">
             <h3>Применяемость</h3>
-            <p class="hint">Добавьте применение записи в другом зарегистрированном проекте. Файл будет скопирован в соответствующую папку проекта на сервере.</p>
-            {% if available_applicability_projects %}
+            <p class="hint">Добавьте применение записи в другом изделии. Файл будет скопирован в папку изделия на сервере ({проект}/{изделие}/…).</p>
+            {% if available_applicability_products %}
             <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability') }}">
                 <div class="form-group">
-                    <label for="applicability-project">Проект</label>
-                    <select id="applicability-project" name="project_id" required style="width:100%; padding:0.5rem; box-sizing:border-box;">
-                        <option value="">Выберите проект</option>
-                        {% for project in available_applicability_projects %}
-                        <option value="{{ project.id }}">{{ project.name }}</option>
+                    <label for="applicability-product">Изделие</label>
+                    <select id="applicability-product" name="product_id" required style="width:100%; padding:0.5rem; box-sizing:border-box;">
+                        <option value="">Выберите изделие</option>
+                        {% for product in available_applicability_products %}
+                        <option value="{{ product.id }}">{{ product.project.name }} / {{ product.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -413,7 +414,7 @@
                 </div>
             </form>
             {% else %}
-            <p class="hint">Нет доступных проектов для добавления применяемости.</p>
+            <p class="hint">Нет доступных изделий для добавления применяемости.</p>
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary modal-cancel">Закрыть</button>
             </div>

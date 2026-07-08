@@ -1,4 +1,4 @@
-"""Document applicability across projects (GOST 2.501-2013)."""
+"""Document applicability across products (GOST 2.501-2013)."""
 
 import os
 import shutil
@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.document_helpers import _resolve_upload_subdirectory, _sanitize_storage_name
-from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Project, User
+from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Product, User
 from app.notifications import get_document_designation, notify_document_edit
 from app.change_log import log_change_event
 
@@ -22,9 +22,10 @@ def _resolve_doc_kind_code(doc: BaseDocument) -> Optional[str]:
     return None
 
 
-def _resolve_applicability_directory(project_slug: str, doc: BaseDocument) -> str:
+def _resolve_applicability_directory(project_slug: str, product_slug: str, doc: BaseDocument) -> str:
     return _resolve_upload_subdirectory(
         project_slug,
+        product_slug=product_slug,
         doc_kind_code=_resolve_doc_kind_code(doc),
     )
 
@@ -35,35 +36,43 @@ async def get_applicability_entries(
 ) -> list[DocumentApplicability]:
     result = await session.execute(
         select(DocumentApplicability)
-        .options(joinedload(DocumentApplicability.project))
+        .options(joinedload(DocumentApplicability.product).joinedload(Product.project))
         .where(DocumentApplicability.document_id == document_id)
         .order_by(DocumentApplicability.created_at.asc())
     )
-    return list(result.scalars().all())
+    return list(result.scalars().unique().all())
 
 
-async def get_available_applicability_projects(
+async def get_available_applicability_products(
     session: AsyncSession,
     doc: BaseDocument,
-) -> list[Project]:
+) -> list[Product]:
     existing = await session.execute(
-        select(DocumentApplicability.project_id).where(DocumentApplicability.document_id == doc.id)
+        select(DocumentApplicability.product_id).where(DocumentApplicability.document_id == doc.id)
     )
     used_ids = {row[0] for row in existing.all()}
-    used_ids.add(doc.project_id)
+    if doc.product_id:
+        used_ids.add(doc.product_id)
 
-    result = await session.execute(select(Project).order_by(Project.name))
-    return [project for project in result.scalars().all() if project.id not in used_ids]
+    result = await session.execute(
+        select(Product)
+        .options(joinedload(Product.project))
+        .order_by(Product.name)
+    )
+    return [product for product in result.scalars().unique().all() if product.id not in used_ids]
 
 
-def copy_document_to_project(doc: BaseDocument, target_project: Project) -> tuple[str, str]:
+def copy_document_to_product(doc: BaseDocument, target_product: Product) -> tuple[str, str]:
     if not doc.file_path or not os.path.exists(doc.file_path):
         raise HTTPException(
             status_code=400,
             detail="Невозможно добавить применяемость: у записи нет загруженного файла.",
         )
 
-    target_dir = _resolve_applicability_directory(target_project.slug, doc)
+    if not target_product.project:
+        raise HTTPException(status_code=400, detail="Изделие не привязано к проекту.")
+
+    target_dir = _resolve_applicability_directory(target_product.project.slug, target_product.slug, doc)
     os.makedirs(target_dir, exist_ok=True)
 
     file_name = doc.file_name or os.path.basename(doc.file_path)
@@ -85,49 +94,50 @@ def copy_document_to_project(doc: BaseDocument, target_project: Project) -> tupl
 async def add_document_applicability(
     session: AsyncSession,
     doc: BaseDocument,
-    project_id: int,
+    product_id: int,
     user: User,
 ) -> DocumentApplicability:
-    if project_id == doc.project_id:
-        raise HTTPException(status_code=400, detail="Запись уже относится к этому проекту.")
+    if doc.product_id and product_id == doc.product_id:
+        raise HTTPException(status_code=400, detail="Запись уже относится к этому изделию.")
 
     existing = await session.execute(
         select(DocumentApplicability).where(
             DocumentApplicability.document_id == doc.id,
-            DocumentApplicability.project_id == project_id,
+            DocumentApplicability.product_id == product_id,
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Применяемость для этого проекта уже добавлена.")
+        raise HTTPException(status_code=400, detail="Применяемость для этого изделия уже добавлена.")
 
-    project = await session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Проект не найден.")
+    product = await session.get(Product, product_id, options=[joinedload(Product.project)])
+    if not product:
+        raise HTTPException(status_code=404, detail="Изделие не найдено.")
 
-    file_path, file_name = copy_document_to_project(doc, project)
+    file_path, file_name = copy_document_to_product(doc, product)
     entry = DocumentApplicability(
         document_id=doc.id,
-        project_id=project.id,
+        product_id=product.id,
         file_path=file_path,
         file_name=file_name,
         created_by=user.id,
     )
     session.add(entry)
     await session.flush()
-    await session.refresh(entry, ["project"])
+    await session.refresh(entry, ["product"])
 
+    label = format_applicability_label(doc, product)
     await log_change_event(
         session,
         doc,
         user,
         DocumentChangeEventType.metadata_edit,
-        comment=f"Добавлена применяемость: {project.name}",
+        comment=f"Добавлена применяемость: {label}",
     )
     await notify_document_edit(
         session,
         doc,
         user,
-        [f"добавлена применяемость: {project.name}"],
+        [f"добавлена применяемость: {label}"],
     )
 
     return entry
@@ -155,6 +165,7 @@ async def remove_document_applicability(
     await session.delete(entry)
 
 
-def format_applicability_label(doc: BaseDocument, project: Project) -> str:
+def format_applicability_label(doc: BaseDocument, product: Product) -> str:
     designation = get_document_designation(doc)
-    return f"{designation} → {project.name}"
+    project_name = product.project.name if product.project else "—"
+    return f"{designation} → {project_name} / {product.name}"

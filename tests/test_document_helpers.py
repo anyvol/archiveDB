@@ -16,10 +16,15 @@ def test_resolve_upload_subdirectory_project_root():
     assert path.endswith(os.path.join("uploaded_files", "my-project"))
 
 
+def test_resolve_upload_subdirectory_with_product():
+    path = _resolve_upload_subdirectory("my-project", product_slug="product-a")
+    assert path.endswith(os.path.join("uploaded_files", "my-project", "product-a"))
+
+
 def test_resolve_upload_subdirectory_doc_kind():
     for code in DOC_KIND_CODES:
-        path = _resolve_upload_subdirectory("my-project", doc_kind_code=code)
-        assert path.endswith(os.path.join("my-project", code))
+        path = _resolve_upload_subdirectory("my-project", product_slug="product-a", doc_kind_code=code)
+        assert path.endswith(os.path.join("my-project", "product-a", code))
 
 
 def test_resolve_upload_subdirectory_misc_documents():

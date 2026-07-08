@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import UPLOAD_DIR
+from app.document_helpers import resolve_document_storage_slugs
 from app.models import (
     BaseDocument,
     ChangeNotification,
@@ -28,17 +29,23 @@ def is_governed_document(doc: BaseDocument) -> bool:
     return doc.type in GOVERNED_DOCUMENT_TYPES
 
 
-def _versions_dir(project_slug: str, document_id: int) -> str:
-    return os.path.join(UPLOAD_DIR, project_slug, VERSIONS_FOLDER, str(document_id))
+def _storage_base(project_slug: str, product_slug: str | None = None) -> str:
+    base = os.path.join(UPLOAD_DIR, project_slug)
+    if product_slug:
+        base = os.path.join(base, product_slug)
+    return base
 
 
-def _ii_dir(project_slug: str) -> str:
-    return os.path.join(UPLOAD_DIR, project_slug, II_FOLDER)
+def _versions_dir(project_slug: str, document_id: int, product_slug: str | None = None) -> str:
+    return os.path.join(_storage_base(project_slug, product_slug), VERSIONS_FOLDER, str(document_id))
+
+
+def _ii_dir(project_slug: str, product_slug: str | None = None) -> str:
+    return os.path.join(_storage_base(project_slug, product_slug), II_FOLDER)
 
 
 def archive_current_file(
     doc: BaseDocument,
-    project_slug: str,
     *,
     revision_label: str | None = None,
 ) -> FileRevision | None:
@@ -46,7 +53,8 @@ def archive_current_file(
     if not doc.file_path or not os.path.exists(doc.file_path):
         return None
 
-    versions_path = _versions_dir(project_slug, doc.id)
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
+    versions_path = _versions_dir(project_slug, doc.id, product_slug)
     os.makedirs(versions_path, exist_ok=True)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     base_name = os.path.basename(doc.file_path)
@@ -173,7 +181,8 @@ def format_change_event_summary(event: DocumentChangeEvent) -> str:
     return " — ".join(parts)
 
 
-def resolve_ii_storage_path(project_slug: str, stored_name: str) -> str:
-    upload_dir = _ii_dir(project_slug)
+def resolve_ii_storage_path(doc: BaseDocument, stored_name: str) -> str:
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
+    upload_dir = _ii_dir(project_slug, product_slug)
     os.makedirs(upload_dir, exist_ok=True)
     return os.path.join(upload_dir, stored_name)

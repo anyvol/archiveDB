@@ -6,42 +6,52 @@ from fastapi import HTTPException
 
 from app.document_applicability import (
     add_document_applicability,
-    copy_document_to_project,
-    get_available_applicability_projects,
+    copy_document_to_product,
+    get_available_applicability_products,
 )
 from app.document_links import add_document_links, search_documents_by_designation
-from app.models import BaseDocument, DesignDocument, DocumentStatus, Project, User, UserRole
+from app.models import BaseDocument, DesignDocument, DocumentStatus, Product, Project, User, UserRole
 
 
-def _doc_with_file(project_id: int = 1) -> BaseDocument:
-    doc = BaseDocument(id=10, type="DD", project_id=project_id, file_name="A.pdf", file_path="/tmp/A.pdf")
+def _doc_with_file(project_id: int = 1, product_id: int = 10) -> BaseDocument:
+    doc = BaseDocument(
+        id=10,
+        type="DD",
+        project_id=project_id,
+        product_id=product_id,
+        file_name="A.pdf",
+        file_path="/tmp/A.pdf",
+    )
     doc.design_document = DesignDocument(designation="TEST.000001.001СБ", doc_kind_code="СБ")
     doc.project = Project(id=project_id, name="Source", slug="source")
+    doc.product = Product(id=product_id, project_id=project_id, name="Изделие A", slug="product-a")
     return doc
 
 
-def test_copy_document_to_project(tmp_path):
+def test_copy_document_to_product(tmp_path):
     source_file = tmp_path / "source.pdf"
     source_file.write_bytes(b"pdf-content")
     doc = _doc_with_file()
     doc.file_path = str(source_file)
-    target = Project(id=2, name="Target", slug="target-project")
+    target_project = Project(id=2, name="Target", slug="target-project")
+    target = Product(id=20, project_id=2, name="Изделие B", slug="product-b", project=target_project)
 
     with patch("app.document_applicability.UPLOAD_DIR", str(tmp_path)):
-        target_path, file_name = copy_document_to_project(doc, target)
+        target_path, file_name = copy_document_to_product(doc, target)
 
     assert os.path.exists(target_path)
     assert file_name == "A.pdf"
     assert "target-project" in target_path
+    assert "product-b" in target_path
     assert os.path.sep + "СБ" + os.path.sep in target_path
 
 
 @pytest.mark.asyncio
-async def test_add_document_applicability_rejects_same_project():
+async def test_add_document_applicability_rejects_same_product():
     session = AsyncMock()
     session.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
     session.get = AsyncMock()
-    doc = _doc_with_file(project_id=5)
+    doc = _doc_with_file(project_id=5, product_id=5)
     user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
 
     with pytest.raises(HTTPException) as exc:
@@ -98,16 +108,17 @@ async def test_add_document_applicability_logs_and_notifies_without_status_chang
     session = AsyncMock()
     source_file = tmp_path / "source.pdf"
     source_file.write_bytes(b"pdf-content")
-    doc = _doc_with_file(project_id=1)
+    doc = _doc_with_file(project_id=1, product_id=10)
     doc.file_path = str(source_file)
     doc.status = DocumentStatus.approved
     project = Project(id=2, name="Target", slug="target")
+    product = Product(id=20, project_id=2, name="Target product", slug="target-product", project=project)
     user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
 
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = None
     session.execute = AsyncMock(return_value=existing_result)
-    session.get = AsyncMock(return_value=project)
+    session.get = AsyncMock(return_value=product)
     session.add = MagicMock()
     session.flush = AsyncMock()
     session.refresh = AsyncMock()
@@ -115,7 +126,7 @@ async def test_add_document_applicability_logs_and_notifies_without_status_chang
     with patch("app.document_applicability.UPLOAD_DIR", str(tmp_path)), patch(
         "app.document_applicability.log_change_event", new_callable=AsyncMock
     ) as log_event, patch("app.document_applicability.notify_document_edit", new_callable=AsyncMock) as notify_edit:
-        await add_document_applicability(session, doc, 2, user)
+        await add_document_applicability(session, doc, 20, user)
 
     assert doc.status == DocumentStatus.approved
     log_event.assert_awaited_once()
@@ -123,26 +134,28 @@ async def test_add_document_applicability_logs_and_notifies_without_status_chang
 
 
 @pytest.mark.asyncio
-async def test_get_available_applicability_projects_excludes_current_and_used():
-    doc = _doc_with_file(project_id=1)
-    projects = [
-        Project(id=1, name="Current", slug="current"),
-        Project(id=2, name="Free", slug="free"),
-        Project(id=3, name="Used", slug="used"),
+async def test_get_available_applicability_products_excludes_current_and_used():
+    doc = _doc_with_file(project_id=1, product_id=10)
+    products = [
+        Product(id=10, project_id=1, name="Current", slug="current"),
+        Product(id=20, project_id=2, name="Free", slug="free"),
+        Product(id=30, project_id=3, name="Used", slug="used"),
     ]
     session = AsyncMock()
 
     async def execute_side_effect(stmt):
         result = MagicMock()
         stmt_str = str(stmt)
-        if "document_applicability.project_id" in stmt_str:
-            result.all.return_value = [(3,)]
+        if "document_applicability.product_id" in stmt_str:
+            result.all.return_value = [(30,)]
         else:
+            unique = MagicMock()
+            unique.all.return_value = products
             scalars = MagicMock()
-            scalars.all.return_value = projects
+            scalars.unique.return_value = unique
             result.scalars.return_value = scalars
         return result
 
     session.execute = AsyncMock(side_effect=execute_side_effect)
-    available = await get_available_applicability_projects(session, doc)
-    assert [p.id for p in available] == [2]
+    available = await get_available_applicability_products(session, doc)
+    assert [p.id for p in available] == [20]
