@@ -6,7 +6,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 ## 0.18.2
 
 - **Metadata editing:** the edit form now allows changing all person names (developer, reviewer, approver), all signature dates, and the document title. Known names can be selected from a dropdown, matching the registration form.
-- **File rename on title change:** when the document title is changed and a file is attached, the stored file is renamed according to the archive naming rules (`{designation} - {title}` or `{designation} ({basename}) - {title}`).
+- **File replace on metadata edit:** the metadata edit form includes an optional file upload — you can attach a new file or replace the existing one without leaving the edit page. For first-time upload, document format is required.
+- **File rename on title change:** when the document title is changed without uploading a new file, the stored file is renamed according to the archive naming rules (`{designation} - {title}` or `{designation} ({basename}) - {title}`).
 
 ## 0.18.1
 

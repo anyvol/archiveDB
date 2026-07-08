@@ -103,6 +103,7 @@ from app.change_log import (
     get_document_change_history,
     format_change_event_summary,
     is_governed_document,
+    archive_current_file,
     log_change_event,
     log_document_status_change,
     log_file_upload,
@@ -1501,7 +1502,7 @@ async def edit_document_page(
     if isinstance(auth, Response):
         return auth
     user = auth
-    doc = await session.get(BaseDocument, doc_id)
+    doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
     if not can_edit_document_metadata(user, doc):
@@ -1510,6 +1511,7 @@ async def edit_document_page(
             detail="Редактирование недоступно. Новое изменение можно сделать только после проверки или отправки на исправление.",
         )
 
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
     ctx = await _page_context(session, user)
     known_person_names = await fetch_known_person_names(session)
     return templates.TemplateResponse(
@@ -1517,7 +1519,10 @@ async def edit_document_page(
         {
             "request": request,
             "doc": doc,
+            "designation": designation,
             "known_person_names": known_person_names,
+            "document_formats": DOCUMENT_FORMATS,
+            "error": request.query_params.get("error"),
             "service_version": SERVICE_VERSION,
             **ctx,
         },
@@ -1535,6 +1540,8 @@ async def edit_document(
     developer_signed_date: str = Form(""),
     reviewer_signed_date: str = Form(""),
     approver_signed_date: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    document_format: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -1542,11 +1549,20 @@ async def edit_document(
     if isinstance(auth, Response):
         return auth
     user = auth
-    doc = await session.get(BaseDocument, doc_id)
+    doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     require_edit_metadata_permission(user, doc)
+
+    edit_url = url_path(f"/documents/{doc_id}/edit")
+    had_file_before = bool(doc.file_name)
+    file_uploaded = bool(file and file.filename)
+
+    if file_uploaded and not had_file_before and (
+        not document_format or not is_valid_document_format(document_format)
+    ):
+        return RedirectResponse(url=f"{edit_url}?error=format_required", status_code=303)
 
     new_doc_name = doc_name or None
     new_developed_by = normalize_person_name(developed_by)
@@ -1579,8 +1595,55 @@ async def edit_document(
     doc.reviewer_signed_date = new_reviewer_signed_date
     doc.approver_signed_date = new_approver_signed_date
 
-    if format_field_change("наименование", old_doc_name, new_doc_name):
-        designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
+
+    if file_uploaded:
+        try:
+            await session.refresh(doc, ["project", "product"])
+            project_slug, product_slug = resolve_document_storage_slugs(doc)
+
+            if is_governed_document(doc) and had_file_before and doc.file_path:
+                file_revision = archive_current_file(doc, revision_label="metadata")
+                if file_revision:
+                    session.add(file_revision)
+
+            old_path = doc.file_path if not (is_governed_document(doc) and had_file_before) else None
+            old_file_name = doc.file_name
+
+            file_path, unique_file_name = await save_upload_file(
+                file,
+                project_slug,
+                old_path,
+                product_slug=product_slug,
+                doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+                designation=designation,
+                doc_name=new_doc_name,
+            )
+
+            existing = await session.execute(
+                select(BaseDocument.id).where(
+                    BaseDocument.file_name == unique_file_name,
+                    BaseDocument.id != doc.id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail="Документ с таким именем файла уже существует в архиве.",
+                )
+
+            file_change = format_field_change("файл", old_file_name, unique_file_name)
+            if file_change:
+                changes.append(file_change)
+
+            doc.file_path = file_path
+            doc.file_name = unique_file_name
+            if document_format and is_valid_document_format(document_format):
+                doc.document_format = document_format
+            await log_file_upload(session, doc, user, unique_file_name, replacement=had_file_before)
+        except HTTPException:
+            return RedirectResponse(url=f"{edit_url}?error=invalid", status_code=303)
+    elif format_field_change("наименование", old_doc_name, new_doc_name):
         if doc.file_name:
             existing = await session.execute(
                 select(BaseDocument.id).where(

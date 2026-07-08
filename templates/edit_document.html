@@ -25,6 +25,14 @@
         .metadata-person-row select.known-name-select { cursor: help; padding-left: 0.35rem; padding-right: 0.35rem; text-align: center; color: #6c757d; }
         .metadata-input { width: 100%; padding: 0.5rem; box-sizing: border-box; height: 2.5rem; font-size: 0.95rem; }
         .metadata-person-row select.metadata-input { height: 2.5rem; }
+        .file-section { margin-bottom: 1.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
+        .file-section label.section-label { font-weight: 600; margin-bottom: 0.75rem; display: block; }
+        .current-file { font-size: 0.9rem; color: #555; margin-bottom: 0.75rem; word-break: break-all; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        input[type="file"] { width: 100%; margin-bottom: 0.5rem; }
+        .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.9rem; display: none; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
@@ -34,10 +42,17 @@
         <div class="info-box">
             После сохранения документ будет отправлен на проверку. Новое изменение можно сделать только после проверки или отправки на исправление.
             {% if doc.file_name %}
-            При изменении наименования файл будет переименован в соответствии с правилами архива.
+            При изменении наименования без загрузки нового файла текущий файл будет переименован в соответствии с правилами архива.
             {% endif %}
         </div>
-        <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post">
+
+        {% if error == 'invalid' %}
+        <div class="error">Не удалось загрузить файл. Проверьте формат и размер (макс. 10 МБ).</div>
+        {% elif error == 'format_required' %}
+        <div class="error">Укажите формат документа перед загрузкой файла.</div>
+        {% endif %}
+
+        <form action="{{ url_path('/documents/' ~ doc.id ~ '/edit') }}" method="post" enctype="multipart/form-data" id="edit-form">
             <label for="doc_name">Наименование документа:</label>
             <input type="text" id="doc_name" name="doc_name" value="{{ doc.doc_name or '' }}">
 
@@ -98,6 +113,29 @@
                 </div>
             </div>
 
+            <div class="file-section">
+                <label class="section-label">Файл документа</label>
+                {% if doc.file_name %}
+                <div class="current-file">Текущий файл: <strong>{{ doc.file_name }}</strong></div>
+                <label for="file">Заменить файл (необязательно):</label>
+                {% else %}
+                <label for="file">Загрузить файл (необязательно):</label>
+                {% endif %}
+                <input type="file" id="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff">
+                {% if not doc.file_name %}
+                <div class="form-group">
+                    <label for="document_format">Формат документа (обязателен при загрузке файла)</label>
+                    <select id="document_format" name="document_format">
+                        <option value="">— выберите формат —</option>
+                        {% for fmt in document_formats %}
+                        <option value="{{ fmt.code }}" {% if doc.document_format == fmt.code %}selected{% endif %}>{{ fmt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="warning" id="rename-warning"></div>
+            </div>
+
             <button type="submit">Сохранить</button>
         </form>
     </div>
@@ -111,6 +149,45 @@
                 target && target.focus();
             });
         });
+
+        const DESIGNATION = {{ (designation or '')|tojson }};
+        const fileInput = document.getElementById('file');
+        const docNameInput = document.getElementById('doc_name');
+        const renameWarning = document.getElementById('rename-warning');
+
+        function buildStoredFileName(designation, fileName, docName) {
+            if (!designation) return fileName;
+            const lastDot = fileName.lastIndexOf('.');
+            const baseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+            const ext = lastDot > 0 ? fileName.slice(lastDot) : '';
+            const title = (docName || '').trim() || baseName;
+            if (baseName.trim().toLowerCase() === designation.trim().toLowerCase()) {
+                return designation + ' - ' + title + ext;
+            }
+            return designation + ' (' + baseName + ') - ' + title + ext;
+        }
+
+        function updateRenameWarning() {
+            if (!fileInput || !renameWarning || !fileInput.files || !fileInput.files.length) {
+                if (renameWarning) {
+                    renameWarning.style.display = 'none';
+                    renameWarning.textContent = '';
+                }
+                return;
+            }
+            const fileName = fileInput.files[0].name;
+            const stored = buildStoredFileName(DESIGNATION, fileName, docNameInput ? docNameInput.value : '');
+            if (stored !== fileName) {
+                renameWarning.style.display = 'block';
+                renameWarning.textContent = 'Файл будет сохранён как «' + stored + '»';
+            } else {
+                renameWarning.style.display = 'none';
+                renameWarning.textContent = '';
+            }
+        }
+
+        if (fileInput) fileInput.addEventListener('change', updateRenameWarning);
+        if (docNameInput) docNameInput.addEventListener('input', updateRenameWarning);
     </script>
 </body>
 </html>
