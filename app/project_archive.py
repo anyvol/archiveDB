@@ -1,9 +1,11 @@
 """Create downloadable archives of project folders."""
 
 import os
+import re
 import tempfile
 import zipfile
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
@@ -15,6 +17,18 @@ from app.models import Project
 def build_project_archive_filename(project: Project) -> str:
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     return f"{project.slug}_{timestamp}_{project.id}.zip"
+
+
+def build_attachment_content_disposition(filename: str) -> str:
+    """HTTP headers must be latin-1; use RFC 5987 for non-ASCII filenames."""
+    try:
+        filename.encode("latin-1")
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        ascii_fallback = re.sub(r"[^\w.\- ]", "_", filename)
+        ascii_fallback = ascii_fallback.encode("ascii", "ignore").decode("ascii") or "project.zip"
+        encoded = quote(filename, safe="")
+        return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
 def _archive_entry_name(project_dir: str, full_path: str) -> str:
@@ -62,7 +76,6 @@ def stream_project_archive(project: Project, background_tasks: BackgroundTasks) 
     background_tasks.add_task(os.remove, temp_path)
     return FileResponse(
         path=temp_path,
-        filename=filename,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": build_attachment_content_disposition(filename)},
     )

@@ -13,7 +13,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Project archive download:** admins can download all files of a project as a ZIP archive preserving folder structure; the archive name includes formation date and project id.
 - **Document links:** document cards show linked records; any role can add links via search by designation with confirmation; admins can remove links. Adding links sets the source record status to «На проверке», writes to the change log, and sends a notification.
 - **Header menu:** added «Документы» link to the archive; home icon tooltip is «Перейти в документы».
-- **Project archive download:** fixed internal server error when downloading project ZIP (stream from a temp file via `FileResponse`; portable path separators inside the archive).
+- **Project archive download:** fixed internal server error when downloading project ZIP (stream from a temp file via `FileResponse`; portable path separators inside the archive; RFC 5987 filename encoding for Cyrillic project slugs).
 - **Help and documentation:** updated for 0.17.0 features (menu, applicability, links, project archive).
 
 ## 0.16.0

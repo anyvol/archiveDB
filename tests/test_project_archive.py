@@ -5,6 +5,7 @@ from unittest.mock import patch
 from app.models import Project
 from app.project_archive import (
     _archive_entry_name,
+    build_attachment_content_disposition,
     build_project_archive_file,
     build_project_archive_filename,
 )
@@ -24,6 +25,19 @@ def test_build_project_archive_filename_contains_slug_date_and_id():
 
 def test_archive_entry_name_uses_forward_slashes():
     assert _archive_entry_name("/data/project", "/data/project/СБ\\file.pdf") == "СБ/file.pdf"
+
+
+def test_attachment_content_disposition_supports_cyrillic():
+    header = build_attachment_content_disposition("Проект-А_20260708_120000_6.zip")
+    assert header.startswith('attachment; filename="')
+    assert "filename*=UTF-8''" in header
+    header.encode("latin-1")
+
+
+def test_attachment_content_disposition_ascii_only():
+    header = build_attachment_content_disposition("demo-project_20260708_120000_6.zip")
+    assert header == 'attachment; filename="demo-project_20260708_120000_6.zip"'
+    header.encode("latin-1")
 
 
 def test_build_project_archive_file_creates_zip(tmp_path):
