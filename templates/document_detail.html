@@ -131,6 +131,7 @@
             <div class="record-section record-split">
                 <div>
                     <div class="record-line"><span class="record-label">Проект</span><br>{{ doc.project.name if doc.project else '—' }}</div>
+                    <div class="record-line"><span class="record-label">Изделие</span><br>{{ doc.product.name if doc.product else '— (требуется назначение)' }}</div>
                     <div class="record-line"><span class="record-label">Тип документа</span><br>{{ DOCUMENT_TYPE_LABELS.get(doc.type, doc.type) }}</div>
                     <div class="record-line"><span class="record-label">Формат</span><br>{{ DOCUMENT_FORMAT_LABELS.get(doc.document_format, doc.document_format) if doc.document_format else '—' }}</div>
                 </div>
@@ -193,9 +194,9 @@
                 <ul class="record-list">
                     {% for entry in applicability_entries %}
                     <li>
-                        <a href="{{ url_path('/projects/' ~ entry.project.id) }}">{{ entry.project.name }}</a>
+                        <a href="{{ url_path('/projects/' ~ entry.product.project.id) }}">{{ entry.product.project.name }} / {{ entry.product.name }}</a>
                         {% if is_admin(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в проекте «{{ entry.project.name|e }}»?');">
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в изделии «{{ entry.product.name|e }}»?');">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
                         {% endif %}
@@ -203,7 +204,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="hint">Запись не применена в других проектах.</p>
+                <p class="hint">Запись не применена в других изделиях.</p>
                 {% endif %}
             </div>
 
@@ -395,16 +396,22 @@
     <div class="modal-overlay" id="applicability-modal">
         <div class="modal">
             <h3>Применяемость</h3>
-            <p class="hint">Добавьте применение записи в другом зарегистрированном проекте. Файл будет скопирован в соответствующую папку проекта на сервере.</p>
-            {% if available_applicability_projects %}
-            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability') }}">
+            <p class="hint">Добавьте применение записи в другом проекте и изделии. Файл будет скопирован в папку изделия на сервере ({проект}/{изделие}/…).</p>
+            {% if applicability_project_options %}
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability') }}" id="applicability-form">
                 <div class="form-group">
                     <label for="applicability-project">Проект</label>
-                    <select id="applicability-project" name="project_id" required style="width:100%; padding:0.5rem; box-sizing:border-box;">
+                    <select id="applicability-project" required style="width:100%; padding:0.5rem; box-sizing:border-box;">
                         <option value="">Выберите проект</option>
-                        {% for project in available_applicability_projects %}
+                        {% for project in applicability_project_options %}
                         <option value="{{ project.id }}">{{ project.name }}</option>
                         {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="applicability-product">Изделие</label>
+                    <select id="applicability-product" name="product_id" required disabled style="width:100%; padding:0.5rem; box-sizing:border-box;">
+                        <option value="">Выберите изделие</option>
                     </select>
                 </div>
                 <div class="form-actions">
@@ -413,7 +420,7 @@
                 </div>
             </form>
             {% else %}
-            <p class="hint">Нет доступных проектов для добавления применяемости.</p>
+            <p class="hint">Нет доступных проектов и изделий для добавления применяемости.</p>
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary modal-cancel">Закрыть</button>
             </div>
@@ -502,8 +509,41 @@
 
         const applicabilityModal = document.getElementById('applicability-modal');
         const openApplicabilityBtn = document.getElementById('open-applicability-modal');
+        const applicabilityProjectSelect = document.getElementById('applicability-project');
+        const applicabilityProductSelect = document.getElementById('applicability-product');
+        const applicabilityForm = document.getElementById('applicability-form');
+        const applicabilityProjectOptions = {{ applicability_project_options | tojson }};
         if (applicabilityModal && openApplicabilityBtn) {
             openApplicabilityBtn.addEventListener('click', () => applicabilityModal.classList.add('active'));
+        }
+        function resetApplicabilityProductSelect() {
+            if (!applicabilityProductSelect) return;
+            applicabilityProductSelect.innerHTML = '<option value="">Выберите изделие</option>';
+            applicabilityProductSelect.value = '';
+            applicabilityProductSelect.disabled = true;
+        }
+        function populateApplicabilityProducts(projectId) {
+            if (!applicabilityProductSelect) return;
+            resetApplicabilityProductSelect();
+            const project = applicabilityProjectOptions.find(item => String(item.id) === String(projectId));
+            if (!project || !project.products.length) return;
+            project.products.forEach(product => {
+                const option = document.createElement('option');
+                option.value = String(product.id);
+                option.textContent = product.name;
+                applicabilityProductSelect.appendChild(option);
+            });
+            applicabilityProductSelect.disabled = false;
+        }
+        if (applicabilityProjectSelect && applicabilityProductSelect) {
+            applicabilityProjectSelect.addEventListener('change', () => {
+                populateApplicabilityProducts(applicabilityProjectSelect.value);
+            });
+        }
+        if (applicabilityForm && applicabilityProductSelect) {
+            applicabilityForm.addEventListener('submit', () => {
+                applicabilityProductSelect.disabled = false;
+            });
         }
 
         const linksModal = document.getElementById('links-modal');

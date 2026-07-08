@@ -18,6 +18,7 @@ from app.change_log import (
 )
 from app.document_helpers import (
     compute_stored_file_name,
+    resolve_document_storage_slugs,
     save_upload_file,
     validate_upload_file,
     _read_upload_contents,
@@ -46,6 +47,7 @@ async def fetch_document(session: AsyncSession, doc_id: int) -> BaseDocument | N
             joinedload(BaseDocument.design_document),
             joinedload(BaseDocument.tech_document),
             joinedload(BaseDocument.project),
+            joinedload(BaseDocument.product),
         )
         .where(BaseDocument.id == doc_id)
     )
@@ -131,13 +133,13 @@ async def apply_cosmetic_file_replace(
     if doc.status != DocumentStatus.requires_correction:
         raise HTTPException(status_code=400, detail="Замена файла доступна только при статусе «Требуется исправление».")
 
-    await session.refresh(doc, ["project"])
-    project_slug = doc.project.slug if doc.project else "_legacy"
+    await session.refresh(doc, ["project", "product"])
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
     designation = get_document_designation(doc)
 
     file_revision = None
     if is_governed_document(doc) and doc.file_path:
-        file_revision = archive_current_file(doc, project_slug, revision_label="cosmetic")
+        file_revision = archive_current_file(doc, revision_label="cosmetic")
         if file_revision:
             session.add(file_revision)
 
@@ -145,6 +147,7 @@ async def apply_cosmetic_file_replace(
         file,
         project_slug,
         doc.file_path if not is_governed_document(doc) else None,
+        product_slug=product_slug,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation if (doc.design_document or doc.tech_document) else None,
         doc_name=doc.doc_name,
@@ -198,8 +201,8 @@ async def apply_formal_document_change(
     validate_upload_file(ii_file)
     validate_upload_file(new_doc_file)
 
-    await session.refresh(doc, ["project"])
-    project_slug = doc.project.slug if doc.project else "_legacy"
+    await session.refresh(doc, ["project", "product"])
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
     designation = get_document_designation(doc)
 
     expected_name = compute_stored_file_name(
@@ -215,12 +218,12 @@ async def apply_formal_document_change(
 
     ii_contents, ii_original = await _read_upload_contents(ii_file)
     ii_stored = compute_stored_file_name(None, ii_original)
-    ii_path = resolve_ii_storage_path(project_slug, _sanitize_storage_name(ii_stored))
+    ii_path = resolve_ii_storage_path(doc, _sanitize_storage_name(ii_stored))
     with open(ii_path, "wb") as f:
         f.write(ii_contents)
 
     file_revision = archive_current_file(
-        doc, project_slug, revision_label=f"change_{change_number.strip()}"
+        doc, revision_label=f"change_{change_number.strip()}"
     )
     if file_revision:
         session.add(file_revision)
@@ -229,6 +232,7 @@ async def apply_formal_document_change(
         new_doc_file,
         project_slug,
         None,
+        product_slug=product_slug,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=designation,
         doc_name=doc.doc_name,

@@ -42,14 +42,25 @@ async def _read_upload_contents(file: UploadFile) -> tuple[bytes, str]:
 def _resolve_upload_subdirectory(
     project_slug: str,
     *,
+    product_slug: Optional[str] = None,
     doc_kind_code: Optional[str] = None,
     misc_document: bool = False,
 ) -> str:
+    base = os.path.join(UPLOAD_DIR, project_slug)
+    if product_slug:
+        base = os.path.join(base, product_slug)
     if misc_document:
-        return os.path.join(UPLOAD_DIR, project_slug, MISC_DOCS_FOLDER)
+        return os.path.join(base, MISC_DOCS_FOLDER)
     if doc_kind_code and doc_kind_code in DOC_KIND_CODES:
-        return os.path.join(UPLOAD_DIR, project_slug, doc_kind_code)
-    return os.path.join(UPLOAD_DIR, project_slug)
+        return os.path.join(base, doc_kind_code)
+    return base
+
+
+def resolve_document_storage_slugs(doc) -> tuple[str, Optional[str]]:
+    """Return (project_slug, product_slug) for a document; product_slug may be None for legacy records."""
+    project_slug = doc.project.slug if doc.project else "_legacy"
+    product_slug = doc.product.slug if getattr(doc, "product", None) else None
+    return project_slug, product_slug
 
 
 def _sanitize_storage_name(name: str) -> str:
@@ -121,6 +132,7 @@ async def save_upload_file(
     project_slug: str,
     old_path: Optional[str] = None,
     *,
+    product_slug: Optional[str] = None,
     doc_kind_code: Optional[str] = None,
     designation: Optional[str] = None,
     doc_name: Optional[str] = None,
@@ -140,7 +152,11 @@ async def save_upload_file(
     stored_name = compute_stored_file_name(designation, safe_name, doc_name)
     disk_name = _sanitize_storage_name(stored_name)
 
-    upload_dir = _resolve_upload_subdirectory(project_slug, doc_kind_code=doc_kind_code)
+    upload_dir = _resolve_upload_subdirectory(
+        project_slug,
+        product_slug=product_slug,
+        doc_kind_code=doc_kind_code,
+    )
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, disk_name)
 

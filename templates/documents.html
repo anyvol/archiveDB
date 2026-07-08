@@ -177,13 +177,29 @@
                                 <input type="text" id="new_project_cipher" name="new_project_cipher" placeholder="Шифр проекта">
                             </div>
                             <div class="project-subgroup">
+                                <label for="new_product_name">Наименование первого изделия:</label>
+                                <input type="text" id="new_product_name" name="new_product_name" placeholder="Наименование изделия">
+                                <small>Обязательно при создании нового проекта.</small>
+                            </div>
+                            <div class="project-subgroup">
                                 <label for="project_dev_order">Документ (приказ на разработку):</label>
                                 <input type="file" id="project_dev_order" name="project_dev_order" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.tif,.tiff,.dwg,.dxf">
                                 <small>Необязательно. Файл будет сохранён в папку «Прочие документы» проекта. Максимальный размер — 10 МБ.</small>
                             </div>
                         </div>
                     </div>
-                    <small>Файлы документов сохраняются в папку проекта на сервере.</small>
+                    <small>Файлы документов сохраняются в папку изделия внутри проекта на сервере.</small>
+                </div>
+
+                <div class="form-group project-section" id="product-section">
+                    <label class="section-label">Изделие:</label>
+                    <div class="project-subgroup" id="existing-product-section">
+                        <label for="existing_product_id">Выбрать из существующих:</label>
+                        <select id="existing_product_id" name="existing_product_id">
+                            <option value="">— не выбран —</option>
+                        </select>
+                        <small id="product-empty-hint" style="display:none;">В проекте нет изделий. Добавьте изделие в разделе «Проекты».</small>
+                    </div>
                 </div>
 
                 <div class="designation-row">
@@ -446,6 +462,12 @@
         const orgNameInput = document.getElementById('org_name');
         const orgNameHint = document.getElementById('org-name-hint');
         const existingProjectSelect = document.getElementById('existing_project_id');
+        const existingProductSelect = document.getElementById('existing_product_id');
+        const productEmptyHint = document.getElementById('product-empty-hint');
+        const existingProductSection = document.getElementById('existing-product-section');
+        const productSection = document.getElementById('product-section');
+        const newProductNameInput = document.getElementById('new_product_name');
+        const productsApiBase = {{ url_path('/api/projects') | tojson }};
         const newProjectNameInput = document.getElementById('new_project_name');
         const newProjectCipherInput = document.getElementById('new_project_cipher');
         const newProjectFields = document.getElementById('new-project-fields');
@@ -600,6 +622,48 @@
             if (newProjectFields) {
                 newProjectFields.style.display = hasNewProject ? 'block' : 'none';
             }
+            if (productSection) {
+                productSection.style.display = hasNewProject ? 'none' : 'block';
+            }
+            if (hasExisting) {
+                loadProductsForProject(existingProjectSelect.value);
+            } else if (existingProductSelect) {
+                existingProductSelect.innerHTML = '<option value="">— не выбран —</option>';
+                if (productEmptyHint) productEmptyHint.style.display = 'none';
+            }
+        }
+
+        async function loadProductsForProject(projectId) {
+            if (!existingProductSelect || !projectId) return;
+            existingProductSelect.innerHTML = '<option value="">— загрузка —</option>';
+            if (productEmptyHint) productEmptyHint.style.display = 'none';
+            try {
+                const result = await SessionAuth.authFetch(productsApiBase + '/' + projectId + '/products', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (result.sessionExpired || !result.response.ok) {
+                    existingProductSelect.innerHTML = '<option value="">— ошибка загрузки —</option>';
+                    return;
+                }
+                const products = await result.response.json();
+                existingProductSelect.innerHTML = '<option value="">— не выбран —</option>';
+                products.forEach(product => {
+                    const option = document.createElement('option');
+                    option.value = product.id;
+                    option.textContent = product.name;
+                    existingProductSelect.appendChild(option);
+                });
+                const lastProductId = localStorage.getItem('last_product_id');
+                if (lastProductId) {
+                    const match = existingProductSelect.querySelector(`option[value="${lastProductId}"]`);
+                    if (match) existingProductSelect.value = lastProductId;
+                }
+                if (products.length === 0 && productEmptyHint) {
+                    productEmptyHint.style.display = 'block';
+                }
+            } catch (e) {
+                existingProductSelect.innerHTML = '<option value="">— ошибка загрузки —</option>';
+            }
         }
 
         function updateNewProjectFields() {
@@ -617,6 +681,7 @@
             if (existingProjectSelect && existingProjectSelect.value) {
                 if (newProjectNameInput) newProjectNameInput.value = '';
                 if (newProjectCipherInput) newProjectCipherInput.value = '';
+                if (newProductNameInput) newProductNameInput.value = '';
             }
             updateProjectSections();
         }
@@ -628,6 +693,9 @@
                 if (option) existingProjectSelect.value = lastProjectId;
             }
             updateProjectSections();
+            if (existingProjectSelect && existingProjectSelect.value) {
+                loadProductsForProject(existingProjectSelect.value);
+            }
             const type = docTypeSelect.value;
             if (type && classCodeInput) {
                 const savedClass = localStorage.getItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd');
@@ -776,10 +844,22 @@
                     showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
                     return;
                 }
+                if (hasNew && newProductNameInput && !newProductNameInput.value.trim()) {
+                    showFormMessage('Для нового проекта укажите наименование первого изделия.', 'error');
+                    return;
+                }
+                if (hasExisting && existingProductSelect && !existingProductSelect.value) {
+                    showFormMessage('Выберите изделие или добавьте его в разделе «Проекты».', 'error');
+                    return;
+                }
                 if (hasExisting) {
                     localStorage.setItem('last_project_id', existingProjectSelect.value);
+                    if (existingProductSelect && existingProductSelect.value) {
+                        localStorage.setItem('last_product_id', existingProductSelect.value);
+                    }
                 } else {
                     localStorage.removeItem('last_project_id');
+                    localStorage.removeItem('last_product_id');
                 }
                 const type = docTypeSelect.value;
                 if (classCodeInput && classCodeInput.value.trim()) {

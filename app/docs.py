@@ -21,7 +21,7 @@ from app.schemas import (
 )
 from app.auth import get_current_user
 from app.dependencies import get_current_admin_user, get_current_reviewer_or_admin
-from app.document_helpers import save_upload_file, remove_file_if_exists
+from app.document_helpers import save_upload_file, remove_file_if_exists, resolve_document_storage_slugs
 from app.document_applicability import cleanup_document_applicability_files
 from app.notifications import (
     notify_file_upload,
@@ -276,14 +276,15 @@ async def upload_file(
         raise HTTPException(status_code=404, detail="Document not found")
 
     require_upload_permission(current_user, doc)
-    await session.refresh(doc, ["project", "design_document", "tech_document"])
-    project_slug = doc.project.slug if doc.project else "_legacy"
+    await session.refresh(doc, ["project", "design_document", "tech_document", "product"])
+    project_slug, product_slug = resolve_document_storage_slugs(doc)
     had_file_before = bool(doc.file_name)
     registration_already_notified = bool(doc.registration_notified_at)
     file_path, file_name = await save_upload_file(
         file,
         project_slug,
         doc.file_path,
+        product_slug=product_slug,
         doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
         designation=get_document_designation(doc) if (doc.design_document or doc.tech_document) else None,
         doc_name=doc.doc_name,
