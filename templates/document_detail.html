@@ -71,6 +71,9 @@
         .success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
         .record-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
         .record-list li { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .applicability-item { align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #f1f3f5; }
+        .applicability-item:last-child { border-bottom: none; }
+        .applicability-target { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
         .record-list a { color: #0056b3; text-decoration: none; }
         .record-list a:hover { text-decoration: underline; }
         .search-results { max-height: 240px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem; }
@@ -96,7 +99,7 @@
         <div class="error">{{ error }}</div>
         {% endif %}
         {% if success == 'applicability_added' %}
-        <div class="success">Применяемость добавлена. Файл скопирован в папку проекта.</div>
+        <div class="success">Применяемость добавлена. Файл скопирован в папку изделия.</div>
         {% elif success == 'applicability_removed' %}
         <div class="success">Применяемость удалена.</div>
         {% elif success == 'links_added' %}
@@ -193,10 +196,19 @@
                 {% if applicability_entries %}
                 <ul class="record-list">
                     {% for entry in applicability_entries %}
-                    <li>
-                        <a href="{{ url_path('/projects/' ~ entry.product.project.id) }}">{{ entry.product.project.name }} / {{ entry.product.name }}</a>
+                    <li class="applicability-item">
+                        <div class="applicability-target">
+                            <div class="record-line">
+                                <span class="record-label">Проект</span><br>
+                                <a href="{{ url_path('/projects/' ~ entry.product.project.id) }}">{{ entry.product.project.name }}</a>
+                            </div>
+                            <div class="record-line">
+                                <span class="record-label">Изделие</span><br>
+                                {{ entry.product.name }}
+                            </div>
+                        </div>
                         {% if is_admin(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в изделии «{{ entry.product.name|e }}»?');">
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в проекте «{{ entry.product.project.name|e }}», изделие «{{ entry.product.name|e }}»?');">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
                         {% endif %}
@@ -204,7 +216,7 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p class="hint">Запись не применена в других изделиях.</p>
+                <p class="hint">Запись не применена в других проектах и изделиях.</p>
                 {% endif %}
             </div>
 

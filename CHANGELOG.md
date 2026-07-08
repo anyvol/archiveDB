@@ -7,6 +7,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 - **Project archive download:** fixed a 500 error when downloading archives for projects whose slug contains non-ASCII characters (Cyrillic in `Content-Disposition`).
 - **Applicability modal:** added separate project and product selectors with placeholders «Выберите проект» and «Выберите изделие»; the product list updates when a project is selected.
+- **Applicability on record card:** each entry shows project and product as separate labeled fields.
 
 ## 0.18.0
 
