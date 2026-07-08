@@ -320,6 +320,14 @@
                     {% endfor %}
                 </select>
             </div>
+            <div><label>Изделие</label>
+                <select name="product_id">
+                    <option value="">Все</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" {% if filters.product_id and filters.product_id|string == product.id|string %}selected{% endif %}>{{ product.project.name }} / {{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div><label>ОКПО</label>
                 <select name="okpo">
                     <option value="">Все</option>
@@ -369,6 +377,7 @@
                     {{ sort_link('designation', 'Обозначение') }}
                     {{ sort_link('org_name', 'Компания') }}
                     {{ sort_link('project', 'Проект') }}
+                    {{ sort_link('product', 'Изделие') }}
                     {{ sort_link('okpo', 'ОКПО') }}
                     {{ sort_link('developed_by', 'Разработал') }}
                     {{ sort_link('doc_name', 'Наименование') }}

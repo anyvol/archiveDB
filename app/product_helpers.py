@@ -8,6 +8,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.models import Product, Project
@@ -45,6 +46,18 @@ async def get_products_for_project(session: AsyncSession, project_id: int) -> li
         select(Product).where(Product.project_id == project_id).order_by(Product.name)
     )
     return list(result.scalars().all())
+
+
+async def get_all_products(session: AsyncSession) -> list[Product]:
+    result = await session.execute(select(Product).options(joinedload(Product.project)))
+    products = list(result.scalars().unique().all())
+    return sorted(
+        products,
+        key=lambda product: (
+            product.project.name.casefold() if product.project else "",
+            product.name.casefold(),
+        ),
+    )
 
 
 async def create_product(session: AsyncSession, project: Project, name: str) -> Product:

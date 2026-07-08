@@ -61,7 +61,7 @@ from app.session_helpers import resolve_authenticated_user, session_expired_resp
 from app.document_queries import DOCUMENTS_PAGE_SIZE, fetch_documents
 from app.document_helpers import save_upload_file, remove_file_if_exists, resolve_document_storage_slugs
 from app.project_helpers import get_project_by_id, create_new_project
-from app.product_helpers import create_product, get_products_for_project, validate_product_belongs_to_project
+from app.product_helpers import create_product, get_all_products, get_products_for_project, validate_product_belongs_to_project
 from app.project_files import (
     save_development_order_file,
     save_project_file,
@@ -128,7 +128,7 @@ from app.notifications import (
     send_document_delete_push,
     get_document_designation,
 )
-from app.document_display import get_document_display_status, format_field_change
+from app.document_display import get_document_display_status, format_document_products_cell, format_field_change
 from app.cert_scripts import (
     cert_download_url,
     trust_linux_script,
@@ -188,6 +188,7 @@ templates.env.globals["can_delete_document"] = can_delete_document
 templates.env.globals["can_edit_document_metadata"] = can_edit_document_metadata
 templates.env.globals["can_apply_formal_change"] = can_apply_formal_change
 templates.env.globals["get_document_display_status"] = get_document_display_status
+templates.env.globals["format_document_products_cell"] = format_document_products_cell
 templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
 templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
 templates.env.globals["is_governed_document"] = is_governed_document
@@ -335,6 +336,7 @@ def _filter_params(request: Request) -> dict:
         "okpo": qp.get("okpo") or None,
         "org_name": qp.get("org_name") or None,
         "project_id": qp.get("project_id") or None,
+        "product_id": qp.get("product_id") or None,
         "developed_by": qp.get("developed_by") or None,
         "doc_name": qp.get("doc_name") or None,
         "file_name": qp.get("file_name") or None,
@@ -800,6 +802,7 @@ async def documents_page(
     has_more = total_count > len(documents_from_db)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
+    products = await get_all_products(session)
     known_person_names = await fetch_known_person_names(session)
     ctx = await _page_context(session, user)
 
@@ -810,6 +813,7 @@ async def documents_page(
             "documents": documents_from_db,
             "filters": filters,
             "projects": projects,
+            "products": products,
             "known_person_names": known_person_names,
             "can_create": can_create_document(user),
             "can_delete_project": can_manage_project(user),
