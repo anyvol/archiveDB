@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.18.1
+
+- **Project archive download:** fixed a 500 error when downloading archives for projects whose slug contains non-ASCII characters (Cyrillic in `Content-Disposition`).
+
 ## 0.17.1
 
 - **Header menu:** extended the hover zone so the menu stays open when moving the pointer to menu items; clicking the menu button keeps it open until you click elsewhere.
