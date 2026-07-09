@@ -1,0 +1,35 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Права доступа{% endblock %}
+{% block content %}
+<h2>Права доступа по ролям</h2>
+<p>Настройте, какие функции доступны каждой роли. Роль <strong>master_admin</strong> всегда имеет полный доступ и не настраивается.</p>
+{% if success %}<div class="alert alert-success">Настройки прав сохранены.</div>{% endif %}
+{% if error %}<div class="alert alert-error">Не удалось сохранить настройки.</div>{% endif %}
+<div class="card">
+    <form method="post" action="{{ url_path('/admin/permissions') }}">
+        <table>
+            <tr>
+                <th>Функция</th>
+                {% for role in roles %}
+                <th>{{ USER_ROLE_LABELS.get(role, role.value) }}</th>
+                {% endfor %}
+            </tr>
+            {% for perm in permissions %}
+            <tr>
+                <td>{{ perm.label }}</td>
+                {% for role in roles %}
+                <td style="text-align:center;">
+                    <input type="checkbox"
+                           name="perm_{{ role.value }}_{{ perm.key }}"
+                           {% if matrix.get(role.value, {}).get(perm.key) %}checked{% endif %}>
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+        <p style="margin-top:1rem;">
+            <button type="submit" class="btn">Сохранить</button>
+        </p>
+    </form>
+</div>
+{% endblock %}

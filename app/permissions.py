@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 
 from app.models import BaseDocument, DocumentStatus, User, UserRole
 from app.change_log import is_governed_document
+from app.role_permissions import role_has_permission
 
 
 def is_master_admin(user: User) -> bool:
@@ -26,8 +27,12 @@ def is_owner(user: User, doc: BaseDocument) -> bool:
     return doc.uploaded_by == user.id
 
 
+def _has(user: User, permission_key: str) -> bool:
+    return role_has_permission(user.role, permission_key)
+
+
 def can_manage_project(user: User) -> bool:
-    return is_admin(user)
+    return _has(user, "manage_projects")
 
 
 def user_has_full_access(user: User) -> bool:
@@ -45,23 +50,39 @@ def require_full_access(user: User) -> None:
 
 
 def can_create_document(user: User) -> bool:
-    return user.role in (UserRole.admin, UserRole.master_admin, UserRole.user)
+    return _has(user, "create_document")
 
 
 def can_set_document_status(user: User) -> bool:
-    return is_reviewer_or_admin(user)
+    return _has(user, "set_document_status")
 
 
 def can_delete_document(user: User) -> bool:
-    return is_admin(user)
+    return _has(user, "delete_document")
+
+
+def can_add_document_links(user: User) -> bool:
+    return _has(user, "add_document_links")
+
+
+def can_remove_document_links(user: User) -> bool:
+    return _has(user, "remove_document_links")
+
+
+def can_add_applicability(user: User) -> bool:
+    return _has(user, "add_applicability")
+
+
+def can_remove_applicability(user: User) -> bool:
+    return _has(user, "remove_applicability")
 
 
 def can_edit_document_metadata(user: User, doc: BaseDocument) -> bool:
     if doc.status == DocumentStatus.pending_review:
         return False
-    if is_admin(user):
+    if _has(user, "edit_document_metadata"):
         return True
-    if is_owner(user, doc):
+    if is_owner(user, doc) and _has(user, "edit_own_document_metadata"):
         return doc.status in (DocumentStatus.approved, DocumentStatus.requires_correction)
     return False
 
@@ -74,8 +95,10 @@ def can_upload_file(user: User, doc: BaseDocument) -> bool:
     if is_governed_document(doc):
         return doc.status == DocumentStatus.requires_correction
 
-    if is_admin(user):
+    if _has(user, "upload_file") and is_admin(user):
         return True
+    if not _has(user, "upload_file"):
+        return False
     if not is_owner(user, doc):
         return False
     return doc.status == DocumentStatus.requires_correction
@@ -83,6 +106,8 @@ def can_upload_file(user: User, doc: BaseDocument) -> bool:
 
 def can_request_minor_correction(user: User, doc: BaseDocument) -> bool:
     """Any user may request minor correction while document is on review (КД/ТД only)."""
+    if not _has(user, "request_minor_correction"):
+        return False
     if not is_governed_document(doc):
         return False
     if not doc.file_name:
@@ -91,11 +116,13 @@ def can_request_minor_correction(user: User, doc: BaseDocument) -> bool:
 
 
 def can_respond_correction_request(user: User, doc: BaseDocument) -> bool:
-    return is_reviewer_or_admin(user) and doc.status == DocumentStatus.correction_requested
+    return _has(user, "respond_correction_request") and doc.status == DocumentStatus.correction_requested
 
 
 def can_apply_formal_change(user: User, doc: BaseDocument) -> bool:
     """Formal change with ИИ for approved КД/ТД documents."""
+    if not _has(user, "apply_formal_change"):
+        return False
     if not is_governed_document(doc):
         return False
     if not doc.file_name:
@@ -104,7 +131,7 @@ def can_apply_formal_change(user: User, doc: BaseDocument) -> bool:
 
 
 def can_open_document_card(user: User) -> bool:
-    return user.role in (UserRole.admin, UserRole.master_admin, UserRole.user, UserRole.reviewer)
+    return _has(user, "view_documents")
 
 
 def require_upload_permission(user: User, doc: BaseDocument) -> None:

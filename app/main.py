@@ -84,6 +84,10 @@ from app.permissions import (
     can_apply_formal_change,
     can_request_minor_correction,
     can_respond_correction_request,
+    can_add_document_links,
+    can_add_applicability,
+    can_remove_applicability,
+    can_remove_document_links,
     is_admin,
     is_master_admin,
     is_owner,
@@ -93,6 +97,9 @@ from app.permissions import (
     require_status_change_permission,
     require_upload_permission,
 )
+from app.role_permissions import load_role_permissions
+from app.backup_schedule import get_backup_schedule
+from app.admin.services.backups import apply_remote_backup_schedule
 from app.change_log import (
     get_document_change_history,
     format_change_event_summary,
@@ -156,6 +163,7 @@ from app.document_applicability import (
 from app.document_links import (
     add_document_links,
     get_outgoing_links,
+    get_incoming_links,
     remove_document_link,
     search_documents_by_designation,
 )
@@ -167,6 +175,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    async with async_session() as session:
+        await load_role_permissions(session)
+        schedule = await get_backup_schedule(session)
+        try:
+            await apply_remote_backup_schedule(schedule.model_dump())
+        except Exception:
+            logger.exception("Failed to sync backup schedule on startup")
     yield
     await engine.dispose()
 
@@ -192,6 +207,10 @@ templates.env.globals["format_document_products_cell"] = format_document_product
 templates.env.globals["can_request_minor_correction"] = can_request_minor_correction
 templates.env.globals["can_respond_correction_request"] = can_respond_correction_request
 templates.env.globals["is_governed_document"] = is_governed_document
+templates.env.globals["can_remove_document_links"] = can_remove_document_links
+templates.env.globals["can_add_document_links"] = can_add_document_links
+templates.env.globals["can_add_applicability"] = can_add_applicability
+templates.env.globals["can_remove_applicability"] = can_remove_applicability
 templates.env.globals["can_manage_project"] = can_manage_project
 templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["is_admin"] = is_admin
@@ -1317,6 +1336,7 @@ async def document_detail_page(
 
     applicability_entries = await get_applicability_entries(session, doc_id)
     outgoing_links = await get_outgoing_links(session, doc_id)
+    incoming_links = await get_incoming_links(session, doc_id)
     available_applicability_products = await get_available_applicability_products(session, doc)
     applicability_project_options = build_applicability_modal_options(available_applicability_products)
 
@@ -1342,6 +1362,7 @@ async def document_detail_page(
             "success": request.query_params.get("success"),
             "applicability_entries": applicability_entries,
             "outgoing_links": outgoing_links,
+            "incoming_links": incoming_links,
             "available_applicability_products": available_applicability_products,
             "applicability_project_options": applicability_project_options,
             "open_modal": request.query_params.get("modal"),
@@ -1363,6 +1384,8 @@ async def add_applicability_route(
     if isinstance(auth, Response):
         return auth
     user = auth
+    if not can_add_applicability(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для добавления применяемости.")
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1392,7 +1415,7 @@ async def delete_applicability_route(
     if isinstance(auth, Response):
         return auth
     user = auth
-    if not is_admin(user):
+    if not can_remove_applicability(user):
         raise HTTPException(status_code=403, detail="Удаление применяемости доступно только администратору.")
 
     try:
@@ -1419,6 +1442,8 @@ async def add_links_route(
     if isinstance(auth, Response):
         return auth
     user = auth
+    if not can_add_document_links(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для добавления ссылок.")
     doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
@@ -1451,7 +1476,7 @@ async def delete_link_route(
     if isinstance(auth, Response):
         return auth
     user = auth
-    if not is_admin(user):
+    if not can_remove_document_links(user):
         raise HTTPException(status_code=403, detail="Удаление ссылок доступно только администратору.")
 
     try:

@@ -70,6 +70,20 @@ async def get_outgoing_links(session: AsyncSession, document_id: int) -> list[Do
     return list(result.scalars().unique().all())
 
 
+async def get_incoming_links(session: AsyncSession, document_id: int) -> list[DocumentLink]:
+    """Backlinks: records that reference this document."""
+    result = await session.execute(
+        select(DocumentLink)
+        .options(
+            joinedload(DocumentLink.source_document).joinedload(BaseDocument.design_document),
+            joinedload(DocumentLink.source_document).joinedload(BaseDocument.tech_document),
+        )
+        .where(DocumentLink.target_document_id == document_id)
+        .order_by(DocumentLink.created_at.asc())
+    )
+    return list(result.scalars().unique().all())
+
+
 async def add_document_links(
     session: AsyncSession,
     source_doc: BaseDocument,
