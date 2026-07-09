@@ -1732,11 +1732,24 @@ async def add_links_route(
 
     try:
         await add_document_links(session, doc, target_ids, user)
+        from app.document_applicability import propagate_applicability_to_outgoing_links
+
+        propagated = await propagate_applicability_to_outgoing_links(session, doc, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "links_error"
+        if wants_json_response(request):
+            return JSONResponse(status_code=exc.status_code, content={"detail": detail})
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
 
     await session.commit()
+    if wants_json_response(request):
+        return JSONResponse(
+            {
+                "success": True,
+                "redirect_url": url_path(f"/documents/{doc_id}?success=links_added"),
+                "propagated": propagated,
+            }
+        )
     return RedirectResponse(
         url=url_path(f"/documents/{doc_id}?success=links_added"),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -1759,12 +1772,28 @@ async def delete_link_route(
         raise HTTPException(status_code=403, detail="Удаление ссылок доступно только администратору.")
 
     try:
-        await remove_document_link(session, link_id, doc_id)
+        target_id = await remove_document_link(session, link_id, doc_id)
+        from app.document_applicability import revert_parent_applicability_after_link_removed
+
+        doc = await fetch_document(session, doc_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Документ не найден.")
+        reverted = await revert_parent_applicability_after_link_removed(session, doc, target_id, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "links_error"
+        if wants_json_response(request):
+            return JSONResponse(status_code=exc.status_code, content={"detail": detail})
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
 
     await session.commit()
+    if wants_json_response(request):
+        return JSONResponse(
+            {
+                "success": True,
+                "redirect_url": url_path(f"/documents/{doc_id}?success=link_removed"),
+                "reverted": reverted,
+            }
+        )
     return RedirectResponse(
         url=url_path(f"/documents/{doc_id}?success=link_removed"),
         status_code=status.HTTP_303_SEE_OTHER,

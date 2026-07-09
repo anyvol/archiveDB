@@ -26,6 +26,14 @@ class ApplicabilityPropagationResult(TypedDict):
     error: NotRequired[str]
 
 
+class ApplicabilityRevertResult(TypedDict):
+    target_id: int
+    designation: str
+    product_id: int
+    success: bool
+    error: NotRequired[str]
+
+
 def _resolve_doc_kind_code(doc: BaseDocument) -> Optional[str]:
     if doc.design_document:
         return doc.design_document.doc_kind_code
@@ -254,6 +262,65 @@ async def verify_child_applicability(
             detail="У записи нет применяемости для проверки дочерних записей.",
         )
     return await propagate_applicability_to_outgoing_links(session, doc, user)
+
+
+async def revert_parent_applicability_after_link_removed(
+    session: AsyncSession,
+    parent_doc: BaseDocument,
+    target_id: int,
+    user: User,
+) -> list[ApplicabilityRevertResult]:
+    """Remove parent applicability entries from the unlinked target and its subtree."""
+    parent_product_ids = await get_applicability_product_ids(session, parent_doc.id)
+    if not parent_product_ids:
+        return []
+
+    subtree_ids = {target_id, *await get_transitive_outgoing_document_ids(session, target_id)}
+    still_reachable = set(await get_transitive_outgoing_document_ids(session, parent_doc.id))
+    to_clean = sorted(subtree_ids - still_reachable)
+    results: list[ApplicabilityRevertResult] = []
+
+    for doc_id in to_clean:
+        doc = await fetch_document(session, doc_id)
+        if not doc:
+            continue
+
+        designation = get_document_designation(doc)
+        entries = await get_applicability_entries(session, doc_id)
+        for entry in entries:
+            if entry.product_id not in parent_product_ids:
+                continue
+            try:
+                await remove_document_applicability(session, entry.id, doc_id)
+                label = format_applicability_label(doc, entry.product)
+                await log_change_event(
+                    session,
+                    doc,
+                    user,
+                    DocumentChangeEventType.metadata_edit,
+                    comment=f"Удалена применяемость (ссылка снята): {label}",
+                )
+                results.append(
+                    {
+                        "target_id": doc_id,
+                        "designation": designation,
+                        "product_id": entry.product_id,
+                        "success": True,
+                    }
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else "Не удалось удалить применяемость."
+                results.append(
+                    {
+                        "target_id": doc_id,
+                        "designation": designation,
+                        "product_id": entry.product_id,
+                        "success": False,
+                        "error": detail,
+                    }
+                )
+
+    return results
 
 
 async def add_document_applicability_many(

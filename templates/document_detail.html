@@ -264,7 +264,7 @@
                     <li>
                         <a href="{{ url_path('/documents/' ~ target.id) }}">{{ target_designation }}{% if target.doc_name %} — {{ target.doc_name }}{% endif %}</a>
                         {% if can_remove_document_links(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить ссылку?');">
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" class="link-delete-form" style="display:inline;" data-confirm="Удалить ссылку?">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
                         {% endif %}
@@ -500,12 +500,12 @@
     </div>
     {% endif %}
 
-    <div class="applicability-progress-overlay" id="applicability-progress-overlay" aria-hidden="true">
+    <div class="applicability-progress-overlay" id="sync-progress-overlay" aria-hidden="true">
         <div class="applicability-progress-card">
             <div class="applicability-progress-spinner" aria-hidden="true"></div>
-            <h3 style="margin:0 0 0.5rem; font-size:1.05rem;">Обновление применяемости в ссылках</h3>
-            <p class="hint" style="margin:0;">Проверка ссылок и копирование файлов…</p>
-            <ul class="applicability-progress-links" id="applicability-progress-links" hidden></ul>
+            <h3 id="sync-progress-title" style="margin:0 0 0.5rem; font-size:1.05rem;">Обновление данных</h3>
+            <p class="hint" id="sync-progress-hint" style="margin:0;">Пожалуйста, подождите…</p>
+            <ul class="applicability-progress-links" id="sync-progress-links" hidden></ul>
         </div>
     </div>
 
@@ -666,64 +666,47 @@
                 populateApplicabilityProducts(applicabilityProjectSelect.value);
             });
         }
-        const applicabilityProgressOverlay = document.getElementById('applicability-progress-overlay');
-        const applicabilityProgressLinks = document.getElementById('applicability-progress-links');
-        function showApplicabilityProgress() {
-            if (!applicabilityProgressOverlay) return;
-            if (applicabilityProgressLinks) {
-                applicabilityProgressLinks.innerHTML = '';
-                applicabilityProgressLinks.hidden = true;
+        const syncProgressOverlay = document.getElementById('sync-progress-overlay');
+        const syncProgressTitle = document.getElementById('sync-progress-title');
+        const syncProgressHint = document.getElementById('sync-progress-hint');
+        const syncProgressLinks = document.getElementById('sync-progress-links');
+        function showSyncProgress(title, hint) {
+            if (!syncProgressOverlay) return;
+            if (syncProgressTitle) syncProgressTitle.textContent = title || 'Обновление данных';
+            if (syncProgressHint) syncProgressHint.textContent = hint || 'Пожалуйста, подождите…';
+            if (syncProgressLinks) {
+                syncProgressLinks.innerHTML = '';
+                syncProgressLinks.hidden = true;
             }
-            applicabilityProgressOverlay.classList.add('active');
-            applicabilityProgressOverlay.setAttribute('aria-hidden', 'false');
+            syncProgressOverlay.classList.add('active');
+            syncProgressOverlay.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
         }
-        function hideApplicabilityProgress() {
-            if (!applicabilityProgressOverlay) return;
-            applicabilityProgressOverlay.classList.remove('active');
-            applicabilityProgressOverlay.setAttribute('aria-hidden', 'true');
+        function hideSyncProgress() {
+            if (!syncProgressOverlay) return;
+            syncProgressOverlay.classList.remove('active');
+            syncProgressOverlay.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
         }
-        function showPropagatedLinks(propagated) {
-            if (!applicabilityProgressLinks || !propagated || !propagated.length) return;
+        function showSyncProgressDesignations(items) {
+            if (!syncProgressLinks || !items || !items.length) return;
             const byDesignation = new Map();
-            propagated.forEach(item => {
+            items.forEach(item => {
                 if (!item.success) return;
                 const key = item.designation || ('#' + item.target_id);
                 byDesignation.set(key, (byDesignation.get(key) || 0) + 1);
             });
             if (!byDesignation.size) return;
-            applicabilityProgressLinks.innerHTML = '';
+            syncProgressLinks.innerHTML = '';
             byDesignation.forEach((count, designation) => {
                 const li = document.createElement('li');
                 li.textContent = designation + (count > 1 ? ' (' + count + ' изделий)' : '');
-                applicabilityProgressLinks.appendChild(li);
+                syncProgressLinks.appendChild(li);
             });
-            applicabilityProgressLinks.hidden = false;
+            syncProgressLinks.hidden = false;
         }
-        if (applicabilityForm) {
-            applicabilityForm.addEventListener('submit', async (e) => {
-                const checked = applicabilityForm.querySelectorAll('input[name="product_ids"]:checked');
-                if (!checked.length) {
-                    e.preventDefault();
-                    alert('Выберите хотя бы одно изделие.');
-                    return;
-                }
-                e.preventDefault();
-                await submitApplicabilityAction(applicabilityForm.action, new FormData(applicabilityForm));
-            });
-        }
-
-        const verifyChildApplicabilityBtn = document.getElementById('verify-child-applicability');
-        if (verifyChildApplicabilityBtn) {
-            verifyChildApplicabilityBtn.addEventListener('click', async () => {
-                if (verifyChildApplicabilityBtn.disabled) return;
-                await submitApplicabilityAction('{{ url_path('/documents/' ~ doc.id ~ '/applicability/verify-children') }}', new FormData());
-            });
-        }
-
-        async function submitApplicabilityAction(url, formData) {
-            showApplicabilityProgress();
+        async function submitSyncAction(url, formData, progressTitle, progressHint) {
+            showSyncProgress(progressTitle, progressHint);
             const authFetch = window.SessionAuth && window.SessionAuth.authFetch;
             try {
                 const result = authFetch
@@ -738,14 +721,15 @@
                 if (contentType.includes('application/json')) {
                     const data = await response.json();
                     if (!response.ok) {
-                        hideApplicabilityProgress();
-                        alert(data.detail || 'Не удалось выполнить операцию с применяемостью.');
+                        hideSyncProgress();
+                        alert(data.detail || 'Не удалось выполнить операцию.');
                         return;
                     }
-                    showPropagatedLinks(data.propagated);
-                    const delay = data.propagated && data.propagated.some(item => item.success) ? 900 : 300;
+                    const progressItems = data.propagated || data.reverted || [];
+                    showSyncProgressDesignations(progressItems);
+                    const delay = progressItems.some(item => item.success) ? 900 : 300;
                     window.setTimeout(() => {
-                        window.location.href = data.redirect_url || '{{ url_path('/documents/' ~ doc.id) }}';
+                        window.location.href = data.redirect_url || window.location.pathname;
                     }, delay);
                     return;
                 }
@@ -753,11 +737,41 @@
                     window.location.href = response.url;
                     return;
                 }
-                hideApplicabilityProgress();
+                hideSyncProgress();
             } catch (_err) {
-                hideApplicabilityProgress();
+                hideSyncProgress();
                 alert('Ошибка сети. Попробуйте снова.');
             }
+        }
+        if (applicabilityForm) {
+            applicabilityForm.addEventListener('submit', async (e) => {
+                const checked = applicabilityForm.querySelectorAll('input[name="product_ids"]:checked');
+                if (!checked.length) {
+                    e.preventDefault();
+                    alert('Выберите хотя бы одно изделие.');
+                    return;
+                }
+                e.preventDefault();
+                await submitSyncAction(
+                    applicabilityForm.action,
+                    new FormData(applicabilityForm),
+                    'Обновление применяемости в ссылках',
+                    'Проверка ссылок и копирование файлов…'
+                );
+            });
+        }
+
+        const verifyChildApplicabilityBtn = document.getElementById('verify-child-applicability');
+        if (verifyChildApplicabilityBtn) {
+            verifyChildApplicabilityBtn.addEventListener('click', async () => {
+                if (verifyChildApplicabilityBtn.disabled) return;
+                await submitSyncAction(
+                    '{{ url_path('/documents/' ~ doc.id ~ '/applicability/verify-children') }}',
+                    new FormData(),
+                    'Обновление применяемости в ссылках',
+                    'Проверка ссылок и копирование файлов…'
+                );
+            });
         }
 
         const linksModal = document.getElementById('links-modal');
@@ -844,7 +858,7 @@
         }
 
         if (linksForm) {
-            linksForm.addEventListener('submit', (e) => {
+            linksForm.addEventListener('submit', async (e) => {
                 if (!selectedLinks.size) {
                     e.preventDefault();
                     alert('Выберите хотя бы одну запись.');
@@ -853,9 +867,31 @@
                 const labels = Array.from(selectedLinks.values()).join('\n');
                 if (!confirm('Добавить ссылки на выбранные записи?\n\n' + labels)) {
                     e.preventDefault();
+                    return;
                 }
+                e.preventDefault();
+                await submitSyncAction(
+                    linksForm.action,
+                    new FormData(linksForm),
+                    'Обновление применяемости в ссылках',
+                    'Добавление ссылок и копирование файлов…'
+                );
             });
         }
+
+        document.querySelectorAll('.link-delete-form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const message = form.dataset.confirm || 'Удалить ссылку?';
+                if (!confirm(message)) return;
+                await submitSyncAction(
+                    form.action,
+                    new FormData(form),
+                    'Обновление применяемости в ссылках',
+                    'Удаление ссылки и сброс применяемости…'
+                );
+            });
+        });
 
         if (openModal === 'applicability' && applicabilityModal) applicabilityModal.classList.add('active');
         if (openModal === 'links' && linksModal && openLinksBtn) openLinksBtn.click();

@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.23.0
+
+- **Links — applicability sync:** when an outgoing link is added, the parent record's applicability is propagated to the linked record and its branches (BFS) with file copying. When a link is removed, parent applicability entries are cleared from the unlinked target and its subtree (records still reachable via other links are kept). A blocking progress overlay is shown during link add/remove operations.
+
 ## 0.22.0
 
 - **Applicability — verify children:** the document card applicability block has a «Проверить применяемость дочерних записей» button that runs a BFS pass over all outgoing link branches and adds any missing parent applicability entries to child records (children may have additional applicability beyond the parent's). Child traversal uses link target IDs directly; each child record is reloaded before updating. Clearer result messages when there are no links or updates fail (e.g. missing files).

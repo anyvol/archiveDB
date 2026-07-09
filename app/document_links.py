@@ -218,8 +218,10 @@ async def remove_document_link(
     session: AsyncSession,
     link_id: int,
     source_document_id: int,
-) -> None:
+) -> int:
     link = await session.get(DocumentLink, link_id)
     if not link or link.source_document_id != source_document_id:
         raise HTTPException(status_code=404, detail="Ссылка не найдена.")
+    target_id = link.target_document_id
     await session.delete(link)
+    return target_id
