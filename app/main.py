@@ -378,6 +378,14 @@ def _filters_query_string(filters: dict) -> str:
     return "&".join(parts)
 
 
+def _document_query_filters(filters: dict, *, timezone_name: str | None = None) -> dict:
+    """Strip UI-only keys before passing filters to document query builders."""
+    doc_filters = {k: v for k, v in filters.items() if k not in ("tab", "timezone_name")}
+    if timezone_name:
+        doc_filters["timezone_name"] = timezone_name
+    return doc_filters
+
+
 def _filter_params(request: Request, tab: str = "documents") -> dict:
     qp = request.query_params
     if tab == "notifications":
@@ -901,15 +909,13 @@ async def documents_page(
         has_more = total_count > len(orders_from_db)
         visible_columns = get_visible_columns(user, "orders")
     else:
-        doc_filters = dict(filters)
-        doc_filters["timezone_name"] = app_timezone
+        doc_filters = _document_query_filters(filters, timezone_name=app_timezone)
         documents_from_db, total_count = await fetch_documents(
             session,
             limit=DOCUMENTS_PAGE_SIZE,
             offset=0,
             **doc_filters,
         )
-        filters.pop("timezone_name", None)
         has_more = total_count > len(documents_from_db)
         visible_columns = get_visible_columns(user, "documents")
 
@@ -996,8 +1002,7 @@ async def list_documents_api(
             }
         )
     else:
-        doc_filters = dict(filters)
-        doc_filters["timezone_name"] = app_timezone
+        doc_filters = _document_query_filters(filters, timezone_name=app_timezone)
         items, total_count = await fetch_documents(
             session,
             limit=limit,
