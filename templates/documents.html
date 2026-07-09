@@ -1046,36 +1046,95 @@
                 e.preventDefault();
                 clearFormMessages();
 
-                const hasExisting = existingProjectSelect && existingProjectSelect.value;
-                const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
-                if (!hasExisting && !hasNew) {
-                    showFormMessage('Выберите существующий проект или укажите новый.', 'error');
+                const type = docTypeSelect ? docTypeSelect.value : '';
+                if (!type) {
+                    showFormMessage('Выберите тип записи.', 'error');
                     return;
                 }
-                if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
-                    showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
-                    return;
-                }
-                if (hasNew && newProductNameInput && !newProductNameInput.value.trim()) {
-                    showFormMessage('Для нового проекта укажите наименование первого изделия.', 'error');
-                    return;
-                }
-                if (hasExisting && existingProductSelect && !existingProductSelect.value) {
-                    showFormMessage('Выберите изделие или добавьте его в разделе «Проекты».', 'error');
-                    return;
-                }
-                if (hasExisting) {
-                    localStorage.setItem('last_project_id', existingProjectSelect.value);
-                    if (existingProductSelect && existingProductSelect.value) {
-                        localStorage.setItem('last_product_id', existingProductSelect.value);
+
+                if (type === 'ORDER') {
+                    const orderNumber = document.getElementById('order_number');
+                    const orderName = document.getElementById('order_name');
+                    const orderDate = document.getElementById('order_date');
+                    const orderFile = document.getElementById('order_file');
+                    if (!orderNumber || !orderNumber.value.trim()) {
+                        showFormMessage('Укажите номер приказа.', 'error');
+                        return;
+                    }
+                    if (!orderName || !orderName.value.trim()) {
+                        showFormMessage('Укажите название приказа.', 'error');
+                        return;
+                    }
+                    if (!orderDate || !orderDate.value) {
+                        showFormMessage('Укажите дату приказа.', 'error');
+                        return;
+                    }
+                    if (!orderFile || !orderFile.files.length) {
+                        showFormMessage('Приложите файл приказа.', 'error');
+                        return;
+                    }
+                } else if (type === 'II') {
+                    const iiNumber = document.getElementById('ii_number');
+                    const iiChangeNumber = document.getElementById('ii_change_number');
+                    const iiChangeDate = document.getElementById('ii_change_date');
+                    const iiProject = document.getElementById('ii_project_id');
+                    const iiProduct = document.getElementById('ii_product_id');
+                    const iiFile = document.getElementById('ii_file');
+                    if (!iiNumber || !iiNumber.value.trim()) {
+                        showFormMessage('Укажите номер извещения.', 'error');
+                        return;
+                    }
+                    if (!iiChangeNumber || !iiChangeNumber.value.trim()) {
+                        showFormMessage('Укажите номер изменения.', 'error');
+                        return;
+                    }
+                    if (!iiChangeDate || !iiChangeDate.value) {
+                        showFormMessage('Укажите дату изменения.', 'error');
+                        return;
+                    }
+                    if (!iiProject || !iiProject.value) {
+                        showFormMessage('Выберите проект.', 'error');
+                        return;
+                    }
+                    if (!iiProduct || !iiProduct.value) {
+                        showFormMessage('Выберите изделие.', 'error');
+                        return;
+                    }
+                    if (!iiFile || !iiFile.files.length) {
+                        showFormMessage('Приложите файл извещения (PDF).', 'error');
+                        return;
                     }
                 } else {
-                    localStorage.removeItem('last_project_id');
-                    localStorage.removeItem('last_product_id');
-                }
-                const type = docTypeSelect.value;
-                if (classCodeInput && classCodeInput.value.trim()) {
-                    localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
+                    const hasExisting = existingProjectSelect && existingProjectSelect.value;
+                    const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
+                    if (!hasExisting && !hasNew) {
+                        showFormMessage('Выберите существующий проект или укажите новый.', 'error');
+                        return;
+                    }
+                    if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
+                        showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
+                        return;
+                    }
+                    if (hasNew && newProductNameInput && !newProductNameInput.value.trim()) {
+                        showFormMessage('Для нового проекта укажите наименование первого изделия.', 'error');
+                        return;
+                    }
+                    if (hasExisting && existingProductSelect && !existingProductSelect.value) {
+                        showFormMessage('Выберите изделие или добавьте его в разделе «Проекты».', 'error');
+                        return;
+                    }
+                    if (hasExisting) {
+                        localStorage.setItem('last_project_id', existingProjectSelect.value);
+                        if (existingProductSelect && existingProductSelect.value) {
+                            localStorage.setItem('last_product_id', existingProductSelect.value);
+                        }
+                    } else {
+                        localStorage.removeItem('last_project_id');
+                        localStorage.removeItem('last_product_id');
+                    }
+                    if (classCodeInput && classCodeInput.value.trim()) {
+                        localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
+                    }
                 }
 
                 const submitBtn = document.getElementById('create-submit');
