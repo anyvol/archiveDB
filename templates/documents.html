@@ -109,7 +109,7 @@
         .tabs { display: flex; gap: 0.5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
         .tab-link { padding: 0.5rem 1rem; border-radius: 6px 6px 0 0; text-decoration: none; color: #495057; background: #e9ecef; font-size: 0.95rem; }
         .tab-link.active { background: white; color: #007bff; font-weight: 600; box-shadow: 0 -2px 0 #007bff inset; }
-        .filters-save { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin-left: 0.5rem; }
+        .filters-save { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin-left: 0.5rem; color: #6c757d; }
         .list-panel { background: white; padding: 0 0 1rem; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
         .list-panel h2 { margin: 0; padding: 1rem 1rem 0.5rem; font-size: 1.1rem; }
         tbody tr.doc-row { cursor: pointer; }
@@ -421,7 +421,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=documents') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session" data-tab="documents"> Сохранить в сессии</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session" data-tab="documents">Сохранить фильтры</label>
             </div>
         </form>
 
@@ -489,7 +489,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=notifications') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session-notifications" data-tab="notifications"> Сохранить в сессии</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-notifications" data-tab="notifications">Сохранить фильтры</label>
             </div>
         </form>
         <table>
@@ -523,7 +523,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=orders') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session-orders" data-tab="orders"> Сохранить в сессии</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-orders" data-tab="orders">Сохранить фильтры</label>
             </div>
         </form>
         <table>

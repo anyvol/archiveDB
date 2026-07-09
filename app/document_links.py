@@ -70,6 +70,29 @@ async def get_outgoing_links(session: AsyncSession, document_id: int) -> list[Do
     return list(result.scalars().unique().all())
 
 
+async def get_transitive_outgoing_documents(
+    session: AsyncSession,
+    document_id: int,
+) -> list[BaseDocument]:
+    """All documents reachable via outgoing links (BFS), excluding the source."""
+    visited: set[int] = {document_id}
+    queue: list[int] = [document_id]
+    collected: list[BaseDocument] = []
+
+    while queue:
+        current_id = queue.pop(0)
+        outgoing = await get_outgoing_links(session, current_id)
+        for link in outgoing:
+            target = link.target_document
+            if not target or target.id in visited:
+                continue
+            visited.add(target.id)
+            queue.append(target.id)
+            collected.append(target)
+
+    return collected
+
+
 async def get_incoming_links(session: AsyncSession, document_id: int) -> list[DocumentLink]:
     """Backlinks: records that reference this document."""
     result = await session.execute(

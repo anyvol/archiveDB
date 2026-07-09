@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Optional
+from typing import Optional, TypedDict
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +11,17 @@ from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.document_helpers import _resolve_upload_subdirectory, _sanitize_storage_name
+from app.document_links import get_transitive_outgoing_documents
 from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Product, User
 from app.notifications import get_document_designation, notify_document_edit
 from app.change_log import log_change_event
+
+
+class ApplicabilityPropagationResult(TypedDict):
+    target_id: int
+    designation: str
+    product_id: int
+    success: bool
 
 
 def _resolve_doc_kind_code(doc: BaseDocument) -> Optional[str]:
@@ -28,6 +36,18 @@ def _resolve_applicability_directory(project_slug: str, product_slug: str, doc: 
         product_slug=product_slug,
         doc_kind_code=_resolve_doc_kind_code(doc),
     )
+
+
+async def get_applicability_product_ids(
+    session: AsyncSession,
+    document_id: int,
+) -> set[int]:
+    result = await session.execute(
+        select(DocumentApplicability.product_id).where(
+            DocumentApplicability.document_id == document_id
+        )
+    )
+    return {row[0] for row in result.all()}
 
 
 async def get_applicability_entries(
@@ -158,18 +178,65 @@ async def add_document_applicability(
     return entry
 
 
+async def propagate_applicability_to_outgoing_links(
+    session: AsyncSession,
+    doc: BaseDocument,
+    user: User,
+) -> list[ApplicabilityPropagationResult]:
+    """Ensure all documents in outgoing link branches have the same applicability as the source."""
+    source_product_ids = await get_applicability_product_ids(session, doc.id)
+    if not source_product_ids:
+        return []
+
+    linked_documents = await get_transitive_outgoing_documents(session, doc.id)
+    results: list[ApplicabilityPropagationResult] = []
+
+    for target_doc in linked_documents:
+        existing = await get_applicability_product_ids(session, target_doc.id)
+        missing = source_product_ids - existing
+        if target_doc.product_id:
+            missing.discard(target_doc.product_id)
+        if not missing:
+            continue
+
+        designation = get_document_designation(target_doc)
+        for product_id in sorted(missing):
+            try:
+                await add_document_applicability(session, target_doc, product_id, user)
+                results.append(
+                    {
+                        "target_id": target_doc.id,
+                        "designation": designation,
+                        "product_id": product_id,
+                        "success": True,
+                    }
+                )
+            except HTTPException:
+                results.append(
+                    {
+                        "target_id": target_doc.id,
+                        "designation": designation,
+                        "product_id": product_id,
+                        "success": False,
+                    }
+                )
+
+    return results
+
+
 async def add_document_applicability_many(
     session: AsyncSession,
     doc: BaseDocument,
     product_ids: list[int],
     user: User,
-) -> list[DocumentApplicability]:
+) -> tuple[list[DocumentApplicability], list[ApplicabilityPropagationResult]]:
     if not product_ids:
         raise HTTPException(status_code=400, detail="Выберите хотя бы одно изделие.")
     created: list[DocumentApplicability] = []
     for product_id in product_ids:
         created.append(await add_document_applicability(session, doc, product_id, user))
-    return created
+    propagated = await propagate_applicability_to_outgoing_links(session, doc, user)
+    return created, propagated
 
 
 async def cleanup_document_applicability_files(session: AsyncSession, document_id: int) -> None:
