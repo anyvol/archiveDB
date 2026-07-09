@@ -40,3 +40,16 @@ def test_merge_profile_column_selection():
     merged = merge_visible_columns(_User(), Form())
     assert "number" in merged["notifications"]
     assert "name" in merged["orders"]
+
+
+def test_merge_visible_columns_returns_new_dict():
+    user = _User()
+    user.visible_columns = {"documents": ["designation"], "notifications": ["number"]}
+
+    class Form:
+        def get(self, key):
+            return "true" if key == "col_documents_project" else None
+
+    merged = merge_visible_columns(user, Form())
+    assert merged is not user.visible_columns
+    assert merged["documents"] == ["project"]

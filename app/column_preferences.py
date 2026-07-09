@@ -77,7 +77,8 @@ def parse_profile_column_selection(form_data, tab: str) -> list[str]:
 
 
 def merge_visible_columns(user, form_data) -> dict[str, list[str]]:
-    stored = _normalize_stored_columns(getattr(user, "visible_columns", None))
-    for tab in TAB_COLUMN_DEFINITIONS:
-        stored[tab] = parse_profile_column_selection(form_data, tab)
-    return stored
+    # Always return a new dict so SQLAlchemy detects JSON column changes.
+    return {
+        tab: parse_profile_column_selection(form_data, tab)
+        for tab in TAB_COLUMN_DEFINITIONS
+    }

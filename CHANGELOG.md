@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.23.2
+
+- **Profile — column visibility:** saving column checkboxes in the personal account now persists correctly (SQLAlchemy JSON column change detection).
+- **Profile — push notifications:** removed separate «Подключить push» / «Отключить push» buttons and the duplicate «Включить push-уведомления» checkbox; the status banner is now a single toggle button.
+- **Profile — actions:** «Сохранить» and «Вернуться» buttons are larger, centered, separated by a divider, and placed lower for better visibility.
+- **Filters:** «Сохранить фильтры» checkbox is vertically aligned with «Применить фильтры» and «Сбросить».
+
 ## 0.21.0
 
 - **Applicability — propagation to links:** when applicability is added to a record, all documents reachable via outgoing links (not backlinks) are traversed to the end of each branch (BFS); if a linked record is missing applicability entries, they are added automatically with file copying. A blocking overlay with a progress animation is shown while the operation runs.

@@ -12,9 +12,11 @@
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; font-weight: normal; }
         .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
         .version-tag-link:hover { opacity: 1; }
-        .push-status { padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; background: #e9ecef; color: #495057; font-size: 0.9rem; }
-        .push-status.active { background: #d4edda; color: #155724; }
-        .push-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .push-status { display: block; width: 100%; padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; background: #e9ecef; color: #495057; font-size: 0.9rem; border: 1px solid #ced4da; cursor: pointer; text-align: left; font-family: inherit; transition: background-color 0.15s, border-color 0.15s; box-sizing: border-box; }
+        .push-status:hover:not(:disabled) { background: #dee2e6; border-color: #adb5bd; }
+        .push-status:disabled { cursor: not-allowed; opacity: 0.65; }
+        .push-status.active { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .push-status.active:hover:not(:disabled) { background: #c3e6cb; border-color: #b1dfbb; }
         .container { padding: 2rem; max-width: 640px; margin: 0 auto; }
         .form-container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
         .form-container h2 { margin-top: 0; font-size: 1.1rem; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
@@ -40,7 +42,8 @@
         .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
         .btn-primary { background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
-        .form-actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
+        .form-actions { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #dee2e6; }
+        .form-actions .btn { padding: 0.75rem 2rem; font-size: 1rem; min-width: 140px; }
         .alert-success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
         .cert-setup-wrap { margin-top: 1.5rem; text-align: center; }
         .cert-reveal-btn { background: none; border: none; color: #6c757d; font-size: 0.8rem; cursor: pointer; text-decoration: underline; padding: 0.25rem; }
@@ -147,23 +150,16 @@
             <div class="push-section">
             <h2 class="section-heading">Push-уведомления браузера</h2>
             <p class="section-intro"><small>Получайте уведомления в браузере, даже когда вкладка архива не активна. Настройте, о каких событиях сообщать.</small></p>
-            <div class="push-status{% if has_push_subscription %} active{% endif %}" id="push-status">
+            <button type="button" class="push-status{% if has_push_subscription %} active{% endif %}" id="push-status" {% if not vapid_public_key %}disabled title="Push-уведомления недоступны: на сервере не настроены VAPID-ключи."{% endif %}>
                 {% if has_push_subscription %}
-                Браузерные push-уведомления подключены.
+                Браузерные push-уведомления подключены. Нажмите, чтобы отключить.
                 {% else %}
-                Браузерные push-уведомления не подключены.
+                Браузерные push-уведомления не подключены. Нажмите, чтобы подключить.
                 {% endif %}
-            </div>
-            <div class="push-actions">
-                <button type="button" class="btn btn-primary" id="push-enable-btn" {% if not vapid_public_key %}disabled{% endif %}>Подключить push</button>
-                <button type="button" class="btn btn-secondary" id="push-disable-btn" {% if not has_push_subscription %}disabled{% endif %}>Отключить push</button>
-            </div>
+            </button>
             {% if not vapid_public_key %}
             <p><small>Push-уведомления недоступны: на сервере не настроены VAPID-ключи.</small></p>
             {% endif %}
-            <div class="form-group checkbox-inline">
-                <label><input type="checkbox" name="push_enabled" id="push_enabled" value="true" {% if push_preferences.enabled %}checked{% endif %}> Включить push-уведомления</label>
-            </div>
             <div class="columns-grid">
                 <label><input type="checkbox" name="push_upload" value="true" {% if push_preferences.upload %}checked{% endif %}> Загрузка и замена файлов</label>
                 <label><input type="checkbox" name="push_status_change" value="true" {% if push_preferences.status_change %}checked{% endif %}> Изменение статуса</label>
@@ -228,10 +224,8 @@ sudo ./trust-macos.sh</div>
         const vapidPublicKey = {{ vapid_public_key|tojson }};
         const pushSubscribeUrl = '{{ url_path('/api/push/subscribe') }}';
         const pushUnsubscribeUrl = '{{ url_path('/api/push/unsubscribe') }}';
-        const pushEnableBtn = document.getElementById('push-enable-btn');
-        const pushDisableBtn = document.getElementById('push-disable-btn');
         const pushStatus = document.getElementById('push-status');
-        const pushEnabledCheckbox = document.getElementById('push_enabled');
+        let pushConnected = {{ 'true' if has_push_subscription else 'false' }};
 
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -282,11 +276,9 @@ sudo ./trust-macos.sh</div>
                 const detail = await resp.text();
                 throw new Error(detail || ('HTTP ' + resp.status));
             }
-            pushStatus.textContent = 'Браузерные push-уведомления подключены.';
+            pushStatus.textContent = 'Браузерные push-уведомления подключены. Нажмите, чтобы отключить.';
             pushStatus.classList.add('active');
-            pushEnableBtn.disabled = true;
-            pushDisableBtn.disabled = false;
-            if (pushEnabledCheckbox) pushEnabledCheckbox.checked = true;
+            pushConnected = true;
         }
 
         async function unsubscribePush() {
@@ -302,21 +294,22 @@ sudo ./trust-macos.sh</div>
                     if (subscription) await subscription.unsubscribe();
                 }
             }
-            pushStatus.textContent = 'Браузерные push-уведомления не подключены.';
+            pushStatus.textContent = 'Браузерные push-уведомления не подключены. Нажмите, чтобы подключить.';
             pushStatus.classList.remove('active');
-            pushEnableBtn.disabled = !vapidPublicKey;
-            pushDisableBtn.disabled = true;
-            if (pushEnabledCheckbox) pushEnabledCheckbox.checked = false;
+            pushConnected = false;
         }
 
-        if (pushEnableBtn) {
-            pushEnableBtn.addEventListener('click', () => subscribePush().catch(err => {
-                console.error('Push subscribe failed:', err);
-                alert('Ошибка подключения push-уведомлений: ' + (err.message || err));
-            }));
-        }
-        if (pushDisableBtn) {
-            pushDisableBtn.addEventListener('click', () => unsubscribePush().catch(() => alert('Ошибка отключения push-уведомлений.')));
+        if (pushStatus) {
+            pushStatus.addEventListener('click', () => {
+                if (pushStatus.disabled) return;
+                const action = pushConnected ? unsubscribePush() : subscribePush();
+                action.catch(err => {
+                    console.error('Push toggle failed:', err);
+                    alert(pushConnected
+                        ? 'Ошибка отключения push-уведомлений.'
+                        : 'Ошибка подключения push-уведомлений: ' + (err.message || err));
+                });
+            });
         }
 
         function getFormSnapshot() {
