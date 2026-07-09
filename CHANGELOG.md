@@ -5,8 +5,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.22.0
 
-- **Applicability — verify children:** the document card applicability block has a «Проверить применяемость дочерних записей» button that runs a BFS pass over all outgoing link branches and adds any missing parent applicability entries to child records (children may have additional applicability beyond the parent's).
-- **Filters — session persistence:** the «Сохранить фильтры» label is placed to the right of the checkbox on the same line.
+- **Applicability — verify children:** the document card applicability block has a «Проверить применяемость дочерних записей» button that runs a BFS pass over all outgoing link branches and adds any missing parent applicability entries to child records (children may have additional applicability beyond the parent's). Child traversal uses link target IDs directly; each child record is reloaded before updating. Clearer result messages when there are no links or updates fail (e.g. missing files).
+- **Filters — session persistence:** the «Сохранить фильтры» label is placed to the right of the checkbox on the same line, vertically aligned with the filter action buttons.
 - **Add document form:** removed the default caption «Выберите тип записи для регистрации в архиве.»
 
 ## 0.21.0

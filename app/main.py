@@ -1642,6 +1642,9 @@ async def verify_child_applicability_route(
 
     try:
         from app.document_applicability import verify_child_applicability
+        from app.document_links import get_transitive_outgoing_document_ids
+
+        linked_ids = await get_transitive_outgoing_document_ids(session, doc.id)
         propagated = await verify_child_applicability(session, doc, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
@@ -1650,13 +1653,27 @@ async def verify_child_applicability_route(
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
 
     await session.commit()
-    success_key = "applicability_verified" if any(item["success"] for item in propagated) else "applicability_verify_ok"
+    added_count = sum(1 for item in propagated if item["success"])
+    failed_count = sum(1 for item in propagated if not item["success"])
+    if not linked_ids:
+        success_key = "applicability_verify_no_links"
+    elif failed_count and not added_count:
+        success_key = "applicability_verify_failed"
+    elif failed_count:
+        success_key = "applicability_verify_partial"
+    elif added_count:
+        success_key = "applicability_verified"
+    else:
+        success_key = "applicability_verify_ok"
     if wants_json_response(request):
         return JSONResponse(
             {
                 "success": True,
                 "redirect_url": url_path(f"/documents/{doc_id}?success={success_key}"),
                 "propagated": propagated,
+                "linked_count": len(linked_ids),
+                "added_count": added_count,
+                "failed_count": failed_count,
             }
         )
     return RedirectResponse(

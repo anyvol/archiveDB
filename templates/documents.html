@@ -20,7 +20,7 @@
         .filters { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
         .filters label { display: block; font-size: 0.8rem; margin-bottom: 0.25rem; }
         .filters input, .filters select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-        .filters-actions { grid-column: 1 / -1; display: flex; gap: 0.5rem; }
+        .filters-actions { grid-column: 1 / -1; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
         .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
         .btn-primary { background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
@@ -108,8 +108,8 @@
         .tabs { display: flex; gap: 0.5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
         .tab-link { padding: 0.5rem 1rem; border-radius: 6px 6px 0 0; text-decoration: none; color: #495057; background: #e9ecef; font-size: 0.95rem; }
         .tab-link.active { background: white; color: #007bff; font-weight: 600; box-shadow: 0 -2px 0 #007bff inset; }
-        .filters-save { display: inline-flex; flex-direction: row; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin-left: 0.5rem; color: #6c757d; white-space: nowrap; cursor: pointer; }
-        .filters-save input[type="checkbox"] { margin: 0; flex-shrink: 0; }
+        .filters-save { display: inline-flex; flex-direction: row; align-items: center; gap: 0.2rem; font-size: 0.85rem; margin-left: 0.25rem; color: #6c757d; white-space: nowrap; cursor: pointer; line-height: 1; }
+        .filters-save input[type="checkbox"] { margin: 0; flex-shrink: 0; width: auto; }
         .list-panel { background: white; padding: 0 0 1rem; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
         .list-panel h2 { margin: 0; padding: 1rem 1rem 0.5rem; font-size: 1.1rem; }
         tbody tr.doc-row { cursor: pointer; }

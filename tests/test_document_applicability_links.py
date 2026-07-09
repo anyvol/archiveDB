@@ -13,7 +13,12 @@ from app.document_applicability import (
     propagate_applicability_to_outgoing_links,
     verify_child_applicability,
 )
-from app.document_links import add_document_links, get_transitive_outgoing_documents, search_documents_by_designation
+from app.document_links import (
+    add_document_links,
+    get_transitive_outgoing_document_ids,
+    get_transitive_outgoing_documents,
+    search_documents_by_designation,
+)
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Product, Project, User, UserRole
 
 
@@ -182,34 +187,40 @@ def test_build_applicability_modal_options_groups_products_by_project():
 
 
 @pytest.mark.asyncio
+async def test_get_transitive_outgoing_document_ids_traverses_all_branches():
+    source = _doc_with_file()
+
+    async def target_ids_side_effect(_session, document_id):
+        if document_id == source.id:
+            return [20, 40]
+        if document_id == 20:
+            return [30]
+        return []
+
+    session = AsyncMock()
+    with patch("app.document_links.get_outgoing_link_target_ids", new_callable=AsyncMock, side_effect=target_ids_side_effect):
+        collected = await get_transitive_outgoing_document_ids(session, source.id)
+
+    assert collected == [20, 40, 30]
+
+
+@pytest.mark.asyncio
 async def test_get_transitive_outgoing_documents_traverses_all_branches():
     source = _doc_with_file()
     doc_b = _doc_with_file()
     doc_b.id = 20
     doc_c = _doc_with_file()
     doc_c.id = 30
-    doc_d = _doc_with_file()
-    doc_d.id = 40
-
-    link_ab = MagicMock()
-    link_ab.target_document = doc_b
-    link_bc = MagicMock()
-    link_bc.target_document = doc_c
-    link_ad = MagicMock()
-    link_ad.target_document = doc_d
-
-    async def outgoing_side_effect(_session, document_id):
-        if document_id == source.id:
-            return [link_ab, link_ad]
-        if document_id == doc_b.id:
-            return [link_bc]
-        return []
 
     session = AsyncMock()
-    with patch("app.document_links.get_outgoing_links", new_callable=AsyncMock, side_effect=outgoing_side_effect):
+    with patch(
+        "app.document_links.get_transitive_outgoing_document_ids",
+        new_callable=AsyncMock,
+        return_value=[20, 30],
+    ), patch("app.document_workflow.fetch_document", new_callable=AsyncMock, side_effect=[doc_b, doc_c]):
         collected = await get_transitive_outgoing_documents(session, source.id)
 
-    assert [doc.id for doc in collected] == [20, 40, 30]
+    assert [doc.id for doc in collected] == [20, 30]
 
 
 @pytest.mark.asyncio
@@ -234,9 +245,13 @@ async def test_propagate_applicability_to_outgoing_links_adds_missing():
     add_mock = AsyncMock()
 
     with patch(
-        "app.document_applicability.get_transitive_outgoing_documents",
+        "app.document_applicability.get_transitive_outgoing_document_ids",
         new_callable=AsyncMock,
-        return_value=[target],
+        return_value=[20],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        return_value=target,
     ), patch("app.document_applicability.add_document_applicability", add_mock):
         results = await propagate_applicability_to_outgoing_links(session, source, user)
 
@@ -269,13 +284,16 @@ async def test_propagate_applicability_uses_transitive_outgoing_documents():
     add_mock = AsyncMock()
 
     with patch(
-        "app.document_applicability.get_transitive_outgoing_documents",
+        "app.document_applicability.get_transitive_outgoing_document_ids",
         new_callable=AsyncMock,
-        return_value=[direct, nested],
-    ) as collect_mock, patch("app.document_applicability.add_document_applicability", add_mock):
+        return_value=[20, 30],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        side_effect=[direct, nested],
+    ), patch("app.document_applicability.add_document_applicability", add_mock):
         await propagate_applicability_to_outgoing_links(session, source, user)
 
-    collect_mock.assert_awaited_once_with(session, source.id)
     assert add_mock.await_count == 2
 
 

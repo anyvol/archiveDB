@@ -120,6 +120,12 @@
         <div class="success">Проверка завершена. Недостающая применяемость добавлена в дочерние записи.</div>
         {% elif success == 'applicability_verify_ok' %}
         <div class="success">Проверка завершена. Все дочерние записи уже имеют применяемость родительской записи.</div>
+        {% elif success == 'applicability_verify_no_links' %}
+        <div class="alert alert-warning">Проверка завершена. У записи нет исходящих ссылок на дочерние записи.</div>
+        {% elif success == 'applicability_verify_failed' %}
+        <div class="error">Не удалось добавить применяемость в дочерние записи. Убедитесь, что у дочерних записей загружены файлы.</div>
+        {% elif success == 'applicability_verify_partial' %}
+        <div class="alert alert-warning">Проверка завершена частично: применяемость добавлена не во все дочерние записи.</div>
         {% elif success == 'applicability_removed' %}
         <div class="success">Применяемость удалена.</div>
         {% elif success == 'links_added' %}

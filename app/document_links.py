@@ -70,27 +70,49 @@ async def get_outgoing_links(session: AsyncSession, document_id: int) -> list[Do
     return list(result.scalars().unique().all())
 
 
+async def get_outgoing_link_target_ids(session: AsyncSession, document_id: int) -> list[int]:
+    result = await session.execute(
+        select(DocumentLink.target_document_id)
+        .where(DocumentLink.source_document_id == document_id)
+        .order_by(DocumentLink.created_at.asc())
+    )
+    return [row[0] for row in result.all()]
+
+
+async def get_transitive_outgoing_document_ids(
+    session: AsyncSession,
+    document_id: int,
+) -> list[int]:
+    """All document IDs reachable via outgoing links (BFS), excluding the source."""
+    visited: set[int] = {document_id}
+    queue: list[int] = [document_id]
+    collected: list[int] = []
+
+    while queue:
+        current_id = queue.pop(0)
+        for target_id in await get_outgoing_link_target_ids(session, current_id):
+            if target_id in visited:
+                continue
+            visited.add(target_id)
+            queue.append(target_id)
+            collected.append(target_id)
+
+    return collected
+
+
 async def get_transitive_outgoing_documents(
     session: AsyncSession,
     document_id: int,
 ) -> list[BaseDocument]:
     """All documents reachable via outgoing links (BFS), excluding the source."""
-    visited: set[int] = {document_id}
-    queue: list[int] = [document_id]
-    collected: list[BaseDocument] = []
+    from app.document_workflow import fetch_document
 
-    while queue:
-        current_id = queue.pop(0)
-        outgoing = await get_outgoing_links(session, current_id)
-        for link in outgoing:
-            target = link.target_document
-            if not target or target.id in visited:
-                continue
-            visited.add(target.id)
-            queue.append(target.id)
-            collected.append(target)
-
-    return collected
+    documents: list[BaseDocument] = []
+    for target_id in await get_transitive_outgoing_document_ids(session, document_id):
+        doc = await fetch_document(session, target_id)
+        if doc:
+            documents.append(doc)
+    return documents
 
 
 async def get_incoming_links(session: AsyncSession, document_id: int) -> list[DocumentLink]:
