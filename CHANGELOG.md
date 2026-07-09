@@ -9,6 +9,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Record card — actions:** all commands from the archive context menu are available on the card, including «Удалить запись» for administrators.
 - **Administration — role permissions:** new «Права доступа» page to configure function access per role (`user`, `reviewer`, `admin`); `master_admin` always has full access.
 - **Administration — automatic backups:** configure scheduled backups by cron expression or interval (hours), with separate toggles for database and file backups; settings are stored in the database and applied to the backup service.
+- **Admin broadcast email:** fixed routing so mass email (`/admin/users/broadcast-email`) no longer conflicts with the user update route.
+- **Header menu:** added «Документы» link before «Администрирование».
 
 ## 0.18.1
 

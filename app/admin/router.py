@@ -189,6 +189,28 @@ async def admin_users(
     )
 
 
+@router.post("/users/broadcast-email")
+async def admin_broadcast_email(
+    subject: str = Form(...),
+    body: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    try:
+        sent = await send_admin_email_to_all(session, subject, body)
+    except Exception as exc:
+        logger.exception("Admin broadcast email failed")
+        return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
+    return _see_other(url_path(f"/admin/users?success=broadcast&count={sent}"))
+
+
 @router.post("/users/{user_id}")
 async def admin_update_user(
     user_id: int,
@@ -307,28 +329,6 @@ async def admin_email_user(
         logger.exception("Admin email to user failed")
         return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
     return _see_other(url_path(f"/admin/users?success=email_sent&for_login={quote(target.login)}"))
-
-
-@router.post("/users/broadcast-email")
-async def admin_broadcast_email(
-    subject: str = Form(...),
-    body: str = Form(...),
-    session: AsyncSession = Depends(get_session),
-    access_token: str | None = Cookie(None),
-):
-    if not access_token:
-        return RedirectResponse(url=url_path("/login"))
-    try:
-        await _require_master_admin_page(access_token, session)
-    except HTTPException:
-        return RedirectResponse(url=url_path("/documents"))
-
-    try:
-        sent = await send_admin_email_to_all(session, subject, body)
-    except Exception as exc:
-        logger.exception("Admin broadcast email failed")
-        return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
-    return _see_other(url_path(f"/admin/users?success=broadcast&count={sent}"))
 
 
 @router.get("/traffic", response_class=HTMLResponse)
