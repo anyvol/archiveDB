@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.19.1
+
+- **Metadata editing:** the edit form now allows changing all person names (developer, reviewer, approver), all signature dates, and the document title. Known names can be selected from a dropdown, matching the registration form.
+- **File replace on metadata edit:** the metadata edit form includes an optional file upload — you can attach a new file or replace the existing one without leaving the edit page. For first-time upload, document format is required.
+- **File rename on title change:** when the document title is changed without uploading a new file, the stored file is renamed according to the archive naming rules (`{designation} - {title}` or `{designation} ({basename}) - {title}`).
+
 ## 0.19.0
 
 - **Record card — backlinks:** after the «Ссылки» block, the card shows «Обратные ссылки» — records that reference the current document (automatically derived from incoming links).

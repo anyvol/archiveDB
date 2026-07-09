@@ -59,7 +59,13 @@ from app.auth import (
 )
 from app.session_helpers import resolve_authenticated_user, session_expired_response
 from app.document_queries import DOCUMENTS_PAGE_SIZE, fetch_documents
-from app.document_helpers import save_upload_file, remove_file_if_exists, resolve_document_storage_slugs
+from app.document_helpers import (
+    save_upload_file,
+    remove_file_if_exists,
+    resolve_document_storage_slugs,
+    rename_document_file_for_doc_name,
+    compute_renamed_file_name_for_doc_name_change,
+)
 from app.project_helpers import get_project_by_id, create_new_project
 from app.product_helpers import create_product, get_all_products, get_products_for_project, validate_product_belongs_to_project
 from app.project_files import (
@@ -104,6 +110,7 @@ from app.change_log import (
     get_document_change_history,
     format_change_event_summary,
     is_governed_document,
+    archive_current_file,
     log_change_event,
     log_document_status_change,
     log_file_upload,
@@ -151,7 +158,7 @@ from app.admin_access import verify_admin_access_code
 from app.mail.sender import smtp_configured
 from app.password_reset import request_password_reset, reset_password_with_token
 from app.settings_store import get_app_timezone
-from app.timezone_utils import format_date, format_datetime
+from app.timezone_utils import format_date, format_datetime, date_input_value
 from app.document_applicability import (
     add_document_applicability,
     build_applicability_modal_options,
@@ -219,6 +226,7 @@ templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 templates.env.globals["format_date"] = format_date
 templates.env.globals["format_datetime"] = format_datetime
+templates.env.globals["date_input_value"] = date_input_value
 
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
@@ -1519,7 +1527,7 @@ async def edit_document_page(
     if isinstance(auth, Response):
         return auth
     user = auth
-    doc = await session.get(BaseDocument, doc_id)
+    doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
     if not can_edit_document_metadata(user, doc):
@@ -1528,10 +1536,21 @@ async def edit_document_page(
             detail="Редактирование недоступно. Новое изменение можно сделать только после проверки или отправки на исправление.",
         )
 
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
     ctx = await _page_context(session, user)
+    known_person_names = await fetch_known_person_names(session)
     return templates.TemplateResponse(
         "edit_document.html",
-        {"request": request, "doc": doc, "service_version": SERVICE_VERSION, **ctx},
+        {
+            "request": request,
+            "doc": doc,
+            "designation": designation,
+            "known_person_names": known_person_names,
+            "document_formats": DOCUMENT_FORMATS,
+            "error": request.query_params.get("error"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
     )
 
 
@@ -1541,6 +1560,13 @@ async def edit_document(
     doc_id: int,
     doc_name: str = Form(""),
     developed_by: str = Form(...),
+    reviewed_by: str = Form(""),
+    approved_by: str = Form(""),
+    developer_signed_date: str = Form(""),
+    reviewer_signed_date: str = Form(""),
+    approver_signed_date: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    document_format: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -1548,24 +1574,123 @@ async def edit_document(
     if isinstance(auth, Response):
         return auth
     user = auth
-    doc = await session.get(BaseDocument, doc_id)
+    doc = await fetch_document(session, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
     require_edit_metadata_permission(user, doc)
-    old_doc_name = doc.doc_name
-    old_developed_by = doc.developed_by
+
+    edit_url = url_path(f"/documents/{doc_id}/edit")
+    had_file_before = bool(doc.file_name)
+    file_uploaded = bool(file and file.filename)
+
+    if file_uploaded and not had_file_before and (
+        not document_format or not is_valid_document_format(document_format)
+    ):
+        return RedirectResponse(url=f"{edit_url}?error=format_required", status_code=303)
+
     new_doc_name = doc_name or None
+    new_developed_by = normalize_person_name(developed_by)
+    new_reviewed_by = normalize_person_name(reviewed_by) or None
+    new_approved_by = normalize_person_name(approved_by) or None
+    new_developer_signed_date = developer_signed_date.strip() or None
+    new_reviewer_signed_date = reviewer_signed_date.strip() or None
+    new_approver_signed_date = approver_signed_date.strip() or None
+
     changes = []
-    name_change = format_field_change("наименование", old_doc_name, new_doc_name)
-    if name_change:
-        changes.append(name_change)
-    dev_change = format_field_change("разработчик", old_developed_by, developed_by)
-    if dev_change:
-        changes.append(dev_change)
+    old_doc_name = doc.doc_name
+    for label, old_val, new_val in (
+        ("наименование", old_doc_name, new_doc_name),
+        ("разработчик", doc.developed_by, new_developed_by),
+        ("проверил", doc.reviewed_by, new_reviewed_by),
+        ("утвердил", doc.approved_by, new_approved_by),
+        ("дата подписи разработчика", doc.developer_signed_date, new_developer_signed_date),
+        ("дата подписи проверяющего", doc.reviewer_signed_date, new_reviewer_signed_date),
+        ("дата подписи утвердившего", doc.approver_signed_date, new_approver_signed_date),
+    ):
+        change = format_field_change(label, old_val, new_val)
+        if change:
+            changes.append(change)
 
     doc.doc_name = new_doc_name
-    doc.developed_by = developed_by
+    doc.developed_by = new_developed_by
+    doc.reviewed_by = new_reviewed_by
+    doc.approved_by = new_approved_by
+    doc.developer_signed_date = new_developer_signed_date
+    doc.reviewer_signed_date = new_reviewer_signed_date
+    doc.approver_signed_date = new_approver_signed_date
+
+    designation = get_document_designation(doc) if (doc.design_document or doc.tech_document) else None
+
+    if file_uploaded:
+        try:
+            await session.refresh(doc, ["project", "product"])
+            project_slug, product_slug = resolve_document_storage_slugs(doc)
+
+            if is_governed_document(doc) and had_file_before and doc.file_path:
+                file_revision = archive_current_file(doc, revision_label="metadata")
+                if file_revision:
+                    session.add(file_revision)
+
+            old_path = doc.file_path if not (is_governed_document(doc) and had_file_before) else None
+            old_file_name = doc.file_name
+
+            file_path, unique_file_name = await save_upload_file(
+                file,
+                project_slug,
+                old_path,
+                product_slug=product_slug,
+                doc_kind_code=doc.design_document.doc_kind_code if doc.design_document else None,
+                designation=designation,
+                doc_name=new_doc_name,
+            )
+
+            existing = await session.execute(
+                select(BaseDocument.id).where(
+                    BaseDocument.file_name == unique_file_name,
+                    BaseDocument.id != doc.id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail="Документ с таким именем файла уже существует в архиве.",
+                )
+
+            file_change = format_field_change("файл", old_file_name, unique_file_name)
+            if file_change:
+                changes.append(file_change)
+
+            doc.file_path = file_path
+            doc.file_name = unique_file_name
+            if document_format and is_valid_document_format(document_format):
+                doc.document_format = document_format
+            await log_file_upload(session, doc, user, unique_file_name, replacement=had_file_before)
+        except HTTPException:
+            return RedirectResponse(url=f"{edit_url}?error=invalid", status_code=303)
+    elif format_field_change("наименование", old_doc_name, new_doc_name):
+        if doc.file_name:
+            existing = await session.execute(
+                select(BaseDocument.id).where(
+                    BaseDocument.file_name == compute_renamed_file_name_for_doc_name_change(
+                        designation, doc.file_name, new_doc_name
+                    ),
+                    BaseDocument.id != doc.id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail="Документ с таким именем файла уже существует в архиве.",
+                )
+        old_file_name, new_file_name = rename_document_file_for_doc_name(
+            doc, new_doc_name, designation=designation
+        )
+        if old_file_name and new_file_name:
+            file_change = format_field_change("имя файла", old_file_name, new_file_name)
+            if file_change:
+                changes.append(file_change)
+
     old_status = doc.status
     doc.status = DocumentStatus.pending_review
     if changes:

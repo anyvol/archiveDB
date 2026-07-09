@@ -45,6 +45,25 @@ def format_datetime(value: datetime | None, timezone_name: str | None = "UTC") -
     return value.strftime("%d.%m.%Y %H:%M")
 
 
+def date_input_value(value: date | datetime | str | None) -> str:
+    """Return YYYY-MM-DD for HTML date inputs, or empty string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return ""
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    return value.strftime("%Y-%m-%d")
+
+
 def common_timezones() -> list[str]:
     return [
         "UTC",
