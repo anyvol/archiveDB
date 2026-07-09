@@ -14,17 +14,15 @@ from app.change_log import (
     log_change_event,
     log_document_status_change,
     log_file_upload,
-    resolve_ii_storage_path,
 )
 from app.document_helpers import (
     compute_stored_file_name,
     resolve_document_storage_slugs,
     save_upload_file,
     validate_upload_file,
-    _read_upload_contents,
-    _sanitize_storage_name,
 )
 from app.models import (
+    ArchiveNotification,
     BaseDocument,
     ChangeNotification,
     DocumentChangeEventType,
@@ -176,11 +174,8 @@ async def apply_formal_document_change(
     doc: BaseDocument,
     actor: User,
     *,
-    ii_file: UploadFile,
+    archive_notification: ArchiveNotification,
     new_doc_file: UploadFile,
-    ii_number: str,
-    change_number: str,
-    change_date: datetime,
     developer_signed: bool,
     reviewer_signed: bool,
     approver_signed: bool,
@@ -188,17 +183,12 @@ async def apply_formal_document_change(
 ) -> None:
     if doc.status != DocumentStatus.approved:
         raise HTTPException(status_code=400, detail="Формальное изменение доступно только для утверждённых документов.")
-    if not ii_number.strip():
-        raise HTTPException(status_code=400, detail="Укажите номер извещения об изменении (ИИ).")
-    if not change_number.strip():
-        raise HTTPException(status_code=400, detail="Укажите номер изменения (1, 2, 3…).")
     if not developer_signed or not reviewer_signed or not approver_signed:
         raise HTTPException(
             status_code=400,
             detail="Документ должен быть проверен всеми специалистами",
         )
 
-    validate_upload_file(ii_file)
     validate_upload_file(new_doc_file)
 
     await session.refresh(doc, ["project", "product"])
@@ -216,11 +206,8 @@ async def apply_formal_document_change(
             detail=f"Имя файла должно совпадать с текущим документом: «{doc.file_name}».",
         )
 
-    ii_contents, ii_original = await _read_upload_contents(ii_file)
-    ii_stored = compute_stored_file_name(None, ii_original)
-    ii_path = resolve_ii_storage_path(doc, _sanitize_storage_name(ii_stored))
-    with open(ii_path, "wb") as f:
-        f.write(ii_contents)
+    change_number = archive_notification.change_number
+    change_date = archive_notification.change_date
 
     file_revision = archive_current_file(
         doc, revision_label=f"change_{change_number.strip()}"
@@ -240,10 +227,11 @@ async def apply_formal_document_change(
 
     ii_record = ChangeNotification(
         document_id=doc.id,
-        number=ii_number.strip(),
+        archive_notification_id=archive_notification.id,
+        number=archive_notification.number,
         date=change_date,
-        file_name=ii_stored,
-        file_path=ii_path,
+        file_name=archive_notification.file_name,
+        file_path=archive_notification.file_path,
         developer_signed=developer_signed,
         reviewer_signed=reviewer_signed,
         approver_signed=approver_signed,
@@ -272,7 +260,7 @@ async def apply_formal_document_change(
     )
     await log_file_upload(session, doc, actor, unique_file_name, replacement=True)
     await log_document_status_change(session, doc, actor, old_status, DocumentStatus.pending_review)
-    await notify_formal_change(session, doc, actor, ii_number.strip(), change_number.strip())
+    await notify_formal_change(session, doc, actor, archive_notification.number, change_number.strip())
 
 
 def preview_media_type(file_path: str) -> str | None:

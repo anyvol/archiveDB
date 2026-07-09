@@ -1,0 +1,15 @@
+{% for item in notifications %}
+<tr class="doc-row archive-row"
+    data-doc-id="{{ item.id }}"
+    data-doc-label="{{ item.number|e }}"
+    data-action-open="{{ url_path('/documents/notifications/' ~ item.id) }}"
+    data-action-download="{{ url_path('/documents/notifications/' ~ item.id ~ '/download') }}"
+    {% if can_delete_document(user) %}data-action-delete="{{ item.id }}" data-delete-type="notification"{% endif %}>
+    {% if 'number' in visible_columns %}<td>{{ item.number }}</td>{% endif %}
+    {% if 'change_number' in visible_columns %}<td>{{ item.change_number }}</td>{% endif %}
+    {% if 'change_date' in visible_columns %}<td>{{ format_date(item.change_date, app_timezone) }}</td>{% endif %}
+    {% if 'created_at' in visible_columns %}<td>{{ format_datetime(item.created_at, app_timezone) }}</td>{% endif %}
+    {% if 'project' in visible_columns %}<td>{{ item.project.name if item.project else '—' }}</td>{% endif %}
+    {% if 'product' in visible_columns %}<td>{{ item.product.name if item.product else '—' }}</td>{% endif %}
+</tr>
+{% endfor %}

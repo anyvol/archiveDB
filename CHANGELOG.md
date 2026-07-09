@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.20.0
+
+- **Documents page — tabs:** the main archive list is split into three tabs: «КД и ТД», «Извещения», and «Приказы». Each tab has its own filters, column visibility settings in the profile, and record cards with actions and preview.
+- **Register notifications and orders:** new records can be created from the «Добавить новый документ» block via the «Ещё» menu (under the КД/ТД buttons). Notification and order numbers must be unique across the archive.
+- **Formal changes (apply-change):** when applying a formal change to an approved КД/ТД record, select a registered change notification from the archive instead of uploading a new ИИ file. The notification card shows which projects and products use that ИИ.
+- **Applicability:** multiple products can be selected at once when adding applicability; the applicability list on the document card is collapsed by default when entries exist.
+- **Projects — establishing order:** administrators can assign a registered order as the project's establishing document; otherwise gray text «Устанавливающий документ не выбран» is shown.
+- **Filters — session persistence:** a «Сохранить в сессии» checkbox next to «Сбросить» stores filter values in the browser session until the tab is closed.
+- **Administration — backups:** backup history syncs immediately after a manual backup; the list auto-refreshes on the backups page. A new section configures how many days to keep old backups before automatic deletion.
+
 ## 0.19.1
 
 - **Metadata editing:** the edit form now allows changing all person names (developer, reviewer, approver), all signature dates, and the document title. Known names can be selected from a dropdown, matching the registration form.

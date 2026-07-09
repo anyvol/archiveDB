@@ -74,6 +74,8 @@
         .applicability-item { align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #f1f3f5; }
         .applicability-item:last-child { border-bottom: none; }
         .applicability-target { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
+        .applicability-collapse summary { cursor: pointer; font-weight: 600; color: #007bff; margin-bottom: 0.5rem; }
+        .applicability-products-grid { display: grid; gap: 0.35rem; max-height: 220px; overflow: auto; margin-top: 0.5rem; }
         .record-list a { color: #0056b3; text-decoration: none; }
         .record-list a:hover { text-decoration: underline; }
         .search-results { max-height: 240px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem; }
@@ -194,6 +196,8 @@
             <div class="record-section">
                 <div class="record-label">Применяемость</div>
                 {% if applicability_entries %}
+                <details class="applicability-collapse"{% if applicability_entries|length > 0 %} style="margin-top:0.35rem;"{% endif %}>
+                    <summary>Показать применяемость ({{ applicability_entries|length }})</summary>
                 <ul class="record-list">
                     {% for entry in applicability_entries %}
                     <li class="applicability-item">
@@ -215,6 +219,7 @@
                     </li>
                     {% endfor %}
                 </ul>
+                </details>
                 {% else %}
                 <p class="hint">Запись не применена в других проектах и изделиях.</p>
                 {% endif %}
@@ -433,7 +438,7 @@
     <div class="modal-overlay" id="applicability-modal">
         <div class="modal">
             <h3>Применяемость</h3>
-            <p class="hint">Добавьте применение записи в другом проекте и изделии. Файл будет скопирован в папку изделия на сервере ({проект}/{изделие}/…).</p>
+            <p class="hint">Добавьте применение записи в одном или нескольких изделиях. Файл будет скопирован в папку изделия на сервере ({проект}/{изделие}/…).</p>
             {% if applicability_project_options %}
             <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability') }}" id="applicability-form">
                 <div class="form-group">
@@ -446,10 +451,10 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="applicability-product">Изделие</label>
-                    <select id="applicability-product" name="product_id" required disabled style="width:100%; padding:0.5rem; box-sizing:border-box;">
-                        <option value="">Выберите изделие</option>
-                    </select>
+                    <label>Изделия (можно выбрать несколько)</label>
+                    <div id="applicability-products" class="applicability-products-grid">
+                        <p class="hint" style="margin:0;">Выберите проект, чтобы увидеть изделия.</p>
+                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
@@ -576,39 +581,46 @@
         const applicabilityModal = document.getElementById('applicability-modal');
         const openApplicabilityBtn = document.getElementById('open-applicability-modal');
         const applicabilityProjectSelect = document.getElementById('applicability-project');
-        const applicabilityProductSelect = document.getElementById('applicability-product');
+        const applicabilityProductsBox = document.getElementById('applicability-products');
         const applicabilityForm = document.getElementById('applicability-form');
         const applicabilityProjectOptions = {{ applicability_project_options | tojson }};
         if (applicabilityModal && openApplicabilityBtn) {
             openApplicabilityBtn.addEventListener('click', () => applicabilityModal.classList.add('active'));
         }
-        function resetApplicabilityProductSelect() {
-            if (!applicabilityProductSelect) return;
-            applicabilityProductSelect.innerHTML = '<option value="">Выберите изделие</option>';
-            applicabilityProductSelect.value = '';
-            applicabilityProductSelect.disabled = true;
+        function resetApplicabilityProducts() {
+            if (!applicabilityProductsBox) return;
+            applicabilityProductsBox.innerHTML = '<p class="hint" style="margin:0;">Выберите проект, чтобы увидеть изделия.</p>';
         }
         function populateApplicabilityProducts(projectId) {
-            if (!applicabilityProductSelect) return;
-            resetApplicabilityProductSelect();
+            if (!applicabilityProductsBox) return;
+            resetApplicabilityProducts();
             const project = applicabilityProjectOptions.find(item => String(item.id) === String(projectId));
             if (!project || !project.products.length) return;
+            applicabilityProductsBox.innerHTML = '';
             project.products.forEach(product => {
-                const option = document.createElement('option');
-                option.value = String(product.id);
-                option.textContent = product.name;
-                applicabilityProductSelect.appendChild(option);
+                const label = document.createElement('label');
+                label.style.display = 'block';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.name = 'product_ids';
+                input.value = String(product.id);
+                label.appendChild(input);
+                label.appendChild(document.createTextNode(' ' + product.name));
+                applicabilityProductsBox.appendChild(label);
             });
-            applicabilityProductSelect.disabled = false;
         }
-        if (applicabilityProjectSelect && applicabilityProductSelect) {
+        if (applicabilityProjectSelect) {
             applicabilityProjectSelect.addEventListener('change', () => {
                 populateApplicabilityProducts(applicabilityProjectSelect.value);
             });
         }
-        if (applicabilityForm && applicabilityProductSelect) {
-            applicabilityForm.addEventListener('submit', () => {
-                applicabilityProductSelect.disabled = false;
+        if (applicabilityForm) {
+            applicabilityForm.addEventListener('submit', (e) => {
+                const checked = applicabilityForm.querySelectorAll('input[name="product_ids"]:checked');
+                if (!checked.length) {
+                    e.preventDefault();
+                    alert('Выберите хотя бы одно изделие.');
+                }
             });
         }
 

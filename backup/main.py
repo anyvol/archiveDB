@@ -45,6 +45,7 @@ class BackupScheduleRequest(BaseModel):
     interval_hours: int = Field(default=24, ge=1, le=168)
     backup_db: bool = True
     backup_files: bool = True
+    retention_days: int = Field(default=30, ge=1, le=365)
 
 
 def _auth(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> None:
@@ -63,7 +64,17 @@ def _default_schedule() -> dict:
         "interval_hours": 24,
         "backup_db": True,
         "backup_files": True,
+        "retention_days": RETENTION_DAYS,
     }
+
+
+def _retention_days(schedule: dict | None = None) -> int:
+    if schedule and schedule.get("retention_days"):
+        try:
+            return max(1, min(int(schedule["retention_days"]), 365))
+        except (TypeError, ValueError):
+            pass
+    return RETENTION_DAYS
 
 
 def _load_schedule() -> dict:
@@ -145,14 +156,15 @@ def _run_backup(types: list[str], triggered_by: str) -> list[dict]:
 
     manifest = batch_dir / "manifest.json"
     manifest.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    _cleanup_old_backups()
+    _cleanup_old_backups(_load_schedule())
     return results
 
 
-def _cleanup_old_backups() -> None:
+def _cleanup_old_backups(schedule: dict | None = None) -> None:
     if not BACKUP_DIR.exists():
         return
-    cutoff = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
+    retention = _retention_days(schedule)
+    cutoff = datetime.utcnow() - timedelta(days=retention)
     for child in BACKUP_DIR.iterdir():
         if not child.is_dir():
             continue

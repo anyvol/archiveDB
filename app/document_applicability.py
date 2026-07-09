@@ -158,6 +158,20 @@ async def add_document_applicability(
     return entry
 
 
+async def add_document_applicability_many(
+    session: AsyncSession,
+    doc: BaseDocument,
+    product_ids: list[int],
+    user: User,
+) -> list[DocumentApplicability]:
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы одно изделие.")
+    created: list[DocumentApplicability] = []
+    for product_id in product_ids:
+        created.append(await add_document_applicability(session, doc, product_id, user))
+    return created
+
+
 async def cleanup_document_applicability_files(session: AsyncSession, document_id: int) -> None:
     entries = await get_applicability_entries(session, document_id)
     for entry in entries:

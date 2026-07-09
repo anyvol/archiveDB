@@ -125,7 +125,27 @@ from app.document_workflow import (
 )
 from app.models import DocumentChangeEventType
 from app.user_helpers import build_full_name, split_full_name, validate_person_fields
-from app.column_preferences import DOCUMENT_COLUMNS, get_visible_columns, DEFAULT_VISIBLE_COLUMNS
+from app.column_preferences import (
+    DOCUMENT_COLUMNS,
+    NOTIFICATION_COLUMNS,
+    ORDER_COLUMNS,
+    get_visible_columns,
+    DEFAULT_VISIBLE_COLUMNS,
+    merge_visible_columns,
+)
+from app.archive_records import (
+    create_archive_notification,
+    create_archive_order,
+    fetch_archive_notifications,
+    fetch_archive_orders,
+    get_archive_notification,
+    get_archive_order,
+    list_available_archive_notifications,
+    list_available_archive_orders,
+    get_notification_usage_places,
+    delete_archive_notification,
+    delete_archive_order,
+)
 from app.notifications import (
     count_unread,
     mark_all_read,
@@ -222,6 +242,8 @@ templates.env.globals["can_manage_project"] = can_manage_project
 templates.env.globals["is_master_admin"] = is_master_admin
 templates.env.globals["is_admin"] = is_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
+templates.env.globals["NOTIFICATION_COLUMNS"] = NOTIFICATION_COLUMNS
+templates.env.globals["ORDER_COLUMNS"] = ORDER_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 templates.env.globals["format_date"] = format_date
@@ -356,8 +378,26 @@ def _filters_query_string(filters: dict) -> str:
     return "&".join(parts)
 
 
-def _filter_params(request: Request) -> dict:
+def _filter_params(request: Request, tab: str = "documents") -> dict:
     qp = request.query_params
+    if tab == "notifications":
+        return {
+            "number": qp.get("number") or None,
+            "change_number": qp.get("change_number") or None,
+            "project_id": qp.get("project_id") or None,
+            "product_id": qp.get("product_id") or None,
+            "sort": qp.get("sort") or "created_at",
+            "order": qp.get("order") or "desc",
+            "tab": "notifications",
+        }
+    if tab == "orders":
+        return {
+            "number": qp.get("number") or None,
+            "name": qp.get("name") or None,
+            "sort": qp.get("sort") or "created_at",
+            "order": qp.get("order") or "desc",
+            "tab": "orders",
+        }
     return {
         "designation": qp.get("designation") or None,
         "okpo": qp.get("okpo") or None,
@@ -376,6 +416,7 @@ def _filter_params(request: Request) -> dict:
         "updated_to": qp.get("updated_to") or None,
         "sort": qp.get("sort") or "created_at",
         "order": qp.get("order") or "desc",
+        "tab": "documents",
     }
 
 
@@ -816,28 +857,70 @@ async def documents_page(
     if isinstance(auth, Response):
         return auth
     user = auth
-    filters = _filter_params(request)
+    tab = request.query_params.get("tab") or "documents"
+    if tab not in ("documents", "notifications", "orders"):
+        tab = "documents"
+    filters = _filter_params(request, tab)
     app_timezone = await get_app_timezone(session)
-    filters["timezone_name"] = app_timezone
-    documents_from_db, total_count = await fetch_documents(
-        session,
-        limit=DOCUMENTS_PAGE_SIZE,
-        offset=0,
-        **filters,
-    )
-    filters.pop("timezone_name", None)
-    has_more = total_count > len(documents_from_db)
     projects_result = await session.execute(select(Project).order_by(Project.name))
     projects = projects_result.scalars().all()
     products = await get_all_products(session)
     known_person_names = await fetch_known_person_names(session)
     ctx = await _page_context(session, user)
 
+    documents_from_db: list = []
+    notifications_from_db: list = []
+    orders_from_db: list = []
+    total_count = 0
+    has_more = False
+
+    if tab == "notifications":
+        notifications_from_db, total_count = await fetch_archive_notifications(
+            session,
+            limit=DOCUMENTS_PAGE_SIZE,
+            offset=0,
+            number=filters.get("number"),
+            change_number=filters.get("change_number"),
+            project_id=filters.get("project_id"),
+            product_id=filters.get("product_id"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        has_more = total_count > len(notifications_from_db)
+        visible_columns = get_visible_columns(user, "notifications")
+    elif tab == "orders":
+        orders_from_db, total_count = await fetch_archive_orders(
+            session,
+            limit=DOCUMENTS_PAGE_SIZE,
+            offset=0,
+            number=filters.get("number"),
+            name=filters.get("name"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        has_more = total_count > len(orders_from_db)
+        visible_columns = get_visible_columns(user, "orders")
+    else:
+        doc_filters = dict(filters)
+        doc_filters["timezone_name"] = app_timezone
+        documents_from_db, total_count = await fetch_documents(
+            session,
+            limit=DOCUMENTS_PAGE_SIZE,
+            offset=0,
+            **doc_filters,
+        )
+        filters.pop("timezone_name", None)
+        has_more = total_count > len(documents_from_db)
+        visible_columns = get_visible_columns(user, "documents")
+
     return templates.TemplateResponse(
         "documents.html",
         {
             "request": request,
+            "active_tab": tab,
             "documents": documents_from_db,
+            "notifications": notifications_from_db,
+            "orders": orders_from_db,
             "filters": filters,
             "projects": projects,
             "products": products,
@@ -847,7 +930,7 @@ async def documents_page(
             "preferred_org_code": user.preferred_org_code or "",
             "preferred_org_okpo": user.preferred_org_okpo,
             "default_developed_by": user.full_name or "",
-            "visible_columns": get_visible_columns(user),
+            "visible_columns": visible_columns,
             "service_version": SERVICE_VERSION,
             "app_timezone": app_timezone,
             "has_more": has_more,
@@ -867,31 +950,75 @@ async def list_documents_api(
     access_token: Optional[str] = Cookie(None),
 ):
     user = await _require_user(access_token, session)
-    filters = _filter_params(request)
+    tab = request.query_params.get("tab") or "documents"
+    filters = _filter_params(request, tab)
     app_timezone = await get_app_timezone(session)
-    filters["timezone_name"] = app_timezone
-    documents, total_count = await fetch_documents(
-        session,
-        limit=limit,
-        offset=offset,
-        **filters,
-    )
-    filters.pop("timezone_name", None)
     ctx = await _page_context(session, user)
-    rows_html = templates.get_template("_document_rows.html").render(
-        {
-            "request": request,
-            "documents": documents,
-            "visible_columns": get_visible_columns(user),
-            "app_timezone": app_timezone,
-            "filters": filters,
-            **ctx,
-        }
-    )
+
+    if tab == "notifications":
+        items, total_count = await fetch_archive_notifications(
+            session,
+            limit=limit,
+            offset=offset,
+            number=filters.get("number"),
+            change_number=filters.get("change_number"),
+            project_id=filters.get("project_id"),
+            product_id=filters.get("product_id"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        rows_html = templates.get_template("_notification_rows.html").render(
+            {
+                "request": request,
+                "notifications": items,
+                "visible_columns": get_visible_columns(user, "notifications"),
+                "app_timezone": app_timezone,
+                **ctx,
+            }
+        )
+    elif tab == "orders":
+        items, total_count = await fetch_archive_orders(
+            session,
+            limit=limit,
+            offset=offset,
+            number=filters.get("number"),
+            name=filters.get("name"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        rows_html = templates.get_template("_order_rows.html").render(
+            {
+                "request": request,
+                "orders": items,
+                "visible_columns": get_visible_columns(user, "orders"),
+                "app_timezone": app_timezone,
+                **ctx,
+            }
+        )
+    else:
+        doc_filters = dict(filters)
+        doc_filters["timezone_name"] = app_timezone
+        items, total_count = await fetch_documents(
+            session,
+            limit=limit,
+            offset=offset,
+            **doc_filters,
+        )
+        rows_html = templates.get_template("_document_rows.html").render(
+            {
+                "request": request,
+                "documents": items,
+                "visible_columns": get_visible_columns(user, "documents"),
+                "app_timezone": app_timezone,
+                "filters": filters,
+                **ctx,
+            }
+        )
+
     return {
         "rows_html": rows_html,
-        "count": len(documents),
-        "has_more": offset + len(documents) < total_count,
+        "count": len(items),
+        "has_more": offset + len(items) < total_count,
     }
 
 
@@ -910,6 +1037,70 @@ async def create_document_record(
 
     form_data = await request.form()
     doc_type = form_data.get("doc_type")
+    is_ajax = form_data.get("_ajax") == "1"
+
+    if doc_type in ("II", "ORDER"):
+        if doc_type == "II":
+            number = (form_data.get("ii_number") or "").strip()
+            change_number = (form_data.get("ii_change_number") or "").strip()
+            change_date_raw = (form_data.get("ii_change_date") or "").strip()
+            project_id_raw = (form_data.get("ii_project_id") or "").strip()
+            product_id_raw = (form_data.get("ii_product_id") or "").strip()
+            ii_file = form_data.get("ii_file")
+            developer_signed = form_data.get("ii_developer_signed") == "true"
+            reviewer_signed = form_data.get("ii_reviewer_signed") == "true"
+            approver_signed = form_data.get("ii_approver_signed") == "true"
+            try:
+                change_date = datetime.strptime(change_date_raw, "%Y-%m-%d")
+                project_id = int(project_id_raw)
+                product_id = int(product_id_raw)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Заполните корректно поля извещения.")
+            if not ii_file or not getattr(ii_file, "filename", None):
+                raise HTTPException(status_code=400, detail="Приложите файл извещения (PDF).")
+            record = await create_archive_notification(
+                session,
+                user,
+                number=number,
+                change_number=change_number,
+                change_date=change_date,
+                project_id=project_id,
+                product_id=product_id,
+                ii_file=ii_file,
+                developer_signed=developer_signed,
+                reviewer_signed=reviewer_signed,
+                approver_signed=approver_signed,
+            )
+            await session.commit()
+            redirect_url = url_path(f"/documents/notifications/{record.id}")
+            if is_ajax:
+                return JSONResponse({"ok": True, "redirect": redirect_url})
+            return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
+        number = (form_data.get("order_number") or "").strip()
+        name = (form_data.get("order_name") or "").strip()
+        order_date_raw = (form_data.get("order_date") or "").strip()
+        order_file = form_data.get("order_file")
+        try:
+            order_date = datetime.strptime(order_date_raw, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Укажите корректную дату приказа.")
+        if not order_file or not getattr(order_file, "filename", None):
+            raise HTTPException(status_code=400, detail="Приложите файл приказа.")
+        record = await create_archive_order(
+            session,
+            user,
+            number=number,
+            name=name,
+            order_date=order_date,
+            order_file=order_file,
+        )
+        await session.commit()
+        redirect_url = url_path(f"/documents/orders/{record.id}")
+        if is_ajax:
+            return JSONResponse({"ok": True, "redirect": redirect_url})
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
     org_code = form_data.get("org_code")
     class_code = form_data.get("class_code")
     reg_number = form_data.get("reg_number")
@@ -920,7 +1111,6 @@ async def create_document_record(
     developer_signed_date = (form_data.get("developer_signed_date") or "").strip() or None
     reviewer_signed_date = (form_data.get("reviewer_signed_date") or "").strip() or None
     approver_signed_date = (form_data.get("approver_signed_date") or "").strip() or None
-    is_ajax = form_data.get("_ajax") == "1"
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -1384,7 +1574,6 @@ async def document_detail_page(
 async def add_applicability_route(
     doc_id: int,
     request: Request,
-    product_id: int = Form(...),
     session: AsyncSession = Depends(get_session),
     access_token: Optional[str] = Cookie(None),
 ):
@@ -1398,8 +1587,16 @@ async def add_applicability_route(
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден.")
 
+    form_data = await request.form()
+    product_ids = [int(value) for value in form_data.getlist("product_ids") if str(value).strip()]
+    if not product_ids:
+        single = form_data.get("product_id")
+        if single:
+            product_ids = [int(single)]
+
     try:
-        await add_document_applicability(session, doc, product_id, user)
+        from app.document_applicability import add_document_applicability_many
+        await add_document_applicability_many(session, doc, product_ids, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
@@ -1825,6 +2022,7 @@ async def apply_change_page(
         raise HTTPException(status_code=403, detail="Формальное изменение недоступно для этого документа.")
 
     ctx = await _page_context(session, user)
+    available_notifications = await list_available_archive_notifications(session)
     return templates.TemplateResponse(
         "apply_change.html",
         {
@@ -1833,6 +2031,7 @@ async def apply_change_page(
             "designation": get_document_designation(doc),
             "error": request.query_params.get("error"),
             "form": _empty_apply_change_form(),
+            "available_notifications": available_notifications,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
@@ -1841,9 +2040,7 @@ async def apply_change_page(
 
 def _empty_apply_change_form() -> dict:
     return {
-        "ii_number": "",
-        "change_number": "",
-        "change_date": "",
+        "archive_notification_id": "",
         "comment": "",
         "developer_signed": False,
         "reviewer_signed": False,
@@ -1858,15 +2055,14 @@ async def _render_apply_change_error(
     doc: BaseDocument,
     *,
     error: str,
-    ii_number: str = "",
-    change_number: str = "",
-    change_date: str = "",
+    archive_notification_id: str = "",
     comment: str = "",
     developer_signed: bool = False,
     reviewer_signed: bool = False,
     approver_signed: bool = False,
 ) -> HTMLResponse:
     ctx = await _page_context(session, user)
+    available_notifications = await list_available_archive_notifications(session)
     return templates.TemplateResponse(
         "apply_change.html",
         {
@@ -1875,14 +2071,13 @@ async def _render_apply_change_error(
             "designation": get_document_designation(doc),
             "error": error,
             "form": {
-                "ii_number": ii_number,
-                "change_number": change_number,
-                "change_date": change_date,
+                "archive_notification_id": archive_notification_id,
                 "comment": comment,
                 "developer_signed": developer_signed,
                 "reviewer_signed": reviewer_signed,
                 "approver_signed": approver_signed,
             },
+            "available_notifications": available_notifications,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
@@ -1893,11 +2088,8 @@ async def _render_apply_change_error(
 async def apply_change_submit(
     doc_id: int,
     request: Request,
-    ii_file: Optional[UploadFile] = File(None),
     new_doc_file: Optional[UploadFile] = File(None),
-    ii_number: str = Form(""),
-    change_number: str = Form(""),
-    change_date: str = Form(""),
+    archive_notification_id: str = Form(""),
     comment: str = Form(""),
     developer_signed: Optional[str] = Form(None),
     reviewer_signed: Optional[str] = Form(None),
@@ -1916,9 +2108,7 @@ async def apply_change_submit(
         raise HTTPException(status_code=403, detail="Формальное изменение недоступно.")
 
     form_kwargs = dict(
-        ii_number=ii_number,
-        change_number=change_number,
-        change_date=change_date,
+        archive_notification_id=archive_notification_id,
         comment=comment,
         developer_signed=bool(developer_signed),
         reviewer_signed=bool(reviewer_signed),
@@ -1930,26 +2120,27 @@ async def apply_change_submit(
             request, session, user, doc, error=message, **form_kwargs
         )
 
-    if not ii_file or not ii_file.filename:
-        return await form_error("Приложите файл извещения об изменении (ИИ).")
+    if not archive_notification_id.strip():
+        return await form_error("Выберите зарегистрированное извещение об изменении.")
     if not new_doc_file or not new_doc_file.filename:
         return await form_error("Приложите новую версию документа.")
 
     try:
-        parsed_date = datetime.strptime(change_date, "%Y-%m-%d")
+        notification_id = int(archive_notification_id)
     except ValueError:
-        return await form_error("Укажите корректную дату изменения.")
+        return await form_error("Некорректное извещение.")
+
+    archive_notification = await get_archive_notification(session, notification_id)
+    if not archive_notification:
+        return await form_error("Извещение не найдено в архиве.")
 
     try:
         await apply_formal_document_change(
             session,
             doc,
             user,
-            ii_file=ii_file,
+            archive_notification=archive_notification,
             new_doc_file=new_doc_file,
-            ii_number=ii_number,
-            change_number=change_number,
-            change_date=parsed_date,
             developer_signed=bool(developer_signed),
             reviewer_signed=bool(reviewer_signed),
             approver_signed=bool(approver_signed),
@@ -1960,6 +2151,154 @@ async def apply_change_submit(
 
     await session.commit()
     return RedirectResponse(url=url_path(f"/documents/{doc_id}"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/documents/notifications/{record_id}", response_class=HTMLResponse)
+async def notification_detail_page(
+    record_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    record = await get_archive_notification(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Извещение не найдено.")
+    usage_places = await get_notification_usage_places(session, record_id)
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "notification_detail.html",
+        {
+            "request": request,
+            "record": record,
+            "usage_places": usage_places,
+            "success": request.query_params.get("success"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.get("/documents/notifications/{record_id}/preview")
+async def notification_preview(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_notification(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    return FileResponse(path=record.file_path, media_type="application/pdf", content_disposition_type="inline")
+
+
+@app.get("/documents/notifications/{record_id}/download")
+async def notification_download(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_notification(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    return FileResponse(path=record.file_path, filename=record.file_name)
+
+
+@app.post("/documents/notifications/{record_id}/delete", response_class=RedirectResponse)
+async def delete_notification_record(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    require_delete_permission(user)
+    record = await get_archive_notification(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Извещение не найдено.")
+    try:
+        await delete_archive_notification(session, record)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "delete_failed"
+        return RedirectResponse(url=url_path(f"/documents/notifications/{record_id}?error={quote(detail)}"), status_code=303)
+    await session.commit()
+    return RedirectResponse(url=url_path("/documents?tab=notifications&success=deleted"), status_code=303)
+
+
+@app.get("/documents/orders/{record_id}", response_class=HTMLResponse)
+async def order_detail_page(
+    record_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    record = await get_archive_order(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Приказ не найден.")
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "order_detail.html",
+        {
+            "request": request,
+            "record": record,
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.get("/documents/orders/{record_id}/preview")
+async def order_preview(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_order(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    media = preview_media_type(record.file_path) or "application/octet-stream"
+    return FileResponse(path=record.file_path, media_type=media, content_disposition_type="inline")
+
+
+@app.get("/documents/orders/{record_id}/download")
+async def order_download(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_order(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    return FileResponse(path=record.file_path, filename=record.file_name)
+
+
+@app.post("/documents/orders/{record_id}/delete", response_class=RedirectResponse)
+async def delete_order_record(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    require_delete_permission(user)
+    record = await get_archive_order(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Приказ не найден.")
+    try:
+        await delete_archive_order(session, record)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "delete_failed"
+        return RedirectResponse(url=url_path(f"/documents/orders/{record_id}?error={quote(detail)}"), status_code=303)
+    await session.commit()
+    return RedirectResponse(url=url_path("/documents?tab=orders&success=deleted"), status_code=303)
 
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
@@ -2112,6 +2451,7 @@ async def project_detail_page(
             joinedload(Project.project_images),
             joinedload(Project.documents),
             joinedload(Project.products),
+            joinedload(Project.establishing_order),
         )
         .where(Project.id == project_id)
     )
@@ -2121,7 +2461,8 @@ async def project_detail_page(
 
     await sync_project_misc_files(session, project, user)
     await session.commit()
-    await session.refresh(project, ["project_files", "project_images", "documents", "products"])
+    await session.refresh(project, ["project_files", "project_images", "documents", "products", "establishing_order"])
+    available_orders = await list_available_archive_orders(session)
 
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
@@ -2130,6 +2471,8 @@ async def project_detail_page(
             "request": request,
             "project": project,
             "can_manage": can_manage_project(user),
+            "can_set_establishing_order": is_admin(user),
+            "available_orders": available_orders,
             "error": request.query_params.get("error"),
             "success": request.query_params.get("success"),
             "service_version": SERVICE_VERSION,
@@ -2204,6 +2547,32 @@ async def update_project(
         url=url_path(f"/projects/{project_id}?success=updated"),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@app.post("/projects/{project_id}/establishing-order", response_class=RedirectResponse)
+async def set_project_establishing_order(
+    project_id: int,
+    establishing_order_id: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    project = await get_project_by_id(session, project_id)
+    if establishing_order_id.strip():
+        try:
+            order_id = int(establishing_order_id)
+        except ValueError:
+            return RedirectResponse(url=url_path(f"/projects/{project_id}?error=order"), status_code=303)
+        order = await get_archive_order(session, order_id)
+        if not order:
+            return RedirectResponse(url=url_path(f"/projects/{project_id}?error=order"), status_code=303)
+        project.establishing_order_id = order.id
+    else:
+        project.establishing_order_id = None
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/projects/{project_id}?success=order"), status_code=303)
 
 
 @app.post("/projects/{project_id}/upload-file", response_class=RedirectResponse)
@@ -2399,7 +2768,9 @@ async def profile_page(
             "last_name": last_name,
             "first_name": first_name,
             "patronymic": patronymic,
-            "visible_columns": get_visible_columns(user),
+            "visible_columns": get_visible_columns(user, "documents"),
+            "visible_notification_columns": get_visible_columns(user, "notifications"),
+            "visible_order_columns": get_visible_columns(user, "orders"),
             "service_version": SERVICE_VERSION,
             "nav_context": "profile",
             "push_preferences": normalize_push_preferences(user.push_preferences),
@@ -2445,12 +2816,7 @@ async def handle_profile(
         )
 
     form_data = await request.form()
-    selected_columns = [
-        key for key, _ in DOCUMENT_COLUMNS if form_data.get(f"col_{key}") == "true"
-    ]
-    if not selected_columns:
-        selected_columns = list(DEFAULT_VISIBLE_COLUMNS)
-
+    user.visible_columns = merge_visible_columns(user, form_data)
     user.full_name = full_name
     user.position = position or None
     user.department = department
@@ -2475,7 +2841,6 @@ async def handle_profile(
         return RedirectResponse(url=url_path(f"/verify-email?login={user.login}&sent=1"), status_code=303)
     user.preferred_org_code = preferred_org_code.strip() or None
     user.preferred_org_okpo = preferred_org_okpo == "true"
-    user.visible_columns = selected_columns
 
     push_prefs = normalize_push_preferences(user.push_preferences)
     push_prefs["enabled"] = form_data.get("push_enabled") == "true"

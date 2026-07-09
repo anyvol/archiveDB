@@ -122,11 +122,25 @@
                 <small id="org-name-hint"></small>
             </div>
 
-            <h2 class="section-heading">Отображение колонок в списке документов</h2>
-            <p class="section-intro"><small>Выберите колонки, которые будут показаны в таблице документов.</small></p>
+            <h2 class="section-heading">Отображение колонок в списке документов (КД и ТД)</h2>
+            <p class="section-intro"><small>Выберите колонки, которые будут показаны в таблице конструкторской и технологической документации.</small></p>
             <div class="columns-grid">
                 {% for key, label in DOCUMENT_COLUMNS %}
-                <label><input type="checkbox" name="col_{{ key }}" value="true" {% if key in visible_columns %}checked{% endif %}> {{ label }}</label>
+                <label><input type="checkbox" name="col_documents_{{ key }}" value="true" {% if key in visible_columns %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+
+            <h2 class="section-heading">Отображение колонок — извещения</h2>
+            <div class="columns-grid">
+                {% for key, label in NOTIFICATION_COLUMNS %}
+                <label><input type="checkbox" name="col_notifications_{{ key }}" value="true" {% if key in visible_notification_columns %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+
+            <h2 class="section-heading">Отображение колонок — приказы</h2>
+            <div class="columns-grid">
+                {% for key, label in ORDER_COLUMNS %}
+                <label><input type="checkbox" name="col_orders_{{ key }}" value="true" {% if key in visible_order_columns %}checked{% endif %}> {{ label }}</label>
                 {% endfor %}
             </div>
 

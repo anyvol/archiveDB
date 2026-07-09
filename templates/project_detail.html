@@ -122,6 +122,31 @@
         {% endif %}
 
         <div class="card">
+            <h2>Устанавливающий документ</h2>
+            {% if project.establishing_order %}
+            <p><a href="{{ url_path('/documents/orders/' ~ project.establishing_order.id) }}">Приказ № {{ project.establishing_order.number }} — {{ project.establishing_order.name }}</a></p>
+            {% elif can_set_establishing_order %}
+            <p class="hint" style="color:#6c757d;">Устанавливающий документ не выбран</p>
+            {% else %}
+            <p class="hint" style="color:#6c757d;">Устанавливающий документ не выбран</p>
+            {% endif %}
+            {% if can_set_establishing_order %}
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/establishing-order') }}" style="margin-top: 1rem;">
+                <div class="form-group">
+                    <label for="establishing_order_id">Приказ из архива</label>
+                    <select id="establishing_order_id" name="establishing_order_id" style="width:100%; max-width:480px; padding:0.5rem; box-sizing:border-box;">
+                        <option value="">— не выбран —</option>
+                        {% for order in available_orders %}
+                        <option value="{{ order.id }}" {% if project.establishing_order_id == order.id %}selected{% endif %}>№ {{ order.number }} — {{ order.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="card">
             <h2>Документы проекта</h2>
             <p class="hint">Документы хранятся в папке «Прочие документы» проекта на сервере.</p>
             {% if project.project_files %}

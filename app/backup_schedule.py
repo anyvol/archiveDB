@@ -19,6 +19,7 @@ class BackupScheduleConfig(BaseModel):
     interval_hours: int = Field(default=24, ge=1, le=168)
     backup_db: bool = True
     backup_files: bool = True
+    retention_days: int = Field(default=30, ge=1, le=365)
 
 
 DEFAULT_BACKUP_SCHEDULE = BackupScheduleConfig()
