@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 BACKUP_DIR = Path(os.getenv("BACKUP_DIR", "/backups"))
 UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", "/uploads"))
 RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
 TOKEN = os.getenv("BACKUP_AGENT_TOKEN", "").strip()
+SCHEDULE_FILE = BACKUP_DIR / "schedule.json"
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "archiveuser")
@@ -26,10 +29,22 @@ POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
 app = FastAPI(title="archiveDB backup-agent")
 security = HTTPBearer(auto_error=False)
 
+_schedule_lock = asyncio.Lock()
+_last_auto_run_at: datetime | None = None
+
 
 class BackupRunRequest(BaseModel):
     types: list[str]
     triggered_by: str = "system"
+
+
+class BackupScheduleRequest(BaseModel):
+    enabled: bool = False
+    mode: Literal["cron", "interval"] = "cron"
+    cron: str = "0 2 * * *"
+    interval_hours: int = Field(default=24, ge=1, le=168)
+    backup_db: bool = True
+    backup_files: bool = True
 
 
 def _auth(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> None:
@@ -37,6 +52,36 @@ def _auth(credentials: HTTPAuthorizationCredentials | None = Depends(security)) 
         return
     if credentials is None or credentials.credentials != TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _default_schedule() -> dict:
+    env_cron = os.getenv("BACKUP_SCHEDULE", "0 2 * * *").strip()
+    return {
+        "enabled": bool(env_cron),
+        "mode": "cron",
+        "cron": env_cron or "0 2 * * *",
+        "interval_hours": 24,
+        "backup_db": True,
+        "backup_files": True,
+    }
+
+
+def _load_schedule() -> dict:
+    if SCHEDULE_FILE.exists():
+        try:
+            data = json.loads(SCHEDULE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {**_default_schedule(), **data}
+        except Exception:
+            pass
+    return _default_schedule()
+
+
+def _save_schedule(data: dict) -> dict:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    merged = {**_default_schedule(), **data}
+    SCHEDULE_FILE.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    return merged
 
 
 def _sha256(path: Path) -> str:
@@ -144,6 +189,104 @@ def _list_backups() -> list[dict]:
     return items
 
 
+def _cron_matches(cron: str, moment: datetime) -> bool:
+    parts = cron.strip().split()
+    if len(parts) != 5:
+        return False
+    minute, hour, dom, month, dow = parts
+
+    def _match(field: str, value: int) -> bool:
+        if field == "*":
+            return True
+        if field.isdigit():
+            return int(field) == value
+        if field.startswith("*/"):
+            step = int(field[2:])
+            return value % step == 0
+        return False
+
+    return (
+        _match(minute, moment.minute)
+        and _match(hour, moment.hour)
+        and _match(dom, moment.day)
+        and _match(month, moment.month)
+        and (dow == "*" or _match(dow, moment.weekday()))
+    )
+
+
+def _schedule_types(schedule: dict) -> list[str]:
+    types: list[str] = []
+    if schedule.get("backup_db", True):
+        types.append("db")
+    if schedule.get("backup_files", True):
+        types.append("files")
+    return types
+
+
+def _interval_due(schedule: dict, last_run: datetime | None, now: datetime) -> bool:
+    if last_run is None:
+        return True
+    hours = int(schedule.get("interval_hours", 24))
+    return now - last_run >= timedelta(hours=hours)
+
+
+async def _auto_backup_loop() -> None:
+    global _last_auto_run_at
+    while True:
+        try:
+            await asyncio.sleep(60)
+            schedule = _load_schedule()
+            if not schedule.get("enabled"):
+                continue
+
+            types = _schedule_types(schedule)
+            if not types:
+                continue
+
+            now = datetime.utcnow()
+            due = False
+            if schedule.get("mode") == "interval":
+                due = _interval_due(schedule, _last_auto_run_at, now)
+            else:
+                due = _cron_matches(str(schedule.get("cron", "0 2 * * *")), now)
+
+            if not due:
+                continue
+
+            async with _schedule_lock:
+                if schedule.get("mode") == "interval":
+                    if not _interval_due(schedule, _last_auto_run_at, now):
+                        continue
+                elif not _cron_matches(str(schedule.get("cron", "0 2 * * *")), now):
+                    continue
+
+                await asyncio.to_thread(_run_backup, types, "auto-schedule")
+                _last_auto_run_at = now
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            continue
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    if not SCHEDULE_FILE.exists():
+        _save_schedule(_default_schedule())
+    app.state.auto_backup_task = asyncio.create_task(_auto_backup_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    task = getattr(app.state, "auto_backup_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
 @app.post("/backup/run")
 def run_backup(body: BackupRunRequest, _: None = Depends(_auth)) -> dict:
     allowed = [t for t in body.types if t in ("db", "files")]
@@ -158,6 +301,11 @@ def list_backups(_: None = Depends(_auth)) -> list[dict]:
     return _list_backups()
 
 
-@app.on_event("startup")
-def startup() -> None:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+@app.get("/backup/schedule")
+def get_schedule(_: None = Depends(_auth)) -> dict:
+    return _load_schedule()
+
+
+@app.post("/backup/schedule")
+def set_schedule(body: BackupScheduleRequest, _: None = Depends(_auth)) -> dict:
+    return _save_schedule(body.model_dump())

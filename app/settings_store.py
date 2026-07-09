@@ -12,6 +12,8 @@ from app.models import SystemSetting
 
 SETTING_APP_TIMEZONE = "app_timezone"
 SETTING_SMTP = "smtp"
+SETTING_ROLE_PERMISSIONS = "role_permissions"
+SETTING_BACKUP_SCHEDULE = "backup_schedule"
 DEFAULT_APP_TIMEZONE = "UTC"
 
 

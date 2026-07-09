@@ -207,7 +207,7 @@
                                 {{ entry.product.name }}
                             </div>
                         </div>
-                        {% if is_admin(user) %}
+                        {% if can_remove_applicability(user) %}
                         <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/applicability/' ~ entry.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить применяемость в проекте «{{ entry.product.project.name|e }}», изделие «{{ entry.product.name|e }}»?');">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
@@ -229,7 +229,7 @@
                     {% set target_designation = target.design_document.designation if target.design_document else (target.tech_document.designation if target.tech_document else ('#' ~ target.id)) %}
                     <li>
                         <a href="{{ url_path('/documents/' ~ target.id) }}">{{ target_designation }}{% if target.doc_name %} — {{ target.doc_name }}{% endif %}</a>
-                        {% if is_admin(user) %}
+                        {% if can_remove_document_links(user) %}
                         <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить ссылку?');">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
@@ -239,6 +239,23 @@
                 </ul>
                 {% else %}
                 <p class="hint">Ссылки на другие записи не добавлены.</p>
+                {% endif %}
+            </div>
+
+            <div class="record-section">
+                <div class="record-label">Обратные ссылки</div>
+                {% if incoming_links %}
+                <ul class="record-list">
+                    {% for link in incoming_links %}
+                    {% set source = link.source_document %}
+                    {% set source_designation = source.design_document.designation if source.design_document else (source.tech_document.designation if source.tech_document else ('#' ~ source.id)) %}
+                    <li>
+                        <a href="{{ url_path('/documents/' ~ source.id) }}">{{ source_designation }}{% if source.doc_name %} — {{ source.doc_name }}{% endif %}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="hint">На эту запись не ссылаются другие записи.</p>
                 {% endif %}
             </div>
 
@@ -263,8 +280,12 @@
                 <button type="button" class="btn btn-success" id="open-approve-modal">Одобрить запрос</button>
                 <button type="button" class="btn btn-danger" id="open-reject-modal">Отклонить запрос</button>
                 {% endif %}
+                {% if can_add_applicability(user) %}
                 <button type="button" class="btn btn-secondary" id="open-applicability-modal">Применяемость</button>
+                {% endif %}
+                {% if can_add_document_links(user) %}
                 <button type="button" class="btn btn-secondary" id="open-links-modal">Ссылки</button>
+                {% endif %}
                 {% if can_set_document_status(user) and doc.status.value == 'pending_review' %}
                 <button type="button" class="btn btn-danger" id="btn-send-correction">Требуется исправление</button>
                 {% endif %}
@@ -275,6 +296,9 @@
                 {% endif %}
                 {% if doc.file_name %}
                 <a class="btn btn-secondary" href="{{ url_path('/documents/' ~ doc.id ~ '/download') }}">Скачать файл</a>
+                {% endif %}
+                {% if can_delete_document(user) %}
+                <button type="button" class="btn btn-danger" id="open-delete-modal">Удалить запись</button>
                 {% endif %}
                 </div>
             </div>
@@ -405,6 +429,7 @@
     </div>
     {% endif %}
 
+    {% if can_add_applicability(user) %}
     <div class="modal-overlay" id="applicability-modal">
         <div class="modal">
             <h3>Применяемость</h3>
@@ -439,7 +464,9 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 
+    {% if can_add_document_links(user) %}
     <div class="modal-overlay" id="links-modal">
         <div class="modal">
             <h3>Ссылки на записи</h3>
@@ -460,6 +487,27 @@
             </form>
         </div>
     </div>
+    {% endif %}
+
+    {% if can_delete_document(user) %}
+    <div class="modal-overlay" id="delete-modal">
+        <div class="modal">
+            <h3>Удаление документа</h3>
+            <p class="hint">Документ: {{ designation }}{% if doc.doc_name %} — {{ doc.doc_name }}{% endif %}</p>
+            <p class="hint">Укажите причину удаления. Комментарий будет отправлен в уведомлениях.</p>
+            <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/delete') }}">
+                <div class="form-group">
+                    <label for="delete-comment">Причина удаления</label>
+                    <textarea id="delete-comment" name="comment" rows="4" required placeholder="Причина удаления…"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="modal-overlay" id="title-modal">
         <div class="modal">
@@ -517,6 +565,12 @@
                 const text = titleModalText.textContent || '';
                 if (navigator.clipboard && text) await navigator.clipboard.writeText(text);
             });
+        }
+
+        const openDeleteBtn = document.getElementById('open-delete-modal');
+        const deleteModal = document.getElementById('delete-modal');
+        if (openDeleteBtn && deleteModal) {
+            openDeleteBtn.addEventListener('click', () => deleteModal.classList.add('active'));
         }
 
         const applicabilityModal = document.getElementById('applicability-modal');

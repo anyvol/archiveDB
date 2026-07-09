@@ -2,9 +2,46 @@
 {% block title %}Бекапы{% endblock %}
 {% block content %}
 <h2>Бекапы</h2>
-{% if success %}<div class="alert alert-success">Бекап запущен или завершён.</div>{% endif %}
-{% if error %}<div class="alert alert-error">Ошибка при создании бекапа.</div>{% endif %}
+{% if success == '1' %}<div class="alert alert-success">Бекап запущен или завершён.</div>{% endif %}
+{% if success == 'schedule' %}<div class="alert alert-success">Расписание автоматических бекапов сохранено.</div>{% endif %}
+{% if error == 'run' %}<div class="alert alert-error">Ошибка при создании бекапа.</div>{% endif %}
+{% if error == 'types' %}<div class="alert alert-error">Выберите хотя бы один тип бекапа.</div>{% endif %}
+{% if error == 'schedule_mode' %}<div class="alert alert-error">Некорректный режим расписания.</div>{% endif %}
+{% if error == 'schedule_types' %}<div class="alert alert-error">Для автоматического бекапа выберите базу данных и/или файлы.</div>{% endif %}
+{% if error == 'schedule_apply' %}<div class="alert alert-error">Настройки сохранены в базе, но не удалось применить их к сервису бекапов.</div>{% endif %}
+
 <div class="card">
+    <h3>Автоматические бекапы</h3>
+    <form method="post" action="{{ url_path('/admin/backups/schedule') }}">
+        <div class="form-group">
+            <label><input type="checkbox" name="enabled" value="true" {% if schedule.enabled %}checked{% endif %}> Включить автоматические бекапы</label>
+        </div>
+        <div class="form-group">
+            <label for="schedule-mode">Режим</label>
+            <select id="schedule-mode" name="mode">
+                <option value="cron" {% if schedule.mode == 'cron' %}selected{% endif %}>По расписанию (cron)</option>
+                <option value="interval" {% if schedule.mode == 'interval' %}selected{% endif %}>По интервалу</option>
+            </select>
+        </div>
+        <div class="form-group" id="cron-group">
+            <label for="schedule-cron">Cron-выражение (мин час день месяц день_недели, UTC)</label>
+            <input type="text" id="schedule-cron" name="cron" value="{{ schedule.cron }}" placeholder="0 2 * * *">
+            <p style="font-size:0.85rem;color:#6c757d;margin:0.35rem 0 0;">Пример: <code>0 2 * * *</code> — каждый день в 02:00 UTC.</p>
+        </div>
+        <div class="form-group" id="interval-group">
+            <label for="schedule-interval">Интервал (часы)</label>
+            <input type="number" id="schedule-interval" name="interval_hours" min="1" max="168" value="{{ schedule.interval_hours }}">
+        </div>
+        <div class="form-group">
+            <label><input type="checkbox" name="backup_db" value="true" {% if schedule.backup_db %}checked{% endif %}> Бекап базы данных</label><br>
+            <label><input type="checkbox" name="backup_files" value="true" {% if schedule.backup_files %}checked{% endif %}> Бекап загруженных файлов</label>
+        </div>
+        <button type="submit" class="btn">Сохранить расписание</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Ручной бекап</h3>
     <p>Каталог на хосте: <code>{{ backup_host_path }}</code></p>
     <p>Для WSL укажите путь на диск Windows, например <code>/mnt/c/ArchiveDB/backups</code> в <code>BACKUP_HOST_PATH</code>.</p>
     <form method="post" action="{{ url_path('/admin/backups/run') }}">
@@ -13,6 +50,7 @@
         <button type="submit" class="btn">Создать бекап</button>
     </form>
 </div>
+
 <div class="card">
     <h3>История</h3>
     <table>
@@ -31,4 +69,19 @@
         {% endfor %}
     </table>
 </div>
+
+<script>
+    const modeSelect = document.getElementById('schedule-mode');
+    const cronGroup = document.getElementById('cron-group');
+    const intervalGroup = document.getElementById('interval-group');
+    function updateScheduleFields() {
+        const mode = modeSelect ? modeSelect.value : 'cron';
+        if (cronGroup) cronGroup.style.display = mode === 'cron' ? 'block' : 'none';
+        if (intervalGroup) intervalGroup.style.display = mode === 'interval' ? 'block' : 'none';
+    }
+    if (modeSelect) {
+        modeSelect.addEventListener('change', updateScheduleFields);
+        updateScheduleFields();
+    }
+</script>
 {% endblock %}

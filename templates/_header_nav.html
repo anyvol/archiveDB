@@ -100,6 +100,7 @@
         </button>
         <div class="header-menu-dropdown" role="menu">
             <div class="header-menu-user">Вы вошли как {{ user.full_name or user.login }}</div>
+            <a href="{{ url_path('/documents') }}" role="menuitem">Документы</a>
             {% if user.role.value == 'master_admin' %}
             <a href="{{ url_path('/admin') }}" role="menuitem">Администрирование</a>
             {% endif %}
