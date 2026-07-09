@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.19.0
+
+- **Record card — backlinks:** after the «Ссылки» block, the card shows «Обратные ссылки» — records that reference the current document (automatically derived from incoming links).
+- **Record card — actions:** all commands from the archive context menu are available on the card, including «Удалить запись» for administrators.
+- **Administration — role permissions:** new «Права доступа» page to configure function access per role (`user`, `reviewer`, `admin`); `master_admin` always has full access.
+- **Administration — automatic backups:** configure scheduled backups by cron expression or interval (hours), with separate toggles for database and file backups; settings are stored in the database and applied to the backup service.
+
 ## 0.18.1
 
 - **Project archive download:** fixed a 500 error when downloading archives for projects whose slug contains non-ASCII characters (Cyrillic in `Content-Disposition`).

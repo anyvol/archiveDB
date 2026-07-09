@@ -27,6 +27,27 @@ async def trigger_backup(types: list[str], triggered_by: str) -> dict:
         return response.json()
 
 
+async def get_remote_backup_schedule() -> dict | None:
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(f"{BACKUP_AGENT_URL}/backup/schedule", headers=_headers())
+            response.raise_for_status()
+            return response.json()
+    except Exception:
+        return None
+
+
+async def apply_remote_backup_schedule(schedule: dict) -> dict:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{BACKUP_AGENT_URL}/backup/schedule",
+            json=schedule,
+            headers=_headers(),
+        )
+        response.raise_for_status()
+        return response.json()
+
+
 async def list_remote_backups() -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

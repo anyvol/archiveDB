@@ -32,8 +32,17 @@ from app.settings_store import (
     get_smtp_config,
     set_setting,
 )
+from app.role_permissions import (
+    CONFIGURABLE_ROLES,
+    PERMISSION_DEFINITIONS,
+    get_cached_role_permissions,
+    load_role_permissions,
+    save_role_permissions,
+)
+from app.backup_schedule import BackupScheduleConfig, get_backup_schedule, save_backup_schedule
 from app.timezone_utils import common_timezones, format_datetime
 from app.admin.services.backups import (
+    apply_remote_backup_schedule,
     backup_host_path_display,
     list_remote_backups,
     sync_backup_records,
@@ -415,6 +424,7 @@ async def admin_backups(
     await sync_backup_records(session, remote)
     result = await session.execute(select(BackupRecord).order_by(BackupRecord.created_at.desc()))
     records = result.scalars().all()
+    schedule = await get_backup_schedule(session)
     ctx = await _admin_context(session, user, "backups")
     return templates.TemplateResponse(
         "admin/backups.html",
@@ -425,6 +435,7 @@ async def admin_backups(
             "format_bytes": format_bytes,
             "format_datetime": format_datetime,
             "timezone": await get_app_timezone(session),
+            "schedule": schedule,
             "success": request.query_params.get("success"),
             "error": request.query_params.get("error"),
             **ctx,
@@ -460,6 +471,103 @@ async def admin_run_backup(
         logger.exception("Backup failed")
         return _see_other(url_path("/admin/backups?error=run"))
     return _see_other(url_path("/admin/backups?success=1"))
+
+
+@router.post("/backups/schedule")
+async def admin_save_backup_schedule(
+    enabled: str = Form("false"),
+    mode: str = Form("cron"),
+    cron: str = Form("0 2 * * *"),
+    interval_hours: int = Form(24),
+    backup_db: str = Form("false"),
+    backup_files: str = Form("false"),
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    if mode not in ("cron", "interval"):
+        return _see_other(url_path("/admin/backups?error=schedule_mode"))
+
+    config = BackupScheduleConfig(
+        enabled=enabled == "true",
+        mode=mode,  # type: ignore[arg-type]
+        cron=cron.strip() or "0 2 * * *",
+        interval_hours=max(1, min(interval_hours, 168)),
+        backup_db=backup_db == "true",
+        backup_files=backup_files == "true",
+    )
+    if config.enabled and not config.backup_db and not config.backup_files:
+        return _see_other(url_path("/admin/backups?error=schedule_types"))
+
+    await save_backup_schedule(session, config, updated_by_id=user.id)
+    try:
+        await apply_remote_backup_schedule(config.model_dump())
+    except Exception:
+        logger.exception("Failed to apply backup schedule to agent")
+        return _see_other(url_path("/admin/backups?error=schedule_apply"))
+    return _see_other(url_path("/admin/backups?success=schedule"))
+
+
+@router.get("/permissions", response_class=HTMLResponse)
+async def admin_permissions(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    matrix = await load_role_permissions(session)
+    ctx = await _admin_context(session, user, "permissions")
+    return templates.TemplateResponse(
+        "admin/permissions.html",
+        {
+            "request": request,
+            "permissions": PERMISSION_DEFINITIONS,
+            "roles": CONFIGURABLE_ROLES,
+            "matrix": matrix,
+            "success": request.query_params.get("success"),
+            "error": request.query_params.get("error"),
+            **ctx,
+        },
+    )
+
+
+@router.post("/permissions")
+async def admin_permissions_save(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    form = await request.form()
+    matrix = get_cached_role_permissions()
+    updated: dict[str, dict[str, bool]] = {}
+    for role in CONFIGURABLE_ROLES:
+        role_key = role.value
+        updated[role_key] = {}
+        for perm in PERMISSION_DEFINITIONS:
+            key = perm["key"]
+            updated[role_key][key] = f"perm_{role_key}_{key}" in form
+
+    await save_role_permissions(session, updated, updated_by_id=user.id)
+    return _see_other(url_path("/admin/permissions?success=1"))
 
 
 @router.get("/mailer", response_class=HTMLResponse)
