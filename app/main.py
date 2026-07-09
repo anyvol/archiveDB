@@ -2946,7 +2946,6 @@ async def handle_profile(
     user.preferred_org_okpo = preferred_org_okpo == "true"
 
     push_prefs = normalize_push_preferences(user.push_preferences)
-    push_prefs["enabled"] = form_data.get("push_enabled") == "true"
     for key in DEFAULT_PUSH_PREFERENCES:
         if key == "enabled":
             continue

@@ -22,8 +22,9 @@
         .notification-item a.notification-link:hover .notification-message { text-decoration: underline; }
         .notification-time { color: #6c757d; font-size: 0.85rem; margin-top: 0.35rem; }
         .empty { padding: 2rem; text-align: center; color: #6c757d; }
-        .load-more-wrap { padding: 1rem; text-align: center; border-top: 1px solid #eee; }
+        .load-more-wrap { padding: 1rem; text-align: center; border-top: 1px solid #eee; display: flex; justify-content: center; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
         .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem; background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
         .btn:disabled { background: #6c757d; cursor: not-allowed; }
         .version-tag { font-size: 0.75rem; opacity: 0.85; margin-left: 0.5rem; }
         .version-tag-link { color: inherit; opacity: inherit; font-size: inherit; font-weight: inherit; text-decoration: underline; margin-left: 0.35rem; }
@@ -55,7 +56,8 @@
             </div>
             {% if has_more %}
             <div class="load-more-wrap">
-                <button type="button" class="btn" id="load-more-btn">Загрузить ещё {{ notifications_page_size }}</button>
+                <button type="button" class="btn load-more-btn" data-limit="{{ notifications_page_size }}">Загрузить ещё {{ notifications_page_size }}</button>
+                <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
             </div>
             {% endif %}
         </div>
@@ -64,10 +66,10 @@
         sessionStorage.setItem('last_notification_id', '{{ (notifications|map(attribute="id")|list|max) if notifications else 0 }}');
         sessionStorage.setItem('notifications_initialized', '1');
 
-        const loadMoreBtn = document.getElementById('load-more-btn');
+        const loadMoreWrap = document.querySelector('.load-more-wrap');
+        const loadMoreBtns = loadMoreWrap ? loadMoreWrap.querySelectorAll('.load-more-btn') : [];
         const itemsContainer = document.getElementById('notification-items');
         const emptyMessage = document.getElementById('empty-message');
-        const pageSize = {{ notifications_page_size }};
         let loadedCount = {{ notifications|length }};
         const listUrl = '{{ url_path('/api/notifications') }}';
         const documentUrlPrefix = '{{ url_path('/documents/') }}';
@@ -97,29 +99,40 @@
             itemsContainer.appendChild(item);
         }
 
-        if (loadMoreBtn) {
-            loadMoreBtn.addEventListener('click', async function() {
-                loadMoreBtn.disabled = true;
-                loadMoreBtn.textContent = 'Загрузка…';
-                try {
-                    const resp = await fetch(listUrl + '?offset=' + loadedCount + '&limit=' + pageSize);
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
-                    data.notifications.forEach(appendNotification);
-                    loadedCount += data.notifications.length;
-                    if (!data.has_more) {
-                        loadMoreBtn.parentElement.remove();
-                    } else {
-                        loadMoreBtn.disabled = false;
-                        loadMoreBtn.textContent = 'Загрузить ещё ' + pageSize;
-                    }
-                } catch (e) {
-                    loadMoreBtn.disabled = false;
-                    loadMoreBtn.textContent = 'Загрузить ещё ' + pageSize;
-                    alert('Не удалось загрузить уведомления.');
-                }
+        async function loadMoreNotifications(limit) {
+            if (!loadMoreWrap) return;
+            loadMoreBtns.forEach(function(btn) {
+                btn.disabled = true;
+                btn.textContent = 'Загрузка…';
             });
+            try {
+                const resp = await fetch(listUrl + '?offset=' + loadedCount + '&limit=' + limit);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                data.notifications.forEach(appendNotification);
+                loadedCount += data.notifications.length;
+                if (!data.has_more) {
+                    loadMoreWrap.remove();
+                } else {
+                    loadMoreBtns.forEach(function(btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Загрузить ещё ' + btn.dataset.limit;
+                    });
+                }
+            } catch (e) {
+                loadMoreBtns.forEach(function(btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Загрузить ещё ' + btn.dataset.limit;
+                });
+                alert('Не удалось загрузить уведомления.');
+            }
         }
+
+        loadMoreBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                loadMoreNotifications(parseInt(btn.dataset.limit, 10));
+            });
+        });
     </script>
 </body>
 </html>

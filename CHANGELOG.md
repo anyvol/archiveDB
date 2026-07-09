@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.23.2
+
+- **Profile — column visibility:** saving column checkboxes in the personal account now persists correctly (SQLAlchemy JSON column change detection).
+- **Profile — push notifications:** removed separate «Подключить push» / «Отключить push» buttons and the duplicate «Включить push-уведомления» checkbox; the status banner is now a single toggle button.
+- **Profile — actions:** «Сохранить» and «Вернуться» buttons are larger, centered, separated by a divider, and placed lower for better visibility.
+- **Filters:** «Сохранить фильтры» checkbox is vertically aligned with «Применить фильтры» and «Сбросить».
+- **Documents and notifications lists:** added a «Загрузить ещё 100» button next to the default load-more control for bulk pagination.
+
 ## 0.23.1
 
 - **Applicability — verify/propagate fix:** child records are checked only by explicit applicability entries (not by their own product assignment). When syncing from a parent, applicability entries are created even when the target product matches the child's own product, so linked records show parent applicability in the card block.
