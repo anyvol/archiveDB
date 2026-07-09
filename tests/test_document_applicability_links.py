@@ -6,9 +6,11 @@ from fastapi import HTTPException
 
 from app.document_applicability import (
     add_document_applicability,
+    add_document_applicability_many,
     build_applicability_modal_options,
     copy_document_to_product,
     get_available_applicability_products,
+    propagate_applicability_to_outgoing_links,
 )
 from app.document_links import add_document_links, search_documents_by_designation
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Product, Project, User, UserRole
@@ -176,3 +178,82 @@ def test_build_applicability_modal_options_groups_products_by_project():
     assert [item["name"] for item in options] == ["Alpha", "Beta"]
     assert options[0]["products"] == [{"id": 10, "name": "P-A1"}, {"id": 11, "name": "P-A2"}]
     assert options[1]["products"] == [{"id": 20, "name": "P-B1"}]
+
+
+@pytest.mark.asyncio
+async def test_propagate_applicability_to_outgoing_links_adds_missing():
+    source = _doc_with_file(project_id=1, product_id=10)
+    target = _doc_with_file(project_id=1, product_id=11)
+    target.id = 20
+    target.design_document = DesignDocument(designation="TEST.000002.001СБ", doc_kind_code="СБ")
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    link = MagicMock()
+    link.target_document = target
+
+    product_id_calls = {"count": 0}
+    session = AsyncMock()
+
+    async def execute_side_effect(_stmt):
+        result = MagicMock()
+        product_id_calls["count"] += 1
+        result.all.return_value = [(30,)] if product_id_calls["count"] == 1 else []
+        return result
+
+    session.execute = AsyncMock(side_effect=execute_side_effect)
+
+    add_mock = AsyncMock()
+
+    with patch("app.document_applicability.get_outgoing_links", new_callable=AsyncMock, return_value=[link]), patch(
+        "app.document_applicability.add_document_applicability", add_mock
+    ):
+        results = await propagate_applicability_to_outgoing_links(session, source, user)
+
+    assert len(results) == 1
+    assert results[0]["target_id"] == 20
+    assert results[0]["success"] is True
+    add_mock.assert_awaited_once_with(session, target, 30, user)
+
+
+@pytest.mark.asyncio
+async def test_add_document_applicability_many_calls_propagation(tmp_path):
+    source_file = tmp_path / "source.pdf"
+    source_file.write_bytes(b"pdf-content")
+    doc = _doc_with_file(project_id=1, product_id=10)
+    doc.file_path = str(source_file)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    project = Project(id=2, name="Target", slug="target")
+    product = Product(id=20, project_id=2, name="Target product", slug="target-product", project=project)
+
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=product)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+
+    async def execute_side_effect(stmt):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        result.all.return_value = []
+        unique = MagicMock()
+        unique.all.return_value = []
+        scalars = MagicMock()
+        scalars.unique.return_value = unique
+        result.scalars.return_value = scalars
+        return result
+
+    session.execute = AsyncMock(side_effect=execute_side_effect)
+
+    with patch("app.document_applicability.UPLOAD_DIR", str(tmp_path)), patch(
+        "app.document_applicability.log_change_event", new_callable=AsyncMock
+    ), patch("app.document_applicability.notify_document_edit", new_callable=AsyncMock), patch(
+        "app.document_applicability.propagate_applicability_to_outgoing_links",
+        new_callable=AsyncMock,
+        return_value=[{"target_id": 99, "designation": "LINK.001", "product_id": 20, "success": True}],
+    ) as propagate:
+        created, propagated = await add_document_applicability_many(session, doc, [20], user)
+
+    assert len(created) == 1
+    propagate.assert_awaited_once()
+    assert propagated[0]["designation"] == "LINK.001"

@@ -57,7 +57,7 @@ from app.auth import (
     SESSION_EXPIRED_DETAIL,
     cookie_path,
 )
-from app.session_helpers import resolve_authenticated_user, session_expired_response
+from app.session_helpers import resolve_authenticated_user, session_expired_response, wants_json_response
 from app.document_queries import DOCUMENTS_PAGE_SIZE, fetch_documents
 from app.document_helpers import (
     save_upload_file,
@@ -1601,12 +1601,22 @@ async def add_applicability_route(
 
     try:
         from app.document_applicability import add_document_applicability_many
-        await add_document_applicability_many(session, doc, product_ids, user)
+        _created, propagated = await add_document_applicability_many(session, doc, product_ids, user)
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
+        if wants_json_response(request):
+            return JSONResponse(status_code=exc.status_code, content={"detail": detail})
         return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
 
     await session.commit()
+    if wants_json_response(request):
+        return JSONResponse(
+            {
+                "success": True,
+                "redirect_url": url_path(f"/documents/{doc_id}?success=applicability_added"),
+                "propagated": propagated,
+            }
+        )
     return RedirectResponse(
         url=url_path(f"/documents/{doc_id}?success=applicability_added"),
         status_code=status.HTTP_303_SEE_OTHER,

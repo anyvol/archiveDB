@@ -76,6 +76,18 @@
         .applicability-target { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
         .applicability-collapse summary { cursor: pointer; font-weight: 600; color: #007bff; margin-bottom: 0.5rem; }
         .applicability-products-grid { display: grid; gap: 0.35rem; max-height: 220px; overflow: auto; margin-top: 0.5rem; }
+        .applicability-product-label { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; user-select: none; }
+        .applicability-product-label:hover { background: #f0f7ff; }
+        .applicability-product-label.selected { background: #d4edda; }
+        .applicability-product-label.selected .applicability-product-name { color: #155724; font-weight: 500; }
+        .applicability-product-name { flex: 1; }
+        .applicability-progress-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 4000; align-items: center; justify-content: center; padding: 1rem; }
+        .applicability-progress-overlay.active { display: flex; }
+        .applicability-progress-card { background: white; border-radius: 8px; max-width: 420px; width: 100%; padding: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); text-align: center; }
+        .applicability-progress-spinner { width: 40px; height: 40px; margin: 0 auto 1rem; border: 3px solid #e9ecef; border-top-color: #007bff; border-radius: 50%; animation: applicability-spin 0.9s linear infinite; }
+        @keyframes applicability-spin { to { transform: rotate(360deg); } }
+        .applicability-progress-links { margin-top: 0.75rem; font-size: 0.85rem; color: #495057; text-align: left; max-height: 140px; overflow: auto; }
+        .applicability-progress-links li { padding: 0.2rem 0; }
         .record-list a { color: #0056b3; text-decoration: none; }
         .record-list a:hover { text-decoration: underline; }
         .search-results { max-height: 240px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem; }
@@ -471,6 +483,15 @@
     </div>
     {% endif %}
 
+    <div class="applicability-progress-overlay" id="applicability-progress-overlay" aria-hidden="true">
+        <div class="applicability-progress-card">
+            <div class="applicability-progress-spinner" aria-hidden="true"></div>
+            <h3 style="margin:0 0 0.5rem; font-size:1.05rem;">Обновление применяемости в ссылках</h3>
+            <p class="hint" style="margin:0;">Проверка ссылок и копирование файлов…</p>
+            <ul class="applicability-progress-links" id="applicability-progress-links" hidden></ul>
+        </div>
+    </div>
+
     {% if can_add_document_links(user) %}
     <div class="modal-overlay" id="links-modal">
         <div class="modal">
@@ -525,6 +546,7 @@
         </div>
     </div>
 
+    <script src="{{ url_path('/static/session.js') }}"></script>
     <script>
         document.querySelectorAll('.modal-cancel').forEach(btn => {
             btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.remove('active'));
@@ -591,6 +613,9 @@
             if (!applicabilityProductsBox) return;
             applicabilityProductsBox.innerHTML = '<p class="hint" style="margin:0;">Выберите проект, чтобы увидеть изделия.</p>';
         }
+        function updateApplicabilityProductLabel(label, input) {
+            label.classList.toggle('selected', input.checked);
+        }
         function populateApplicabilityProducts(projectId) {
             if (!applicabilityProductsBox) return;
             resetApplicabilityProducts();
@@ -599,13 +624,23 @@
             applicabilityProductsBox.innerHTML = '';
             project.products.forEach(product => {
                 const label = document.createElement('label');
-                label.style.display = 'block';
+                label.className = 'applicability-product-label';
                 const input = document.createElement('input');
                 input.type = 'checkbox';
                 input.name = 'product_ids';
                 input.value = String(product.id);
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'applicability-product-name';
+                nameSpan.textContent = product.name;
                 label.appendChild(input);
-                label.appendChild(document.createTextNode(' ' + product.name));
+                label.appendChild(nameSpan);
+                input.addEventListener('change', () => updateApplicabilityProductLabel(label, input));
+                label.addEventListener('click', (e) => {
+                    if (e.target === input) return;
+                    e.preventDefault();
+                    input.checked = !input.checked;
+                    updateApplicabilityProductLabel(label, input);
+                });
                 applicabilityProductsBox.appendChild(label);
             });
         }
@@ -614,12 +649,85 @@
                 populateApplicabilityProducts(applicabilityProjectSelect.value);
             });
         }
+        const applicabilityProgressOverlay = document.getElementById('applicability-progress-overlay');
+        const applicabilityProgressLinks = document.getElementById('applicability-progress-links');
+        function showApplicabilityProgress() {
+            if (!applicabilityProgressOverlay) return;
+            if (applicabilityProgressLinks) {
+                applicabilityProgressLinks.innerHTML = '';
+                applicabilityProgressLinks.hidden = true;
+            }
+            applicabilityProgressOverlay.classList.add('active');
+            applicabilityProgressOverlay.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+        function hideApplicabilityProgress() {
+            if (!applicabilityProgressOverlay) return;
+            applicabilityProgressOverlay.classList.remove('active');
+            applicabilityProgressOverlay.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+        function showPropagatedLinks(propagated) {
+            if (!applicabilityProgressLinks || !propagated || !propagated.length) return;
+            const byDesignation = new Map();
+            propagated.forEach(item => {
+                if (!item.success) return;
+                const key = item.designation || ('#' + item.target_id);
+                byDesignation.set(key, (byDesignation.get(key) || 0) + 1);
+            });
+            if (!byDesignation.size) return;
+            applicabilityProgressLinks.innerHTML = '';
+            byDesignation.forEach((count, designation) => {
+                const li = document.createElement('li');
+                li.textContent = designation + (count > 1 ? ' (' + count + ' изделий)' : '');
+                applicabilityProgressLinks.appendChild(li);
+            });
+            applicabilityProgressLinks.hidden = false;
+        }
         if (applicabilityForm) {
-            applicabilityForm.addEventListener('submit', (e) => {
+            applicabilityForm.addEventListener('submit', async (e) => {
                 const checked = applicabilityForm.querySelectorAll('input[name="product_ids"]:checked');
                 if (!checked.length) {
                     e.preventDefault();
                     alert('Выберите хотя бы одно изделие.');
+                    return;
+                }
+                e.preventDefault();
+                showApplicabilityProgress();
+                const formData = new FormData(applicabilityForm);
+                const authFetch = window.SessionAuth && window.SessionAuth.authFetch;
+                try {
+                    const result = authFetch
+                        ? await authFetch(applicabilityForm.action, { method: 'POST', body: formData })
+                        : { response: await fetch(applicabilityForm.action, { method: 'POST', body: formData, credentials: 'same-origin', headers: { Accept: 'application/json' } }), sessionExpired: false, data: null };
+                    if (result.sessionExpired) {
+                        if (window.SessionAuth) window.SessionAuth.redirectToLogin();
+                        return;
+                    }
+                    const response = result.response;
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (!response.ok) {
+                            hideApplicabilityProgress();
+                            alert(data.detail || 'Не удалось добавить применяемость.');
+                            return;
+                        }
+                        showPropagatedLinks(data.propagated);
+                        window.setTimeout(() => {
+                            window.location.href = data.redirect_url || applicabilityForm.action.replace(/\/applicability$/, '') + '?success=applicability_added';
+                        }, data.propagated && data.propagated.some(item => item.success) ? 900 : 300);
+                        return;
+                    }
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                        return;
+                    }
+                    hideApplicabilityProgress();
+                    applicabilityForm.submit();
+                } catch (_err) {
+                    hideApplicabilityProgress();
+                    alert('Ошибка сети. Попробуйте снова.');
                 }
             });
         }

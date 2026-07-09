@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.21.0
+
+- **Applicability — propagation to links:** when applicability is added to a record, all outgoing links (not backlinks) are checked; if a linked record is missing applicability entries, they are added automatically with file copying. A blocking overlay with a progress animation is shown while the operation runs.
+- **Applicability modal:** product names are clickable (not only checkboxes); selected products are highlighted in green.
+- **Filters — session persistence:** the checkbox label is renamed to «Сохранить фильтры», shown in gray to the right of the checkbox.
+
 ## 0.20.0
 
 - **Documents page — tabs:** the main archive list is split into three tabs: «КД и ТД», «Извещения», and «Приказы». Each tab has its own filters, column visibility settings in the profile, and record cards with actions and preview.
