@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.document_helpers import _resolve_upload_subdirectory, _sanitize_storage_name
-from app.document_links import get_outgoing_links
+from app.document_links import get_transitive_outgoing_documents
 from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Product, User
 from app.notifications import get_document_designation, notify_document_edit
 from app.change_log import log_change_event
@@ -183,19 +183,15 @@ async def propagate_applicability_to_outgoing_links(
     doc: BaseDocument,
     user: User,
 ) -> list[ApplicabilityPropagationResult]:
-    """Ensure all outgoing link targets have the same applicability as the source record."""
+    """Ensure all documents in outgoing link branches have the same applicability as the source."""
     source_product_ids = await get_applicability_product_ids(session, doc.id)
     if not source_product_ids:
         return []
 
-    outgoing = await get_outgoing_links(session, doc.id)
+    linked_documents = await get_transitive_outgoing_documents(session, doc.id)
     results: list[ApplicabilityPropagationResult] = []
 
-    for link in outgoing:
-        target_doc = link.target_document
-        if not target_doc:
-            continue
-
+    for target_doc in linked_documents:
         existing = await get_applicability_product_ids(session, target_doc.id)
         missing = source_product_ids - existing
         if target_doc.product_id:

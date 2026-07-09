@@ -5,7 +5,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.21.0
 
-- **Applicability — propagation to links:** when applicability is added to a record, all outgoing links (not backlinks) are checked; if a linked record is missing applicability entries, they are added automatically with file copying. A blocking overlay with a progress animation is shown while the operation runs.
+- **Applicability — propagation to links:** when applicability is added to a record, all documents reachable via outgoing links (not backlinks) are traversed to the end of each branch (BFS); if a linked record is missing applicability entries, they are added automatically with file copying. A blocking overlay with a progress animation is shown while the operation runs.
 - **Applicability modal:** product names are clickable (not only checkboxes); selected products are highlighted in green.
 - **Filters — session persistence:** the checkbox label is renamed to «Сохранить фильтры», shown in gray to the right of the checkbox.
 
