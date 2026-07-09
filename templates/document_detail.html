@@ -74,7 +74,9 @@
         .applicability-item { align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #f1f3f5; }
         .applicability-item:last-child { border-bottom: none; }
         .applicability-target { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
-        .applicability-collapse summary { cursor: pointer; font-weight: 600; color: #007bff; margin-bottom: 0.5rem; }
+        .applicability-section-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+        .applicability-section-header .record-label { margin: 0; }
+        .btn-compact { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
         .applicability-products-grid { display: grid; gap: 0.35rem; max-height: 220px; overflow: auto; margin-top: 0.5rem; }
         .applicability-product-label { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; user-select: none; }
         .applicability-product-label:hover { background: #f0f7ff; }
@@ -114,6 +116,16 @@
         {% endif %}
         {% if success == 'applicability_added' %}
         <div class="success">Применяемость добавлена. Файл скопирован в папку изделия.</div>
+        {% elif success == 'applicability_verified' %}
+        <div class="success">Проверка завершена. Недостающая применяемость добавлена в дочерние записи.</div>
+        {% elif success == 'applicability_verify_ok' %}
+        <div class="success">Проверка завершена. Все дочерние записи уже имеют применяемость родительской записи.</div>
+        {% elif success == 'applicability_verify_no_links' %}
+        <div class="alert alert-warning">Проверка завершена. У записи нет исходящих ссылок на дочерние записи.</div>
+        {% elif success == 'applicability_verify_failed' %}
+        <div class="error">Не удалось добавить применяемость в дочерние записи. Убедитесь, что у дочерних записей загружены файлы.</div>
+        {% elif success == 'applicability_verify_partial' %}
+        <div class="alert alert-warning">Проверка завершена частично: применяемость добавлена не во все дочерние записи.</div>
         {% elif success == 'applicability_removed' %}
         <div class="success">Применяемость удалена.</div>
         {% elif success == 'links_added' %}
@@ -206,7 +218,12 @@
             </div>
 
             <div class="record-section">
-                <div class="record-label">Применяемость</div>
+                <div class="applicability-section-header">
+                    <div class="record-label">Применяемость</div>
+                    {% if can_add_applicability(user) %}
+                    <button type="button" class="btn btn-secondary btn-compact" id="verify-child-applicability"{% if not applicability_entries %} disabled title="Сначала добавьте применяемость к этой записи"{% endif %}>Проверить применяемость дочерних записей</button>
+                    {% endif %}
+                </div>
                 {% if applicability_entries %}
                 <details class="applicability-collapse"{% if applicability_entries|length > 0 %} style="margin-top:0.35rem;"{% endif %}>
                     <summary>Показать применяемость ({{ applicability_entries|length }})</summary>
@@ -247,7 +264,7 @@
                     <li>
                         <a href="{{ url_path('/documents/' ~ target.id) }}">{{ target_designation }}{% if target.doc_name %} — {{ target.doc_name }}{% endif %}</a>
                         {% if can_remove_document_links(user) %}
-                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить ссылку?');">
+                        <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links/' ~ link.id ~ '/delete') }}" class="link-delete-form" style="display:inline;" data-confirm="Удалить ссылку?">
                             <button type="submit" class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Удалить</button>
                         </form>
                         {% endif %}
@@ -483,12 +500,12 @@
     </div>
     {% endif %}
 
-    <div class="applicability-progress-overlay" id="applicability-progress-overlay" aria-hidden="true">
+    <div class="applicability-progress-overlay" id="sync-progress-overlay" aria-hidden="true">
         <div class="applicability-progress-card">
             <div class="applicability-progress-spinner" aria-hidden="true"></div>
-            <h3 style="margin:0 0 0.5rem; font-size:1.05rem;">Обновление применяемости в ссылках</h3>
-            <p class="hint" style="margin:0;">Проверка ссылок и копирование файлов…</p>
-            <ul class="applicability-progress-links" id="applicability-progress-links" hidden></ul>
+            <h3 id="sync-progress-title" style="margin:0 0 0.5rem; font-size:1.05rem;">Обновление данных</h3>
+            <p class="hint" id="sync-progress-hint" style="margin:0;">Пожалуйста, подождите…</p>
+            <ul class="applicability-progress-links" id="sync-progress-links" hidden></ul>
         </div>
     </div>
 
@@ -649,40 +666,82 @@
                 populateApplicabilityProducts(applicabilityProjectSelect.value);
             });
         }
-        const applicabilityProgressOverlay = document.getElementById('applicability-progress-overlay');
-        const applicabilityProgressLinks = document.getElementById('applicability-progress-links');
-        function showApplicabilityProgress() {
-            if (!applicabilityProgressOverlay) return;
-            if (applicabilityProgressLinks) {
-                applicabilityProgressLinks.innerHTML = '';
-                applicabilityProgressLinks.hidden = true;
+        const syncProgressOverlay = document.getElementById('sync-progress-overlay');
+        const syncProgressTitle = document.getElementById('sync-progress-title');
+        const syncProgressHint = document.getElementById('sync-progress-hint');
+        const syncProgressLinks = document.getElementById('sync-progress-links');
+        function showSyncProgress(title, hint) {
+            if (!syncProgressOverlay) return;
+            if (syncProgressTitle) syncProgressTitle.textContent = title || 'Обновление данных';
+            if (syncProgressHint) syncProgressHint.textContent = hint || 'Пожалуйста, подождите…';
+            if (syncProgressLinks) {
+                syncProgressLinks.innerHTML = '';
+                syncProgressLinks.hidden = true;
             }
-            applicabilityProgressOverlay.classList.add('active');
-            applicabilityProgressOverlay.setAttribute('aria-hidden', 'false');
+            syncProgressOverlay.classList.add('active');
+            syncProgressOverlay.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
         }
-        function hideApplicabilityProgress() {
-            if (!applicabilityProgressOverlay) return;
-            applicabilityProgressOverlay.classList.remove('active');
-            applicabilityProgressOverlay.setAttribute('aria-hidden', 'true');
+        function hideSyncProgress() {
+            if (!syncProgressOverlay) return;
+            syncProgressOverlay.classList.remove('active');
+            syncProgressOverlay.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
         }
-        function showPropagatedLinks(propagated) {
-            if (!applicabilityProgressLinks || !propagated || !propagated.length) return;
+        function showSyncProgressDesignations(items) {
+            if (!syncProgressLinks || !items || !items.length) return;
             const byDesignation = new Map();
-            propagated.forEach(item => {
+            items.forEach(item => {
                 if (!item.success) return;
                 const key = item.designation || ('#' + item.target_id);
                 byDesignation.set(key, (byDesignation.get(key) || 0) + 1);
             });
             if (!byDesignation.size) return;
-            applicabilityProgressLinks.innerHTML = '';
+            syncProgressLinks.innerHTML = '';
             byDesignation.forEach((count, designation) => {
                 const li = document.createElement('li');
                 li.textContent = designation + (count > 1 ? ' (' + count + ' изделий)' : '');
-                applicabilityProgressLinks.appendChild(li);
+                syncProgressLinks.appendChild(li);
             });
-            applicabilityProgressLinks.hidden = false;
+            syncProgressLinks.hidden = false;
+        }
+        async function submitSyncAction(url, formData, progressTitle, progressHint) {
+            showSyncProgress(progressTitle, progressHint);
+            const authFetch = window.SessionAuth && window.SessionAuth.authFetch;
+            try {
+                const result = authFetch
+                    ? await authFetch(url, { method: 'POST', body: formData })
+                    : { response: await fetch(url, { method: 'POST', body: formData, credentials: 'same-origin', headers: { Accept: 'application/json' } }), sessionExpired: false, data: null };
+                if (result.sessionExpired) {
+                    if (window.SessionAuth) window.SessionAuth.redirectToLogin();
+                    return;
+                }
+                const response = result.response;
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        hideSyncProgress();
+                        alert(data.detail || 'Не удалось выполнить операцию.');
+                        return;
+                    }
+                    const progressItems = data.propagated || data.reverted || [];
+                    showSyncProgressDesignations(progressItems);
+                    const delay = progressItems.some(item => item.success) ? 900 : 300;
+                    window.setTimeout(() => {
+                        window.location.href = data.redirect_url || window.location.pathname;
+                    }, delay);
+                    return;
+                }
+                if (response.redirected) {
+                    window.location.href = response.url;
+                    return;
+                }
+                hideSyncProgress();
+            } catch (_err) {
+                hideSyncProgress();
+                alert('Ошибка сети. Попробуйте снова.');
+            }
         }
         if (applicabilityForm) {
             applicabilityForm.addEventListener('submit', async (e) => {
@@ -693,42 +752,25 @@
                     return;
                 }
                 e.preventDefault();
-                showApplicabilityProgress();
-                const formData = new FormData(applicabilityForm);
-                const authFetch = window.SessionAuth && window.SessionAuth.authFetch;
-                try {
-                    const result = authFetch
-                        ? await authFetch(applicabilityForm.action, { method: 'POST', body: formData })
-                        : { response: await fetch(applicabilityForm.action, { method: 'POST', body: formData, credentials: 'same-origin', headers: { Accept: 'application/json' } }), sessionExpired: false, data: null };
-                    if (result.sessionExpired) {
-                        if (window.SessionAuth) window.SessionAuth.redirectToLogin();
-                        return;
-                    }
-                    const response = result.response;
-                    const contentType = response.headers.get('content-type') || '';
-                    if (contentType.includes('application/json')) {
-                        const data = await response.json();
-                        if (!response.ok) {
-                            hideApplicabilityProgress();
-                            alert(data.detail || 'Не удалось добавить применяемость.');
-                            return;
-                        }
-                        showPropagatedLinks(data.propagated);
-                        window.setTimeout(() => {
-                            window.location.href = data.redirect_url || applicabilityForm.action.replace(/\/applicability$/, '') + '?success=applicability_added';
-                        }, data.propagated && data.propagated.some(item => item.success) ? 900 : 300);
-                        return;
-                    }
-                    if (response.redirected) {
-                        window.location.href = response.url;
-                        return;
-                    }
-                    hideApplicabilityProgress();
-                    applicabilityForm.submit();
-                } catch (_err) {
-                    hideApplicabilityProgress();
-                    alert('Ошибка сети. Попробуйте снова.');
-                }
+                await submitSyncAction(
+                    applicabilityForm.action,
+                    new FormData(applicabilityForm),
+                    'Обновление применяемости в ссылках',
+                    'Проверка ссылок и копирование файлов…'
+                );
+            });
+        }
+
+        const verifyChildApplicabilityBtn = document.getElementById('verify-child-applicability');
+        if (verifyChildApplicabilityBtn) {
+            verifyChildApplicabilityBtn.addEventListener('click', async () => {
+                if (verifyChildApplicabilityBtn.disabled) return;
+                await submitSyncAction(
+                    '{{ url_path('/documents/' ~ doc.id ~ '/applicability/verify-children') }}',
+                    new FormData(),
+                    'Обновление применяемости в ссылках',
+                    'Проверка ссылок и копирование файлов…'
+                );
             });
         }
 
@@ -816,7 +858,7 @@
         }
 
         if (linksForm) {
-            linksForm.addEventListener('submit', (e) => {
+            linksForm.addEventListener('submit', async (e) => {
                 if (!selectedLinks.size) {
                     e.preventDefault();
                     alert('Выберите хотя бы одну запись.');
@@ -825,9 +867,31 @@
                 const labels = Array.from(selectedLinks.values()).join('\n');
                 if (!confirm('Добавить ссылки на выбранные записи?\n\n' + labels)) {
                     e.preventDefault();
+                    return;
                 }
+                e.preventDefault();
+                await submitSyncAction(
+                    linksForm.action,
+                    new FormData(linksForm),
+                    'Обновление применяемости в ссылках',
+                    'Добавление ссылок и копирование файлов…'
+                );
             });
         }
+
+        document.querySelectorAll('.link-delete-form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const message = form.dataset.confirm || 'Удалить ссылку?';
+                if (!confirm(message)) return;
+                await submitSyncAction(
+                    form.action,
+                    new FormData(form),
+                    'Обновление применяемости в ссылках',
+                    'Удаление ссылки и сброс применяемости…'
+                );
+            });
+        });
 
         if (openModal === 'applicability' && applicabilityModal) applicabilityModal.classList.add('active');
         if (openModal === 'links' && linksModal && openLinksBtn) openLinksBtn.click();

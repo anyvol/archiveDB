@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.23.1
+
+- **Applicability — verify/propagate fix:** child records are checked only by explicit applicability entries (not by their own product assignment). When syncing from a parent, applicability entries are created even when the target product matches the child's own product, so linked records show parent applicability in the card block.
+
+## 0.23.0
+
+- **Links — applicability sync:** when an outgoing link is added, the parent record's applicability is propagated to the linked record and its branches (BFS) with file copying. When a link is removed, parent applicability entries are cleared from the unlinked target and its subtree (records still reachable via other links are kept). A blocking progress overlay is shown during link add/remove operations.
+
+## 0.22.0
+
+- **Applicability — verify children:** the document card applicability block has a «Проверить применяемость дочерних записей» button that runs a BFS pass over all outgoing link branches and adds any missing parent applicability entries to child records (children may have additional applicability beyond the parent's). Child traversal uses link target IDs directly; each child record is reloaded before updating. Clearer result messages when there are no links or updates fail (e.g. missing files).
+- **Filters — session persistence:** the «Сохранить фильтры» label is placed to the right of the checkbox on the same line, vertically aligned with the filter action buttons.
+- **Add document form:** removed the default caption «Выберите тип записи для регистрации в архиве.»
+
 ## 0.21.0
 
 - **Applicability — propagation to links:** when applicability is added to a record, all documents reachable via outgoing links (not backlinks) are traversed to the end of each branch (BFS); if a linked record is missing applicability entries, they are added automatically with file copying. A blocking overlay with a progress animation is shown while the operation runs.

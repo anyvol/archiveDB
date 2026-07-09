@@ -11,8 +11,15 @@ from app.document_applicability import (
     copy_document_to_product,
     get_available_applicability_products,
     propagate_applicability_to_outgoing_links,
+    revert_parent_applicability_after_link_removed,
+    verify_child_applicability,
 )
-from app.document_links import add_document_links, get_transitive_outgoing_documents, search_documents_by_designation
+from app.document_links import (
+    add_document_links,
+    get_transitive_outgoing_document_ids,
+    get_transitive_outgoing_documents,
+    search_documents_by_designation,
+)
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Product, Project, User, UserRole
 
 
@@ -181,34 +188,40 @@ def test_build_applicability_modal_options_groups_products_by_project():
 
 
 @pytest.mark.asyncio
+async def test_get_transitive_outgoing_document_ids_traverses_all_branches():
+    source = _doc_with_file()
+
+    async def target_ids_side_effect(_session, document_id):
+        if document_id == source.id:
+            return [20, 40]
+        if document_id == 20:
+            return [30]
+        return []
+
+    session = AsyncMock()
+    with patch("app.document_links.get_outgoing_link_target_ids", new_callable=AsyncMock, side_effect=target_ids_side_effect):
+        collected = await get_transitive_outgoing_document_ids(session, source.id)
+
+    assert collected == [20, 40, 30]
+
+
+@pytest.mark.asyncio
 async def test_get_transitive_outgoing_documents_traverses_all_branches():
     source = _doc_with_file()
     doc_b = _doc_with_file()
     doc_b.id = 20
     doc_c = _doc_with_file()
     doc_c.id = 30
-    doc_d = _doc_with_file()
-    doc_d.id = 40
-
-    link_ab = MagicMock()
-    link_ab.target_document = doc_b
-    link_bc = MagicMock()
-    link_bc.target_document = doc_c
-    link_ad = MagicMock()
-    link_ad.target_document = doc_d
-
-    async def outgoing_side_effect(_session, document_id):
-        if document_id == source.id:
-            return [link_ab, link_ad]
-        if document_id == doc_b.id:
-            return [link_bc]
-        return []
 
     session = AsyncMock()
-    with patch("app.document_links.get_outgoing_links", new_callable=AsyncMock, side_effect=outgoing_side_effect):
+    with patch(
+        "app.document_links.get_transitive_outgoing_document_ids",
+        new_callable=AsyncMock,
+        return_value=[20, 30],
+    ), patch("app.document_workflow.fetch_document", new_callable=AsyncMock, side_effect=[doc_b, doc_c]):
         collected = await get_transitive_outgoing_documents(session, source.id)
 
-    assert [doc.id for doc in collected] == [20, 40, 30]
+    assert [doc.id for doc in collected] == [20, 30]
 
 
 @pytest.mark.asyncio
@@ -233,16 +246,53 @@ async def test_propagate_applicability_to_outgoing_links_adds_missing():
     add_mock = AsyncMock()
 
     with patch(
-        "app.document_applicability.get_transitive_outgoing_documents",
+        "app.document_applicability.get_transitive_outgoing_document_ids",
         new_callable=AsyncMock,
-        return_value=[target],
+        return_value=[20],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        return_value=target,
     ), patch("app.document_applicability.add_document_applicability", add_mock):
         results = await propagate_applicability_to_outgoing_links(session, source, user)
 
     assert len(results) == 1
     assert results[0]["target_id"] == 20
     assert results[0]["success"] is True
-    add_mock.assert_awaited_once_with(session, target, 30, user)
+    add_mock.assert_awaited_once_with(session, target, 30, user, allow_same_product=True)
+
+
+@pytest.mark.asyncio
+async def test_propagate_applicability_adds_when_child_product_matches_parent_target():
+    """Own product must not count as having an applicability entry visible in the UI."""
+    source = _doc_with_file(project_id=1, product_id=10)
+    target = _doc_with_file(project_id=1, product_id=30)
+    target.id = 20
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            MagicMock(all=MagicMock(return_value=[(30,)])),
+            MagicMock(all=MagicMock(return_value=[])),
+        ]
+    )
+
+    add_mock = AsyncMock()
+
+    with patch(
+        "app.document_applicability.get_transitive_outgoing_document_ids",
+        new_callable=AsyncMock,
+        return_value=[20],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        return_value=target,
+    ), patch("app.document_applicability.add_document_applicability", add_mock):
+        results = await propagate_applicability_to_outgoing_links(session, source, user)
+
+    add_mock.assert_awaited_once_with(session, target, 30, user, allow_same_product=True)
+    assert results[0]["success"] is True
 
 
 @pytest.mark.asyncio
@@ -268,14 +318,97 @@ async def test_propagate_applicability_uses_transitive_outgoing_documents():
     add_mock = AsyncMock()
 
     with patch(
-        "app.document_applicability.get_transitive_outgoing_documents",
+        "app.document_applicability.get_transitive_outgoing_document_ids",
         new_callable=AsyncMock,
-        return_value=[direct, nested],
-    ) as collect_mock, patch("app.document_applicability.add_document_applicability", add_mock):
+        return_value=[20, 30],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        side_effect=[direct, nested],
+    ), patch("app.document_applicability.add_document_applicability", add_mock):
         await propagate_applicability_to_outgoing_links(session, source, user)
 
-    collect_mock.assert_awaited_once_with(session, source.id)
     assert add_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_verify_child_applicability_requires_parent_applicability():
+    source = _doc_with_file(project_id=1, product_id=10)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+
+    with pytest.raises(HTTPException) as exc:
+        await verify_child_applicability(session, source, user)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_verify_child_applicability_delegates_to_propagation():
+    source = _doc_with_file(project_id=1, product_id=10)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[(30,)])))
+
+    with patch(
+        "app.document_applicability.propagate_applicability_to_outgoing_links",
+        new_callable=AsyncMock,
+        return_value=[{"target_id": 20, "designation": "CHILD.001", "product_id": 30, "success": True}],
+    ) as propagate:
+        results = await verify_child_applicability(session, source, user)
+
+    propagate.assert_awaited_once_with(session, source, user)
+    assert results[0]["designation"] == "CHILD.001"
+
+
+@pytest.mark.asyncio
+async def test_revert_parent_applicability_skips_still_reachable_nodes():
+    parent = _doc_with_file(project_id=1, product_id=10)
+    target = _doc_with_file(project_id=1, product_id=11)
+    target.id = 20
+    nested = _doc_with_file(project_id=1, product_id=12)
+    nested.id = 30
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    entry = MagicMock()
+    entry.id = 501
+    entry.product_id = 40
+    entry.product = Product(id=40, project_id=2, name="Shared", slug="shared", project=Project(id=2, name="P", slug="p"))
+
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[(40,)])))
+
+    async def transitive_side_effect(_session, document_id):
+        if document_id == parent.id:
+            return [30]
+        if document_id == 20:
+            return [30]
+        return []
+
+    with patch(
+        "app.document_applicability.get_transitive_outgoing_document_ids",
+        new_callable=AsyncMock,
+        side_effect=transitive_side_effect,
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        side_effect=lambda _s, doc_id: {20: target, 30: nested}.get(doc_id),
+    ), patch(
+        "app.document_applicability.get_applicability_entries",
+        new_callable=AsyncMock,
+        side_effect=lambda _s, doc_id: [entry] if doc_id == 20 else [],
+    ), patch(
+        "app.document_applicability.remove_document_applicability",
+        new_callable=AsyncMock,
+    ) as remove_mock, patch(
+        "app.document_applicability.log_change_event",
+        new_callable=AsyncMock,
+    ):
+        results = await revert_parent_applicability_after_link_removed(session, parent, 20, user)
+
+    remove_mock.assert_awaited_once_with(session, 501, 20)
+    assert len(results) == 1
+    assert results[0]["target_id"] == 20
 
 
 @pytest.mark.asyncio
