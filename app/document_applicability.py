@@ -141,8 +141,10 @@ async def add_document_applicability(
     doc: BaseDocument,
     product_id: int,
     user: User,
+    *,
+    allow_same_product: bool = False,
 ) -> DocumentApplicability:
-    if doc.product_id and product_id == doc.product_id:
+    if doc.product_id and product_id == doc.product_id and not allow_same_product:
         raise HTTPException(status_code=400, detail="Запись уже относится к этому изделию.")
 
     existing = await session.execute(
@@ -188,15 +190,14 @@ async def add_document_applicability(
     return entry
 
 
-async def get_child_covered_product_ids(
+async def get_missing_parent_applicability_product_ids(
     session: AsyncSession,
-    doc: BaseDocument,
+    child: BaseDocument,
+    parent_applicability_ids: set[int],
 ) -> set[int]:
-    """Products already covered by applicability entries or the record's own product."""
-    covered = await get_applicability_product_ids(session, doc.id)
-    if doc.product_id:
-        covered.add(doc.product_id)
-    return covered
+    """Parent applicability products not yet present as explicit entries on the child."""
+    existing = await get_applicability_product_ids(session, child.id)
+    return parent_applicability_ids - existing
 
 
 async def propagate_applicability_to_outgoing_links(
@@ -217,15 +218,22 @@ async def propagate_applicability_to_outgoing_links(
         if not target_doc:
             continue
 
-        covered = await get_child_covered_product_ids(session, target_doc)
-        missing = source_product_ids - covered
+        missing = await get_missing_parent_applicability_product_ids(
+            session, target_doc, source_product_ids
+        )
         if not missing:
             continue
 
         designation = get_document_designation(target_doc)
         for product_id in sorted(missing):
             try:
-                await add_document_applicability(session, target_doc, product_id, user)
+                await add_document_applicability(
+                    session,
+                    target_doc,
+                    product_id,
+                    user,
+                    allow_same_product=True,
+                )
                 results.append(
                     {
                         "target_id": target_doc.id,

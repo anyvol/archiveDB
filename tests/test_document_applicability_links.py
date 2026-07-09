@@ -259,7 +259,40 @@ async def test_propagate_applicability_to_outgoing_links_adds_missing():
     assert len(results) == 1
     assert results[0]["target_id"] == 20
     assert results[0]["success"] is True
-    add_mock.assert_awaited_once_with(session, target, 30, user)
+    add_mock.assert_awaited_once_with(session, target, 30, user, allow_same_product=True)
+
+
+@pytest.mark.asyncio
+async def test_propagate_applicability_adds_when_child_product_matches_parent_target():
+    """Own product must not count as having an applicability entry visible in the UI."""
+    source = _doc_with_file(project_id=1, product_id=10)
+    target = _doc_with_file(project_id=1, product_id=30)
+    target.id = 20
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        side_effect=[
+            MagicMock(all=MagicMock(return_value=[(30,)])),
+            MagicMock(all=MagicMock(return_value=[])),
+        ]
+    )
+
+    add_mock = AsyncMock()
+
+    with patch(
+        "app.document_applicability.get_transitive_outgoing_document_ids",
+        new_callable=AsyncMock,
+        return_value=[20],
+    ), patch(
+        "app.document_applicability.fetch_document",
+        new_callable=AsyncMock,
+        return_value=target,
+    ), patch("app.document_applicability.add_document_applicability", add_mock):
+        results = await propagate_applicability_to_outgoing_links(session, source, user)
+
+    add_mock.assert_awaited_once_with(session, target, 30, user, allow_same_product=True)
+    assert results[0]["success"] is True
 
 
 @pytest.mark.asyncio

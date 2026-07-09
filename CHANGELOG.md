@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.23.1
+
+- **Applicability — verify/propagate fix:** child records are checked only by explicit applicability entries (not by their own product assignment). When syncing from a parent, applicability entries are created even when the target product matches the child's own product, so linked records show parent applicability in the card block.
+
 ## 0.23.0
 
 - **Links — applicability sync:** when an outgoing link is added, the parent record's applicability is propagated to the linked record and its branches (BFS) with file copying. When a link is removed, parent applicability entries are cleared from the unlinked target and its subtree (records still reachable via other links are kept). A blocking progress overlay is shown during link add/remove operations.
