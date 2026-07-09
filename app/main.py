@@ -1623,6 +1623,48 @@ async def add_applicability_route(
     )
 
 
+@app.post("/documents/{doc_id}/applicability/verify-children", response_class=RedirectResponse)
+async def verify_child_applicability_route(
+    doc_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not can_add_applicability(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для проверки применяемости.")
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+
+    try:
+        from app.document_applicability import verify_child_applicability
+        propagated = await verify_child_applicability(session, doc, user)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "applicability_error"
+        if wants_json_response(request):
+            return JSONResponse(status_code=exc.status_code, content={"detail": detail})
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+
+    await session.commit()
+    success_key = "applicability_verified" if any(item["success"] for item in propagated) else "applicability_verify_ok"
+    if wants_json_response(request):
+        return JSONResponse(
+            {
+                "success": True,
+                "redirect_url": url_path(f"/documents/{doc_id}?success={success_key}"),
+                "propagated": propagated,
+            }
+        )
+    return RedirectResponse(
+        url=url_path(f"/documents/{doc_id}?success={success_key}"),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @app.post("/documents/{doc_id}/applicability/{applicability_id}/delete", response_class=RedirectResponse)
 async def delete_applicability_route(
     doc_id: int,

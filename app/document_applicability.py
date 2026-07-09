@@ -224,6 +224,21 @@ async def propagate_applicability_to_outgoing_links(
     return results
 
 
+async def verify_child_applicability(
+    session: AsyncSession,
+    doc: BaseDocument,
+    user: User,
+) -> list[ApplicabilityPropagationResult]:
+    """Check all child link branches and add any missing parent applicability entries."""
+    source_product_ids = await get_applicability_product_ids(session, doc.id)
+    if not source_product_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="У записи нет применяемости для проверки дочерних записей.",
+        )
+    return await propagate_applicability_to_outgoing_links(session, doc, user)
+
+
 async def add_document_applicability_many(
     session: AsyncSession,
     doc: BaseDocument,

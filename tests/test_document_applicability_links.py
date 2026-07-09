@@ -11,6 +11,7 @@ from app.document_applicability import (
     copy_document_to_product,
     get_available_applicability_products,
     propagate_applicability_to_outgoing_links,
+    verify_child_applicability,
 )
 from app.document_links import add_document_links, get_transitive_outgoing_documents, search_documents_by_designation
 from app.models import BaseDocument, DesignDocument, DocumentStatus, Product, Project, User, UserRole
@@ -276,6 +277,36 @@ async def test_propagate_applicability_uses_transitive_outgoing_documents():
 
     collect_mock.assert_awaited_once_with(session, source.id)
     assert add_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_verify_child_applicability_requires_parent_applicability():
+    source = _doc_with_file(project_id=1, product_id=10)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+
+    with pytest.raises(HTTPException) as exc:
+        await verify_child_applicability(session, source, user)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_verify_child_applicability_delegates_to_propagation():
+    source = _doc_with_file(project_id=1, product_id=10)
+    user = User(id=1, login="tester", password_hash="x", role=UserRole.user)
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[(30,)])))
+
+    with patch(
+        "app.document_applicability.propagate_applicability_to_outgoing_links",
+        new_callable=AsyncMock,
+        return_value=[{"target_id": 20, "designation": "CHILD.001", "product_id": 30, "success": True}],
+    ) as propagate:
+        results = await verify_child_applicability(session, source, user)
+
+    propagate.assert_awaited_once_with(session, source, user)
+    assert results[0]["designation"] == "CHILD.001"
 
 
 @pytest.mark.asyncio
