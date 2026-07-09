@@ -1,0 +1,84 @@
+<!-- templates/notification_detail.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Извещение {{ record.number }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+        .record-label { font-size: 0.8rem; color: #6c757d; }
+        .record-line { margin-bottom: 0.75rem; }
+        .btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; margin-right: 0.5rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .hint { font-size: 0.875rem; color: #6c757d; }
+        .preview-frame { width: 100%; min-height: 720px; border: 1px solid #ddd; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.75rem; }
+        th, td { padding: 0.65rem; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; }
+        .success { background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    {% set page_title = 'Извещение об изменении' %}
+    {% include "_page_header.html" %}
+
+    <div class="container">
+        <p><a href="{{ url_path('/documents?tab=notifications') }}">← К списку извещений</a></p>
+        {% if success == 'deleted' %}
+        <div class="success">Извещение удалено.</div>
+        {% endif %}
+
+        <div class="card">
+            <h2>ИИ № {{ record.number }}</h2>
+            <div class="record-line"><span class="record-label">Номер изменения</span><br>{{ record.change_number }}</div>
+            <div class="record-line"><span class="record-label">Дата изменения</span><br>{{ format_date(record.change_date, app_timezone) }}</div>
+            <div class="record-line"><span class="record-label">Дата регистрации</span><br>{{ format_datetime(record.created_at, app_timezone) }}</div>
+            <div class="record-line"><span class="record-label">Проект</span><br>{{ record.project.name if record.project else '—' }}</div>
+            <div class="record-line"><span class="record-label">Изделие</span><br>{{ record.product.name if record.product else '—' }}</div>
+            <div class="record-line"><span class="record-label">Файл</span><br>{{ record.file_name }}</div>
+            <div class="record-line"><span class="record-label">Подписи</span><br>
+                Разработчик: {{ 'да' if record.developer_signed else 'нет' }},
+                Проверяющий: {{ 'да' if record.reviewer_signed else 'нет' }},
+                Утвердивший: {{ 'да' if record.approver_signed else 'нет' }}
+            </div>
+            <div style="margin-top: 1rem;">
+                <a class="btn btn-secondary" href="{{ url_path('/documents/notifications/' ~ record.id ~ '/download') }}">Скачать файл</a>
+                {% if can_delete_document(user) %}
+                <form method="post" action="{{ url_path('/documents/notifications/' ~ record.id ~ '/delete') }}" style="display:inline;" onsubmit="return confirm('Удалить извещение № {{ record.number|e }}?');">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if usage_places %}
+        <div class="card">
+            <h3>Использование в проектах и изделиях</h3>
+            <p class="hint">Документы, для которых это извещение было основанием формального изменения.</p>
+            <table>
+                <thead><tr><th>Проект</th><th>Изделие</th><th>Запись</th></tr></thead>
+                <tbody>
+                    {% for place in usage_places %}
+                    <tr>
+                        <td>{{ place.project_name }}</td>
+                        <td>{{ place.product_name }}</td>
+                        <td><a href="{{ url_path('/documents/' ~ place.document_id) }}">Открыть карточку</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <h3>Предпросмотр</h3>
+            <iframe class="preview-frame" src="{{ url_path('/documents/notifications/' ~ record.id ~ '/preview') }}" title="Предпросмотр ИИ"></iframe>
+        </div>
+    </div>
+</body>
+</html>

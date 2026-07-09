@@ -97,8 +97,21 @@
         .status-correction-requested { color: #004085; background: #cce5ff; }
         .status-comment-link { margin-top: 0.35rem; font-size: 0.8rem; }
         .status-comment-link a { color: #007bff; }
-        .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
+        .doc-type-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; align-items: center; }
         .doc-type-buttons .doc-type-btn.active { background: #007bff; color: white; }
+        .doc-type-more { position: relative; display: inline-block; }
+        .doc-type-more-menu { display: none; position: absolute; top: calc(100% + 0.35rem); left: 0; min-width: 220px; background: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 20; text-align: left; }
+        .doc-type-more.open .doc-type-more-menu { display: block; }
+        .doc-type-more-item { display: block; width: 100%; padding: 0.55rem 0.85rem; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.9rem; }
+        .doc-type-more-item:hover { background: #f0f7ff; }
+        .create-type-label { font-size: 0.95rem; color: #495057; margin-bottom: 0.75rem; }
+        .archive-create-fields { display: none; }
+        .tabs { display: flex; gap: 0.5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
+        .tab-link { padding: 0.5rem 1rem; border-radius: 6px 6px 0 0; text-decoration: none; color: #495057; background: #e9ecef; font-size: 0.95rem; }
+        .tab-link.active { background: white; color: #007bff; font-weight: 600; box-shadow: 0 -2px 0 #007bff inset; }
+        .filters-save { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin-left: 0.5rem; }
+        .list-panel { background: white; padding: 0 0 1rem; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .list-panel h2 { margin: 0; padding: 1rem 1rem 0.5rem; font-size: 1.1rem; }
         tbody tr.doc-row { cursor: pointer; }
         tbody tr.doc-row:hover { background-color: #f0f7ff; }
         .context-menu {
@@ -146,12 +159,48 @@
         <form action="{{ url_path('/documents/create') }}" method="post" id="create-doc-form" class="form-container" enctype="multipart/form-data">
             <div id="create-form-messages" class="form-messages" aria-live="polite"></div>
             <div class="form-group">
-                <label>Тип документа:</label>
+                <label>Тип записи:</label>
                 <input type="hidden" id="doc_type" name="doc_type" value="">
+                <p class="create-type-label" id="create-type-label">Выберите тип записи для регистрации в архиве.</p>
                 <div class="doc-type-buttons">
                     <button type="button" class="btn btn-secondary doc-type-btn" data-type="DD">Конструкторская документация</button>
                     <button type="button" class="btn btn-secondary doc-type-btn" data-type="TD">Технологическая документация</button>
+                    <div class="doc-type-more" id="doc-type-more">
+                        <button type="button" class="btn btn-secondary" id="doc-type-more-toggle">Ещё ▾</button>
+                        <div class="doc-type-more-menu">
+                            <button type="button" class="doc-type-more-item" data-type="II">Извещение об изменении</button>
+                            <button type="button" class="doc-type-more-item" data-type="ORDER">Приказ</button>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            <div id="ii-create-fields" class="archive-create-fields">
+                <div class="form-group"><label for="ii_number">Номер извещения *</label><input type="text" id="ii_number" name="ii_number" maxlength="64"></div>
+                <div class="form-group"><label for="ii_change_number">Номер изменения *</label><input type="text" id="ii_change_number" name="ii_change_number" maxlength="64"></div>
+                <div class="form-group"><label for="ii_change_date">Дата изменения *</label><input type="date" id="ii_change_date" name="ii_change_date"></div>
+                <div class="form-group"><label for="ii_project_id">Проект *</label>
+                    <select id="ii_project_id" name="ii_project_id">
+                        <option value="">— выберите —</option>
+                        {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group"><label for="ii_product_id">Изделие *</label>
+                    <select id="ii_product_id" name="ii_product_id"><option value="">— выберите проект —</option></select>
+                </div>
+                <div class="form-group"><label for="ii_file">Файл ИИ (PDF) *</label><input type="file" id="ii_file" name="ii_file" accept=".pdf"></div>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" name="ii_developer_signed" value="true"> Подпись разработчика</label>
+                    <label><input type="checkbox" name="ii_reviewer_signed" value="true"> Подпись Пров.</label>
+                    <label><input type="checkbox" name="ii_approver_signed" value="true"> Подпись Утв.</label>
+                </div>
+            </div>
+
+            <div id="order-create-fields" class="archive-create-fields">
+                <div class="form-group"><label for="order_number">Номер приказа *</label><input type="text" id="order_number" name="order_number" maxlength="64"></div>
+                <div class="form-group"><label for="order_name">Название *</label><input type="text" id="order_name" name="order_name" maxlength="255"></div>
+                <div class="form-group"><label for="order_date">Дата *</label><input type="date" id="order_date" name="order_date"></div>
+                <div class="form-group"><label for="order_file">Файл приказа *</label><input type="file" id="order_file" name="order_file" accept=".pdf,.doc,.docx"></div>
             </div>
 
             <div id="doc-fields" style="display: none;">
@@ -308,8 +357,17 @@
         </div>
         {% endif %}
 
+        <div class="tabs">
+            <a class="tab-link{% if active_tab == 'documents' %} active{% endif %}" href="{{ url_path('/documents?tab=documents') }}">КД и ТД</a>
+            <a class="tab-link{% if active_tab == 'notifications' %} active{% endif %}" href="{{ url_path('/documents?tab=notifications') }}">Извещения</a>
+            <a class="tab-link{% if active_tab == 'orders' %} active{% endif %}" href="{{ url_path('/documents?tab=orders') }}">Приказы</a>
+        </div>
+
+        <div class="list-panel">
+        {% if active_tab == 'documents' %}
         <h2>Список документов</h2>
-        <form method="get" action="{{ url_path('/documents') }}" class="filters">
+        <form method="get" action="{{ url_path('/documents') }}" class="filters" id="documents-filters-form">
+            <input type="hidden" name="tab" value="documents">
             <div><label>Обозначение</label><input name="designation" value="{{ filters.designation or '' }}"></div>
             <div><label>Компания</label><input name="org_name" value="{{ filters.org_name or '' }}"></div>
             <div><label>Проект</label>
@@ -362,7 +420,8 @@
             <input type="hidden" name="order" value="{{ filters.order }}">
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
-                <a href="{{ url_path('/documents') }}" class="btn btn-secondary">Сбросить</a>
+                <a href="{{ url_path('/documents?tab=documents') }}" class="btn btn-secondary">Сбросить</a>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session" data-tab="documents"> Сохранить в сессии</label>
             </div>
         </form>
 
@@ -371,7 +430,7 @@
                 <tr>
                     {% macro sort_link(col, label) -%}
                     {% if col in visible_columns %}
-                    <th><a href="{{ url_path('/documents') }}?{% for k,v in filters.items() if v and k not in ['sort','order'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                    <th><a href="{{ url_path('/documents') }}?tab=documents&{% for k,v in filters.items() if v and k not in ['sort','order','tab'] %}{{ k }}={{ v }}&{% endfor %}sort={{ col }}&order={% if filters.sort == col and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}{% if filters.sort == col %} {% if filters.order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
                     {% endif %}
                     {%- endmacro %}
                     {{ sort_link('designation', 'Обозначение') }}
@@ -398,10 +457,96 @@
             </tbody>
         </table>
         {% if has_more %}
-        <div class="load-more-wrap" style="padding: 1rem 0; text-align: center;">
-            <button type="button" class="btn btn-primary" id="load-more-docs-btn">Загрузить ещё {{ documents_page_size }}</button>
+        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
+            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="documents">Загрузить ещё {{ documents_page_size }}</button>
         </div>
         {% endif %}
+
+        {% elif active_tab == 'notifications' %}
+        <h2>Извещения об изменении</h2>
+        <form method="get" action="{{ url_path('/documents') }}" class="filters" id="notifications-filters-form">
+            <input type="hidden" name="tab" value="notifications">
+            <div><label>Номер извещения</label><input name="number" value="{{ filters.number or '' }}"></div>
+            <div><label>Номер изменения</label><input name="change_number" value="{{ filters.change_number or '' }}"></div>
+            <div><label>Проект</label>
+                <select name="project_id">
+                    <option value="">Все</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if filters.project_id and filters.project_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div><label>Изделие</label>
+                <select name="product_id">
+                    <option value="">Все</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" {% if filters.product_id and filters.product_id|string == product.id|string %}selected{% endif %}>{{ product.project.name }} / {{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" name="sort" value="{{ filters.sort }}">
+            <input type="hidden" name="order" value="{{ filters.order }}">
+            <div class="filters-actions">
+                <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                <a href="{{ url_path('/documents?tab=notifications') }}" class="btn btn-secondary">Сбросить</a>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-notifications" data-tab="notifications"> Сохранить в сессии</label>
+            </div>
+        </form>
+        <table>
+            <thead><tr>
+                {% for key, label in NOTIFICATION_COLUMNS %}
+                {% if key in visible_columns %}
+                <th><a href="{{ url_path('/documents') }}?tab=notifications&{% for k,v in filters.items() if v and k not in ['sort','order','tab'] %}{{ k }}={{ v }}&{% endfor %}sort={{ key }}&order={% if filters.sort == key and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}</a></th>
+                {% endif %}
+                {% endfor %}
+            </tr></thead>
+            <tbody id="doc-table-body">
+                {% if notifications %}{% include "_notification_rows.html" with context %}{% else %}
+                <tr id="empty-doc-row"><td colspan="{{ visible_columns|length }}" style="text-align:center;">Извещения не найдены.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% if has_more %}
+        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
+            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="notifications">Загрузить ещё {{ documents_page_size }}</button>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <h2>Приказы</h2>
+        <form method="get" action="{{ url_path('/documents') }}" class="filters" id="orders-filters-form">
+            <input type="hidden" name="tab" value="orders">
+            <div><label>Номер</label><input name="number" value="{{ filters.number or '' }}"></div>
+            <div><label>Название</label><input name="name" value="{{ filters.name or '' }}"></div>
+            <input type="hidden" name="sort" value="{{ filters.sort }}">
+            <input type="hidden" name="order" value="{{ filters.order }}">
+            <div class="filters-actions">
+                <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                <a href="{{ url_path('/documents?tab=orders') }}" class="btn btn-secondary">Сбросить</a>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-orders" data-tab="orders"> Сохранить в сессии</label>
+            </div>
+        </form>
+        <table>
+            <thead><tr>
+                {% for key, label in ORDER_COLUMNS %}
+                {% if key in visible_columns %}
+                <th><a href="{{ url_path('/documents') }}?tab=orders&{% for k,v in filters.items() if v and k not in ['sort','order','tab'] %}{{ k }}={{ v }}&{% endfor %}sort={{ key }}&order={% if filters.sort == key and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}</a></th>
+                {% endif %}
+                {% endfor %}
+            </tr></thead>
+            <tbody id="doc-table-body">
+                {% if orders %}{% include "_order_rows.html" with context %}{% else %}
+                <tr id="empty-doc-row"><td colspan="{{ visible_columns|length }}" style="text-align:center;">Приказы не найдены.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% if has_more %}
+        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
+            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="orders">Загрузить ещё {{ documents_page_size }}</button>
+        </div>
+        {% endif %}
+        {% endif %}
+        </div>
     </div>
 
     <div class="context-menu" id="doc-context-menu"></div>
@@ -733,13 +878,36 @@
         function updateDocTypeFields() {
             const type = docTypeSelect.value;
             const createSubmit = document.getElementById('create-submit');
+            const createTypeLabel = document.getElementById('create-type-label');
+            const iiFields = document.getElementById('ii-create-fields');
+            const orderFields = document.getElementById('order-create-fields');
+            const labels = {
+                DD: 'Регистрация конструкторской документации (КД)',
+                TD: 'Регистрация технологической документации (ТД)',
+                II: 'Регистрация извещения об изменении в архиве',
+                ORDER: 'Регистрация приказа в архиве',
+            };
+            if (createTypeLabel) createTypeLabel.textContent = type ? labels[type] || '' : 'Выберите тип записи для регистрации в архиве.';
+            if (iiFields) iiFields.style.display = type === 'II' ? 'block' : 'none';
+            if (orderFields) orderFields.style.display = type === 'ORDER' ? 'block' : 'none';
             if (!type) {
                 docFields.style.display = 'none';
                 if (createSubmit) createSubmit.style.display = 'none';
                 return;
             }
+            if (type === 'II' || type === 'ORDER') {
+                docFields.style.display = 'none';
+                if (createSubmit) {
+                    createSubmit.style.display = 'inline-block';
+                    createSubmit.textContent = type === 'II' ? 'Зарегистрировать извещение' : 'Зарегистрировать приказ';
+                }
+                return;
+            }
             docFields.style.display = 'block';
-            if (createSubmit) createSubmit.style.display = 'inline-block';
+            if (createSubmit) {
+                createSubmit.style.display = 'inline-block';
+                createSubmit.textContent = 'Создать запись и перейти к загрузке файла ЭД';
+            }
             const maxClass = getClassMaxLen();
             if (type === 'DD') {
                 classCodeLabel.textContent = 'Характеристика (6)';
@@ -763,6 +931,16 @@
             focusFirstEmpty();
         }
 
+        function selectDocType(type, activeBtn) {
+            document.querySelectorAll('.doc-type-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.doc-type-more-item').forEach(b => b.classList.remove('active'));
+            if (activeBtn) activeBtn.classList.add('active');
+            docTypeSelect.value = type;
+            updateDocTypeFields();
+            const moreWrap = document.getElementById('doc-type-more');
+            if (moreWrap) moreWrap.classList.remove('open');
+        }
+
         function setupAutoAdvance(input, maxLen, getNextEl) {
             if (!input) return;
             input.addEventListener('input', function() {
@@ -774,13 +952,38 @@
 
         if (docTypeSelect) {
             document.querySelectorAll('.doc-type-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    document.querySelectorAll('.doc-type-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    docTypeSelect.value = btn.dataset.type;
-                    updateDocTypeFields();
-                });
+                btn.addEventListener('click', () => selectDocType(btn.dataset.type, btn));
             });
+            document.querySelectorAll('.doc-type-more-item').forEach(btn => {
+                btn.addEventListener('click', () => selectDocType(btn.dataset.type, btn));
+            });
+            const moreToggle = document.getElementById('doc-type-more-toggle');
+            const moreWrap = document.getElementById('doc-type-more');
+            if (moreToggle && moreWrap) {
+                moreToggle.addEventListener('click', () => moreWrap.classList.toggle('open'));
+            }
+        }
+
+        const iiProjectSelect = document.getElementById('ii_project_id');
+        const iiProductSelect = document.getElementById('ii_product_id');
+        async function loadIiProducts(projectId) {
+            if (!iiProductSelect) return;
+            iiProductSelect.innerHTML = '<option value="">— выберите —</option>';
+            if (!projectId) return;
+            try {
+                const resp = await fetch(productsApiBase + '/' + projectId + '/products');
+                if (!resp.ok) return;
+                const products = await resp.json();
+                products.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.name;
+                    iiProductSelect.appendChild(opt);
+                });
+            } catch (e) { /* ignore */ }
+        }
+        if (iiProjectSelect) {
+            iiProjectSelect.addEventListener('change', () => loadIiProducts(iiProjectSelect.value));
         }
 
         if (isOkpoCheckbox) {
@@ -843,36 +1046,95 @@
                 e.preventDefault();
                 clearFormMessages();
 
-                const hasExisting = existingProjectSelect && existingProjectSelect.value;
-                const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
-                if (!hasExisting && !hasNew) {
-                    showFormMessage('Выберите существующий проект или укажите новый.', 'error');
+                const type = docTypeSelect ? docTypeSelect.value : '';
+                if (!type) {
+                    showFormMessage('Выберите тип записи.', 'error');
                     return;
                 }
-                if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
-                    showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
-                    return;
-                }
-                if (hasNew && newProductNameInput && !newProductNameInput.value.trim()) {
-                    showFormMessage('Для нового проекта укажите наименование первого изделия.', 'error');
-                    return;
-                }
-                if (hasExisting && existingProductSelect && !existingProductSelect.value) {
-                    showFormMessage('Выберите изделие или добавьте его в разделе «Проекты».', 'error');
-                    return;
-                }
-                if (hasExisting) {
-                    localStorage.setItem('last_project_id', existingProjectSelect.value);
-                    if (existingProductSelect && existingProductSelect.value) {
-                        localStorage.setItem('last_product_id', existingProductSelect.value);
+
+                if (type === 'ORDER') {
+                    const orderNumber = document.getElementById('order_number');
+                    const orderName = document.getElementById('order_name');
+                    const orderDate = document.getElementById('order_date');
+                    const orderFile = document.getElementById('order_file');
+                    if (!orderNumber || !orderNumber.value.trim()) {
+                        showFormMessage('Укажите номер приказа.', 'error');
+                        return;
+                    }
+                    if (!orderName || !orderName.value.trim()) {
+                        showFormMessage('Укажите название приказа.', 'error');
+                        return;
+                    }
+                    if (!orderDate || !orderDate.value) {
+                        showFormMessage('Укажите дату приказа.', 'error');
+                        return;
+                    }
+                    if (!orderFile || !orderFile.files.length) {
+                        showFormMessage('Приложите файл приказа.', 'error');
+                        return;
+                    }
+                } else if (type === 'II') {
+                    const iiNumber = document.getElementById('ii_number');
+                    const iiChangeNumber = document.getElementById('ii_change_number');
+                    const iiChangeDate = document.getElementById('ii_change_date');
+                    const iiProject = document.getElementById('ii_project_id');
+                    const iiProduct = document.getElementById('ii_product_id');
+                    const iiFile = document.getElementById('ii_file');
+                    if (!iiNumber || !iiNumber.value.trim()) {
+                        showFormMessage('Укажите номер извещения.', 'error');
+                        return;
+                    }
+                    if (!iiChangeNumber || !iiChangeNumber.value.trim()) {
+                        showFormMessage('Укажите номер изменения.', 'error');
+                        return;
+                    }
+                    if (!iiChangeDate || !iiChangeDate.value) {
+                        showFormMessage('Укажите дату изменения.', 'error');
+                        return;
+                    }
+                    if (!iiProject || !iiProject.value) {
+                        showFormMessage('Выберите проект.', 'error');
+                        return;
+                    }
+                    if (!iiProduct || !iiProduct.value) {
+                        showFormMessage('Выберите изделие.', 'error');
+                        return;
+                    }
+                    if (!iiFile || !iiFile.files.length) {
+                        showFormMessage('Приложите файл извещения (PDF).', 'error');
+                        return;
                     }
                 } else {
-                    localStorage.removeItem('last_project_id');
-                    localStorage.removeItem('last_product_id');
-                }
-                const type = docTypeSelect.value;
-                if (classCodeInput && classCodeInput.value.trim()) {
-                    localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
+                    const hasExisting = existingProjectSelect && existingProjectSelect.value;
+                    const hasNew = newProjectNameInput && newProjectNameInput.value.trim();
+                    if (!hasExisting && !hasNew) {
+                        showFormMessage('Выберите существующий проект или укажите новый.', 'error');
+                        return;
+                    }
+                    if (hasNew && newProjectCipherInput && !newProjectCipherInput.value.trim()) {
+                        showFormMessage('Для нового проекта необходимо указать шифр проекта.', 'error');
+                        return;
+                    }
+                    if (hasNew && newProductNameInput && !newProductNameInput.value.trim()) {
+                        showFormMessage('Для нового проекта укажите наименование первого изделия.', 'error');
+                        return;
+                    }
+                    if (hasExisting && existingProductSelect && !existingProductSelect.value) {
+                        showFormMessage('Выберите изделие или добавьте его в разделе «Проекты».', 'error');
+                        return;
+                    }
+                    if (hasExisting) {
+                        localStorage.setItem('last_project_id', existingProjectSelect.value);
+                        if (existingProductSelect && existingProductSelect.value) {
+                            localStorage.setItem('last_product_id', existingProductSelect.value);
+                        }
+                    } else {
+                        localStorage.removeItem('last_project_id');
+                        localStorage.removeItem('last_product_id');
+                    }
+                    if (classCodeInput && classCodeInput.value.trim()) {
+                        localStorage.setItem(type === 'TD' ? 'last_class_code_td' : 'last_class_code_dd', classCodeInput.value.trim());
+                    }
                 }
 
                 const submitBtn = document.getElementById('create-submit');
@@ -951,10 +1213,21 @@
             activeRow = null;
         }
 
+        function openArchiveDeleteModal(recordId, recordLabel, deleteType) {
+            deleteForm.action = statusBaseUrl + '/' + (deleteType === 'notification' ? 'notifications/' : 'orders/') + recordId + '/delete';
+            deleteDocLabel.textContent = (deleteType === 'notification' ? 'Извещение: ' : 'Приказ: ') + recordLabel;
+            deleteForm.querySelector('textarea').required = false;
+            deleteForm.querySelector('textarea').style.display = 'none';
+            deleteModal.classList.add('active');
+        }
+
         function openDeleteModal(docId, docLabel) {
             deleteForm.action = statusBaseUrl + '/' + docId + '/delete';
             deleteDocLabel.textContent = 'Документ: ' + docLabel;
-            deleteForm.querySelector('textarea').value = '';
+            const textarea = deleteForm.querySelector('textarea');
+            textarea.required = true;
+            textarea.style.display = '';
+            textarea.value = '';
             deleteModal.classList.add('active');
         }
 
@@ -996,6 +1269,7 @@
             const correctionId = row.dataset.actionCorrection;
             const requestCorrectionId = row.dataset.actionRequestCorrection;
             const deleteId = row.dataset.actionDelete;
+            const deleteType = row.dataset.deleteType;
             const applicabilityUrl = row.dataset.actionApplicability;
             const linksUrl = row.dataset.actionLinks;
             const docLabel = row.dataset.docLabel || ('#' + row.dataset.docId);
@@ -1011,7 +1285,7 @@
             if (verifyId) items.push({ label: 'Утвердить', action: 'verify', docId: verifyId });
             if (correctionId) items.push({ label: 'Требуется исправление', action: 'correction', docId: correctionId });
             if (requestCorrectionId) items.push({ label: 'Запрос на исправление', action: 'request-correction', docId: requestCorrectionId });
-            if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, danger: true });
+            if (deleteId) items.push({ label: 'Удалить запись', action: 'delete', docId: deleteId, docLabel, deleteType, danger: true });
 
             if (!items.length) return;
 
@@ -1033,7 +1307,10 @@
                         if (item.action === 'verify') submitVerified(item.docId);
                         else if (item.action === 'correction') openCorrectionModal(item.docId);
                         else if (item.action === 'request-correction') openRequestCorrectionModal(item.docId);
-                        else if (item.action === 'delete') openDeleteModal(item.docId, item.docLabel);
+                        else if (item.action === 'delete') {
+                            if (item.deleteType) openArchiveDeleteModal(item.docId, item.docLabel, item.deleteType);
+                            else openDeleteModal(item.docId, item.docLabel);
+                        }
                     });
                     contextMenu.appendChild(btn);
                 }
@@ -1061,26 +1338,27 @@
             e.preventDefault();
             buildContextMenu(row, e.clientX, e.clientY);
         });
-        document.getElementById('doc-table-body').addEventListener('dblclick', (e) => {
+        document.getElementById('doc-table-body').addEventListener('click', (e) => {
             const row = e.target.closest('.doc-row');
-            if (!row) return;
+            if (!row || e.target.closest('a, button, input, textarea, select, form')) return;
             const openUrl = row.dataset.actionOpen;
             if (openUrl) window.location.href = openUrl;
         });
 
+        const activeListTab = {{ active_tab|tojson }};
         const loadMoreDocsBtn = document.getElementById('load-more-docs-btn');
         const docTableBody = document.getElementById('doc-table-body');
         const documentsApiUrl = '{{ url_path('/api/documents') }}';
         const documentsFilterQuery = '{{ filters_query_string|e }}';
         const documentsPageSize = {{ documents_page_size }};
-        let loadedDocumentsCount = {{ documents|length }};
+        let loadedDocumentsCount = {% if active_tab == 'notifications' %}{{ notifications|length }}{% elif active_tab == 'orders' %}{{ orders|length }}{% else %}{{ documents|length }}{% endif %};
 
         if (loadMoreDocsBtn && docTableBody) {
             loadMoreDocsBtn.addEventListener('click', async function() {
                 loadMoreDocsBtn.disabled = true;
                 loadMoreDocsBtn.textContent = 'Загрузка…';
                 try {
-                    const queryParts = ['offset=' + loadedDocumentsCount, 'limit=' + documentsPageSize];
+                    const queryParts = ['offset=' + loadedDocumentsCount, 'limit=' + documentsPageSize, 'tab=' + encodeURIComponent(activeListTab)];
                     if (documentsFilterQuery) queryParts.push(documentsFilterQuery);
                     const resp = await fetch(documentsApiUrl + '?' + queryParts.join('&'));
                     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1111,6 +1389,54 @@
         });
         window.addEventListener('scroll', hideContextMenu, true);
         window.addEventListener('resize', hideContextMenu);
+
+        (function setupFilterSessionPersistence() {
+            const tab = activeListTab || 'documents';
+            const storageKey = 'archiveDB.filters.' + tab;
+            const checkbox = document.querySelector('[data-tab="' + tab + '"].filters-save input, #save-filters-session' + (tab === 'documents' ? '' : '-' + tab));
+            const form = document.getElementById(tab === 'documents' ? 'documents-filters-form' : tab + '-filters-form');
+            if (!form) return;
+
+            function saveFilters() {
+                const data = {};
+                new FormData(form).forEach((value, key) => {
+                    if (key !== 'tab') data[key] = value;
+                });
+                sessionStorage.setItem(storageKey, JSON.stringify(data));
+            }
+
+            function restoreFilters() {
+                const raw = sessionStorage.getItem(storageKey);
+                if (!raw) return false;
+                try {
+                    const data = JSON.parse(raw);
+                    const params = new URLSearchParams(window.location.search);
+                    const hasFilters = Array.from(params.keys()).some(k => k !== 'tab');
+                    if (hasFilters) return false;
+                    const next = new URLSearchParams();
+                    next.set('tab', tab);
+                    Object.entries(data).forEach(([k, v]) => { if (v) next.set(k, v); });
+                    window.location.replace('{{ url_path('/documents') }}?' + next.toString());
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            if (checkbox) {
+                const enabled = sessionStorage.getItem(storageKey + '.enabled') === '1';
+                checkbox.checked = enabled;
+                checkbox.addEventListener('change', () => {
+                    sessionStorage.setItem(storageKey + '.enabled', checkbox.checked ? '1' : '0');
+                    if (checkbox.checked) saveFilters();
+                    else sessionStorage.removeItem(storageKey);
+                });
+                form.addEventListener('submit', () => {
+                    if (checkbox.checked) saveFilters();
+                });
+                if (enabled && restoreFilters()) return;
+            }
+        })();
 
         if (deleteCancel) {
             deleteCancel.addEventListener('click', () => deleteModal.classList.remove('active'));

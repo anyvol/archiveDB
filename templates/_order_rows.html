@@ -1,0 +1,12 @@
+{% for item in orders %}
+<tr class="doc-row archive-row"
+    data-doc-id="{{ item.id }}"
+    data-doc-label="{{ item.number|e }}"
+    data-action-open="{{ url_path('/documents/orders/' ~ item.id) }}"
+    data-action-download="{{ url_path('/documents/orders/' ~ item.id ~ '/download') }}"
+    {% if can_delete_document(user) %}data-action-delete="{{ item.id }}" data-delete-type="order"{% endif %}>
+    {% if 'number' in visible_columns %}<td>{{ item.number }}</td>{% endif %}
+    {% if 'name' in visible_columns %}<td>{{ item.name }}</td>{% endif %}
+    {% if 'order_date' in visible_columns %}<td>{{ format_date(item.order_date, app_timezone) }}</td>{% endif %}
+</tr>
+{% endfor %}

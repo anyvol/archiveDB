@@ -443,6 +443,38 @@ async def admin_backups(
     )
 
 
+@router.get("/backups/list")
+async def admin_backups_list_json(
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    try:
+        await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        raise HTTPException(status_code=403, detail="Недостаточно прав")
+
+    remote = await list_remote_backups()
+    await sync_backup_records(session, remote)
+    result = await session.execute(select(BackupRecord).order_by(BackupRecord.created_at.desc()))
+    records = result.scalars().all()
+    tz = await get_app_timezone(session)
+    return {
+        "records": [
+            {
+                "backup_id": r.backup_id,
+                "backup_type": r.backup_type,
+                "size_bytes_display": format_bytes(r.size_bytes or 0),
+                "status": r.status,
+                "created_at_display": format_datetime(r.created_at, tz),
+                "triggered_by": r.triggered_by,
+            }
+            for r in records
+        ]
+    }
+
+
 @router.post("/backups/run")
 async def admin_run_backup(
     backup_db: str = Form("false"),
@@ -466,7 +498,8 @@ async def admin_run_backup(
         return _see_other(url_path("/admin/backups?error=types"))
 
     try:
-        await trigger_backup(types, triggered_by=user.login)
+        result = await trigger_backup(types, triggered_by=user.login)
+        await sync_backup_records(session, result.get("results", []))
     except Exception:
         logger.exception("Backup failed")
         return _see_other(url_path("/admin/backups?error=run"))
@@ -481,6 +514,7 @@ async def admin_save_backup_schedule(
     interval_hours: int = Form(24),
     backup_db: str = Form("false"),
     backup_files: str = Form("false"),
+    retention_days: int = Form(30),
     session: AsyncSession = Depends(get_session),
     access_token: str | None = Cookie(None),
 ):
@@ -501,6 +535,7 @@ async def admin_save_backup_schedule(
         interval_hours=max(1, min(interval_hours, 168)),
         backup_db=backup_db == "true",
         backup_files=backup_files == "true",
+        retention_days=max(1, min(retention_days, 365)),
     )
     if config.enabled and not config.backup_db and not config.backup_files:
         return _see_other(url_path("/admin/backups?error=schedule_types"))

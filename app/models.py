@@ -86,6 +86,7 @@ GOVERNED_DOCUMENT_TYPES = ("DD", "TD")
 
 MISC_DOCS_FOLDER = "Прочие документы"
 II_FOLDER = "Извещения об изменении"
+ORDERS_FOLDER = "Приказы"
 VERSIONS_FOLDER = "versions"
 IMAGES_FOLDER = "изображения"
 
@@ -158,6 +159,8 @@ class Project(Base):
         back_populates="project",
         order_by="ProjectImage.created_at.desc()",
     )
+    establishing_order_id = Column(Integer, ForeignKey("archive_orders.id", ondelete="SET NULL"), nullable=True)
+    establishing_order = relationship("ArchiveOrder", foreign_keys=[establishing_order_id])
 
 
 class Product(Base):
@@ -407,6 +410,48 @@ class FileRevision(Base):
     document = relationship("BaseDocument", back_populates="file_revisions")
 
 
+class ArchiveNotification(Base):
+    """Зарегистрированное в архиве извещение об изменении (ИИ)."""
+
+    __tablename__ = "archive_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    number = Column(String(64), unique=True, nullable=False, index=True)
+    change_number = Column(String(64), nullable=False)
+    change_date = Column(DateTime, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    developer_signed = Column(Boolean, default=False, nullable=False)
+    reviewer_signed = Column(Boolean, default=False, nullable=False)
+    approver_signed = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    project = relationship("Project")
+    product = relationship("Product")
+    created_by = relationship("User")
+    usages = relationship("ChangeNotification", back_populates="archive_notification")
+
+
+class ArchiveOrder(Base):
+    """Зарегистрированный в архиве приказ."""
+
+    __tablename__ = "archive_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    number = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    order_date = Column(DateTime, nullable=False)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_by = relationship("User")
+
+
 class ChangeNotification(Base):
     """Извещение об изменении (ИИ) — основание для формального изменения документа."""
 
@@ -414,6 +459,7 @@ class ChangeNotification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    archive_notification_id = Column(Integer, ForeignKey("archive_notifications.id"), nullable=True, index=True)
     number = Column(String(64), nullable=False)
     date = Column(DateTime, nullable=False)
     file_name = Column(String, nullable=False)
@@ -425,6 +471,7 @@ class ChangeNotification(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     document = relationship("BaseDocument", back_populates="change_notifications")
+    archive_notification = relationship("ArchiveNotification", back_populates="usages")
     created_by = relationship("User")
     change_event = relationship("DocumentChangeEvent", back_populates="change_notification", uselist=False)
 
