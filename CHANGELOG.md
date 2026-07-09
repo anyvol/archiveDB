@@ -9,6 +9,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Profile — push notifications:** removed separate «Подключить push» / «Отключить push» buttons and the duplicate «Включить push-уведомления» checkbox; the status banner is now a single toggle button.
 - **Profile — actions:** «Сохранить» and «Вернуться» buttons are larger, centered, separated by a divider, and placed lower for better visibility.
 - **Filters:** «Сохранить фильтры» checkbox is vertically aligned with «Применить фильтры» and «Сбросить».
+- **Documents and notifications lists:** added a «Загрузить ещё 100» button next to the default load-more control for bulk pagination.
 
 ## 0.21.0
 

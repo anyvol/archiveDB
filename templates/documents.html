@@ -24,6 +24,7 @@
         .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
         .btn-primary { background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
+        .load-more-wrap { padding: 1rem; text-align: center; display: flex; justify-content: center; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
         .btn-success { background: #28a745; color: white; }
         .btn-warning { background: #ffc107; color: #212529; }
         .btn-danger { background: #dc3545; color: white; }
@@ -457,8 +458,9 @@
             </tbody>
         </table>
         {% if has_more %}
-        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
-            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="documents">Загрузить ещё {{ documents_page_size }}</button>
+        <div class="load-more-wrap">
+            <button type="button" class="btn btn-primary load-more-btn" data-limit="{{ documents_page_size }}">Загрузить ещё {{ documents_page_size }}</button>
+            <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
         </div>
         {% endif %}
 
@@ -507,8 +509,9 @@
             </tbody>
         </table>
         {% if has_more %}
-        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
-            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="notifications">Загрузить ещё {{ documents_page_size }}</button>
+        <div class="load-more-wrap">
+            <button type="button" class="btn btn-primary load-more-btn" data-limit="{{ documents_page_size }}">Загрузить ещё {{ documents_page_size }}</button>
+            <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
         </div>
         {% endif %}
 
@@ -541,8 +544,9 @@
             </tbody>
         </table>
         {% if has_more %}
-        <div class="load-more-wrap" style="padding: 1rem; text-align: center;">
-            <button type="button" class="btn btn-primary" id="load-more-docs-btn" data-tab="orders">Загрузить ещё {{ documents_page_size }}</button>
+        <div class="load-more-wrap">
+            <button type="button" class="btn btn-primary load-more-btn" data-limit="{{ documents_page_size }}">Загрузить ещё {{ documents_page_size }}</button>
+            <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
         </div>
         {% endif %}
         {% endif %}
@@ -1346,40 +1350,51 @@
         });
 
         const activeListTab = {{ active_tab|tojson }};
-        const loadMoreDocsBtn = document.getElementById('load-more-docs-btn');
+        const loadMoreWrap = document.querySelector('.load-more-wrap');
+        const loadMoreBtns = loadMoreWrap ? loadMoreWrap.querySelectorAll('.load-more-btn') : [];
         const docTableBody = document.getElementById('doc-table-body');
         const documentsApiUrl = '{{ url_path('/api/documents') }}';
         const documentsFilterQuery = '{{ filters_query_string|e }}';
-        const documentsPageSize = {{ documents_page_size }};
         let loadedDocumentsCount = {% if active_tab == 'notifications' %}{{ notifications|length }}{% elif active_tab == 'orders' %}{{ orders|length }}{% else %}{{ documents|length }}{% endif %};
 
-        if (loadMoreDocsBtn && docTableBody) {
-            loadMoreDocsBtn.addEventListener('click', async function() {
-                loadMoreDocsBtn.disabled = true;
-                loadMoreDocsBtn.textContent = 'Загрузка…';
-                try {
-                    const queryParts = ['offset=' + loadedDocumentsCount, 'limit=' + documentsPageSize, 'tab=' + encodeURIComponent(activeListTab)];
-                    if (documentsFilterQuery) queryParts.push(documentsFilterQuery);
-                    const resp = await fetch(documentsApiUrl + '?' + queryParts.join('&'));
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
-                    const emptyRow = document.getElementById('empty-doc-row');
-                    if (emptyRow) emptyRow.remove();
-                    docTableBody.insertAdjacentHTML('beforeend', data.rows_html);
-                    loadedDocumentsCount += data.count || 0;
-                    if (!data.has_more) {
-                        loadMoreDocsBtn.parentElement.remove();
-                    } else {
-                        loadMoreDocsBtn.disabled = false;
-                        loadMoreDocsBtn.textContent = 'Загрузить ещё ' + documentsPageSize;
-                    }
-                } catch (e) {
-                    loadMoreDocsBtn.disabled = false;
-                    loadMoreDocsBtn.textContent = 'Загрузить ещё ' + documentsPageSize;
-                    alert('Не удалось загрузить документы.');
-                }
+        async function loadMoreDocuments(limit) {
+            if (!loadMoreWrap || !docTableBody) return;
+            loadMoreBtns.forEach(function(btn) {
+                btn.disabled = true;
+                btn.textContent = 'Загрузка…';
             });
+            try {
+                const queryParts = ['offset=' + loadedDocumentsCount, 'limit=' + limit, 'tab=' + encodeURIComponent(activeListTab)];
+                if (documentsFilterQuery) queryParts.push(documentsFilterQuery);
+                const resp = await fetch(documentsApiUrl + '?' + queryParts.join('&'));
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                const emptyRow = document.getElementById('empty-doc-row');
+                if (emptyRow) emptyRow.remove();
+                docTableBody.insertAdjacentHTML('beforeend', data.rows_html);
+                loadedDocumentsCount += data.count || 0;
+                if (!data.has_more) {
+                    loadMoreWrap.remove();
+                } else {
+                    loadMoreBtns.forEach(function(btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Загрузить ещё ' + btn.dataset.limit;
+                    });
+                }
+            } catch (e) {
+                loadMoreBtns.forEach(function(btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Загрузить ещё ' + btn.dataset.limit;
+                });
+                alert('Не удалось загрузить документы.');
+            }
         }
+
+        loadMoreBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                loadMoreDocuments(parseInt(btn.dataset.limit, 10));
+            });
+        });
 
         document.addEventListener('click', (e) => {
             if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
