@@ -20,7 +20,7 @@
         .filters { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
         .filters label { display: block; font-size: 0.8rem; margin-bottom: 0.25rem; }
         .filters input, .filters select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
-        .filters-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .filters-actions { grid-column: 1 / -1; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
         .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
         .btn-primary { background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
@@ -105,12 +105,12 @@
         .doc-type-more.open .doc-type-more-menu { display: block; }
         .doc-type-more-item { display: block; width: 100%; padding: 0.55rem 0.85rem; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.9rem; }
         .doc-type-more-item:hover { background: #f0f7ff; }
-        .create-type-label { font-size: 0.95rem; color: #495057; margin-bottom: 0.75rem; }
         .archive-create-fields { display: none; }
         .tabs { display: flex; gap: 0.5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
         .tab-link { padding: 0.5rem 1rem; border-radius: 6px 6px 0 0; text-decoration: none; color: #495057; background: #e9ecef; font-size: 0.95rem; }
         .tab-link.active { background: white; color: #007bff; font-weight: 600; box-shadow: 0 -2px 0 #007bff inset; }
-        .filters-save { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin-left: 0.5rem; color: #6c757d; }
+        .filters-save { display: inline-flex; flex-direction: row; align-items: center; gap: 0.2rem; font-size: 0.85rem; margin-left: 0.25rem; color: #6c757d; white-space: nowrap; cursor: pointer; line-height: 1; }
+        .filters-save input[type="checkbox"] { margin: 0; flex-shrink: 0; width: auto; }
         .list-panel { background: white; padding: 0 0 1rem; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
         .list-panel h2 { margin: 0; padding: 1rem 1rem 0.5rem; font-size: 1.1rem; }
         tbody tr.doc-row { cursor: pointer; }
@@ -162,7 +162,6 @@
             <div class="form-group">
                 <label>Тип записи:</label>
                 <input type="hidden" id="doc_type" name="doc_type" value="">
-                <p class="create-type-label" id="create-type-label">Выберите тип записи для регистрации в архиве.</p>
                 <div class="doc-type-buttons">
                     <button type="button" class="btn btn-secondary doc-type-btn" data-type="DD">Конструкторская документация</button>
                     <button type="button" class="btn btn-secondary doc-type-btn" data-type="TD">Технологическая документация</button>
@@ -422,7 +421,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=documents') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session" data-tab="documents">Сохранить фильтры</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session" data-tab="documents"><span>Сохранить фильтры</span></label>
             </div>
         </form>
 
@@ -491,7 +490,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=notifications') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session-notifications" data-tab="notifications">Сохранить фильтры</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-notifications" data-tab="notifications"><span>Сохранить фильтры</span></label>
             </div>
         </form>
         <table>
@@ -526,7 +525,7 @@
             <div class="filters-actions">
                 <button type="submit" class="btn btn-primary">Применить фильтры</button>
                 <a href="{{ url_path('/documents?tab=orders') }}" class="btn btn-secondary">Сбросить</a>
-                <label class="filters-save"><input type="checkbox" id="save-filters-session-orders" data-tab="orders">Сохранить фильтры</label>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-orders" data-tab="orders"><span>Сохранить фильтры</span></label>
             </div>
         </form>
         <table>
@@ -882,16 +881,8 @@
         function updateDocTypeFields() {
             const type = docTypeSelect.value;
             const createSubmit = document.getElementById('create-submit');
-            const createTypeLabel = document.getElementById('create-type-label');
             const iiFields = document.getElementById('ii-create-fields');
             const orderFields = document.getElementById('order-create-fields');
-            const labels = {
-                DD: 'Регистрация конструкторской документации (КД)',
-                TD: 'Регистрация технологической документации (ТД)',
-                II: 'Регистрация извещения об изменении в архиве',
-                ORDER: 'Регистрация приказа в архиве',
-            };
-            if (createTypeLabel) createTypeLabel.textContent = type ? labels[type] || '' : 'Выберите тип записи для регистрации в архиве.';
             if (iiFields) iiFields.style.display = type === 'II' ? 'block' : 'none';
             if (orderFields) orderFields.style.display = type === 'ORDER' ? 'block' : 'none';
             if (!type) {

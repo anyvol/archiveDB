@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Optional, TypedDict
+from typing import NotRequired, Optional, TypedDict
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,8 @@ from sqlalchemy.orm import joinedload
 
 from app.config import UPLOAD_DIR
 from app.document_helpers import _resolve_upload_subdirectory, _sanitize_storage_name
-from app.document_links import get_transitive_outgoing_documents
+from app.document_links import get_transitive_outgoing_document_ids
+from app.document_workflow import fetch_document
 from app.models import BaseDocument, DocumentApplicability, DocumentChangeEventType, Product, User
 from app.notifications import get_document_designation, notify_document_edit
 from app.change_log import log_change_event
@@ -22,6 +23,15 @@ class ApplicabilityPropagationResult(TypedDict):
     designation: str
     product_id: int
     success: bool
+    error: NotRequired[str]
+
+
+class ApplicabilityRevertResult(TypedDict):
+    target_id: int
+    designation: str
+    product_id: int
+    success: bool
+    error: NotRequired[str]
 
 
 def _resolve_doc_kind_code(doc: BaseDocument) -> Optional[str]:
@@ -131,8 +141,10 @@ async def add_document_applicability(
     doc: BaseDocument,
     product_id: int,
     user: User,
+    *,
+    allow_same_product: bool = False,
 ) -> DocumentApplicability:
-    if doc.product_id and product_id == doc.product_id:
+    if doc.product_id and product_id == doc.product_id and not allow_same_product:
         raise HTTPException(status_code=400, detail="Запись уже относится к этому изделию.")
 
     existing = await session.execute(
@@ -178,6 +190,16 @@ async def add_document_applicability(
     return entry
 
 
+async def get_missing_parent_applicability_product_ids(
+    session: AsyncSession,
+    child: BaseDocument,
+    parent_applicability_ids: set[int],
+) -> set[int]:
+    """Parent applicability products not yet present as explicit entries on the child."""
+    existing = await get_applicability_product_ids(session, child.id)
+    return parent_applicability_ids - existing
+
+
 async def propagate_applicability_to_outgoing_links(
     session: AsyncSession,
     doc: BaseDocument,
@@ -188,21 +210,30 @@ async def propagate_applicability_to_outgoing_links(
     if not source_product_ids:
         return []
 
-    linked_documents = await get_transitive_outgoing_documents(session, doc.id)
+    linked_ids = await get_transitive_outgoing_document_ids(session, doc.id)
     results: list[ApplicabilityPropagationResult] = []
 
-    for target_doc in linked_documents:
-        existing = await get_applicability_product_ids(session, target_doc.id)
-        missing = source_product_ids - existing
-        if target_doc.product_id:
-            missing.discard(target_doc.product_id)
+    for target_id in linked_ids:
+        target_doc = await fetch_document(session, target_id)
+        if not target_doc:
+            continue
+
+        missing = await get_missing_parent_applicability_product_ids(
+            session, target_doc, source_product_ids
+        )
         if not missing:
             continue
 
         designation = get_document_designation(target_doc)
         for product_id in sorted(missing):
             try:
-                await add_document_applicability(session, target_doc, product_id, user)
+                await add_document_applicability(
+                    session,
+                    target_doc,
+                    product_id,
+                    user,
+                    allow_same_product=True,
+                )
                 results.append(
                     {
                         "target_id": target_doc.id,
@@ -211,13 +242,89 @@ async def propagate_applicability_to_outgoing_links(
                         "success": True,
                     }
                 )
-            except HTTPException:
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else "Не удалось добавить применяемость."
                 results.append(
                     {
                         "target_id": target_doc.id,
                         "designation": designation,
                         "product_id": product_id,
                         "success": False,
+                        "error": detail,
+                    }
+                )
+
+    return results
+
+
+async def verify_child_applicability(
+    session: AsyncSession,
+    doc: BaseDocument,
+    user: User,
+) -> list[ApplicabilityPropagationResult]:
+    """Check all child link branches and add any missing parent applicability entries."""
+    source_product_ids = await get_applicability_product_ids(session, doc.id)
+    if not source_product_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="У записи нет применяемости для проверки дочерних записей.",
+        )
+    return await propagate_applicability_to_outgoing_links(session, doc, user)
+
+
+async def revert_parent_applicability_after_link_removed(
+    session: AsyncSession,
+    parent_doc: BaseDocument,
+    target_id: int,
+    user: User,
+) -> list[ApplicabilityRevertResult]:
+    """Remove parent applicability entries from the unlinked target and its subtree."""
+    parent_product_ids = await get_applicability_product_ids(session, parent_doc.id)
+    if not parent_product_ids:
+        return []
+
+    subtree_ids = {target_id, *await get_transitive_outgoing_document_ids(session, target_id)}
+    still_reachable = set(await get_transitive_outgoing_document_ids(session, parent_doc.id))
+    to_clean = sorted(subtree_ids - still_reachable)
+    results: list[ApplicabilityRevertResult] = []
+
+    for doc_id in to_clean:
+        doc = await fetch_document(session, doc_id)
+        if not doc:
+            continue
+
+        designation = get_document_designation(doc)
+        entries = await get_applicability_entries(session, doc_id)
+        for entry in entries:
+            if entry.product_id not in parent_product_ids:
+                continue
+            try:
+                await remove_document_applicability(session, entry.id, doc_id)
+                label = format_applicability_label(doc, entry.product)
+                await log_change_event(
+                    session,
+                    doc,
+                    user,
+                    DocumentChangeEventType.metadata_edit,
+                    comment=f"Удалена применяемость (ссылка снята): {label}",
+                )
+                results.append(
+                    {
+                        "target_id": doc_id,
+                        "designation": designation,
+                        "product_id": entry.product_id,
+                        "success": True,
+                    }
+                )
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else "Не удалось удалить применяемость."
+                results.append(
+                    {
+                        "target_id": doc_id,
+                        "designation": designation,
+                        "product_id": entry.product_id,
+                        "success": False,
+                        "error": detail,
                     }
                 )
 
