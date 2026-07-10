@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.24.1
+
+- **Administration — containers:** ops-agent now discovers all services in the current Docker Compose project dynamically (no hard-coded whitelist). Service names are read from the `com.docker.compose.service` label instead of parsing container names. Container status on the dashboard and containers page auto-refreshes every 15 seconds.
+
 ## 0.24.0
 
 - **Technical specifications (ТУ):** register ТУ by OKPO from the «Ещё» menu using the format OKPD2-product-serial-OKPO-year (e.g. `26.20.13-002-95979699-2024`). New «ТУ» tab on the main archive page with filters, column visibility in the profile, and record cards with preview/download.

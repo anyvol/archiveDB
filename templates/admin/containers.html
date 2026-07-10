@@ -2,9 +2,13 @@
 {% block title %}Контейнеры{% endblock %}
 {% block content %}
 <h2>Статус контейнеров</h2>
+<p style="font-size:0.85rem;color:#6c757d;">Список обновляется автоматически каждые 15 секунд. Все сервисы текущего compose-проекта отображаются без ручного добавления в whitelist.</p>
 <div class="card">
-    <table>
-        <tr><th>Имя</th><th>Статус</th><th>Health</th><th></th></tr>
+    <table id="containers-table">
+        <thead>
+            <tr><th>Имя</th><th>Статус</th><th>Health</th><th></th></tr>
+        </thead>
+        <tbody id="containers-table-body">
         {% for c in containers %}
         <tr>
             <td>{{ c.name }}</td>
@@ -15,6 +19,7 @@
         {% else %}
         <tr><td colspan="4">Нет данных от ops-agent.</td></tr>
         {% endfor %}
+        </tbody>
     </table>
 </div>
 {% if selected %}
@@ -23,4 +28,43 @@
     <div class="logs">{{ logs }}</div>
 </div>
 {% endif %}
+
+<script>
+    const containersListUrl = {{ url_path('/admin/containers/list') | tojson }};
+    const containersPageUrl = {{ url_path('/admin/containers') | tojson }};
+    const selectedName = {{ (selected or '') | tojson }};
+
+    function renderContainerRows(containers) {
+        const tbody = document.getElementById('containers-table-body');
+        if (!tbody) return;
+        if (!Array.isArray(containers) || !containers.length) {
+            tbody.innerHTML = '<tr><td colspan="4">Нет данных от ops-agent.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = containers.map(c => {
+            const name = c.name || '';
+            const status = c.status || '';
+            const health = c.health || '—';
+            const logsHref = containersPageUrl + '?name=' + encodeURIComponent(name);
+            return '<tr>'
+                + '<td>' + name + '</td>'
+                + '<td>' + status + '</td>'
+                + '<td>' + health + '</td>'
+                + '<td><a href="' + logsHref + '">Логи</a></td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    async function refreshContainers() {
+        try {
+            const resp = await fetch(containersListUrl, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!Array.isArray(data.containers)) return;
+            renderContainerRows(data.containers);
+        } catch (e) { /* ignore */ }
+    }
+
+    setInterval(refreshContainers, 15000);
+</script>
 {% endblock %}
