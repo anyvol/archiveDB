@@ -8,8 +8,8 @@ import subprocess
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-ALLOWED_CONTAINERS = {"db", "api", "proxy", "backup", "ops-agent"}
 TOKEN = os.getenv("OPS_AGENT_TOKEN", "").strip()
+COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT_NAME", "").strip()
 
 app = FastAPI(title="archiveDB ops-agent")
 security = HTTPBearer(auto_error=False)
@@ -35,29 +35,92 @@ def _docker(*args: str) -> str:
     return result.stdout.strip()
 
 
-@app.get("/containers")
-def list_containers(_: None = Depends(_auth)) -> list[dict]:
+def _resolve_compose_project() -> str | None:
+    if COMPOSE_PROJECT:
+        return COMPOSE_PROJECT
+    hostname = os.getenv("HOSTNAME", "").strip()
+    if not hostname:
+        return None
     try:
-        output = _docker(
-            "ps",
-            "-a",
-            "--filter", "label=com.docker.compose.project",
-            "--format", "{{.Names}}\t{{.Status}}\t{{.State}}",
-        )
+        project = _docker(
+            "inspect",
+            hostname,
+            "--format",
+            '{{index .Config.Labels "com.docker.compose.project"}}',
+        ).strip()
+        return project or None
     except Exception:
-        return []
+        return None
+
+
+def _guess_service_name(full_name: str) -> str:
+    """Fallback when compose service label is missing."""
+    if "-" not in full_name:
+        return full_name
+    parts = full_name.split("-")
+    if len(parts) >= 3 and parts[-1].isdigit():
+        return "-".join(parts[1:-1]) if len(parts) > 3 else parts[-2]
+    return parts[-1]
+
+
+def _parse_container_rows(output: str) -> list[dict]:
     items: list[dict] = []
     for line in output.splitlines():
         parts = line.split("\t")
         if len(parts) < 3:
             continue
-        name, status, state = parts[0], parts[1], parts[2]
-        short = name.split("-")[-1] if "-" in name else name
-        if short not in ALLOWED_CONTAINERS and name not in ALLOWED_CONTAINERS:
-            continue
+        full_name, status, state = parts[0], parts[1], parts[2]
+        service = parts[3].strip() if len(parts) > 3 and parts[3].strip() else _guess_service_name(full_name)
         health = "healthy" if "(healthy)" in status else ("unhealthy" if "(unhealthy)" in status else None)
-        items.append({"name": short, "full_name": name, "status": state, "health": health, "detail": status})
+        items.append(
+            {
+                "name": service,
+                "full_name": full_name,
+                "status": state,
+                "health": health,
+                "detail": status,
+            }
+        )
     return items
+
+
+def _dedupe_by_service(items: list[dict]) -> list[dict]:
+    """Prefer a running container when several instances share the same compose service."""
+    by_service: dict[str, dict] = {}
+    for item in items:
+        service = item["name"]
+        existing = by_service.get(service)
+        if existing is None:
+            by_service[service] = item
+            continue
+        if item["status"] == "running" and existing["status"] != "running":
+            by_service[service] = item
+    return sorted(by_service.values(), key=lambda row: row["name"])
+
+
+def fetch_containers() -> list[dict]:
+    project = _resolve_compose_project()
+    args = [
+        "ps",
+        "-a",
+        "--format",
+        '{{.Names}}\t{{.Status}}\t{{.State}}\t{{.Label "com.docker.compose.service"}}',
+    ]
+    if project:
+        args[2:2] = ["--filter", f"label=com.docker.compose.project={project}"]
+    else:
+        args[2:2] = ["--filter", "label=com.docker.compose.project"]
+
+    try:
+        output = _docker(*args)
+    except Exception:
+        return []
+    return _dedupe_by_service(_parse_container_rows(output))
+
+
+@app.get("/containers")
+def list_containers(_: None = Depends(_auth)) -> list[dict]:
+    return fetch_containers()
 
 
 @app.get("/containers/{name}/logs")
@@ -66,10 +129,8 @@ def container_logs(
     tail: int = Query(200, ge=10, le=2000),
     _: None = Depends(_auth),
 ) -> dict:
-    if name not in ALLOWED_CONTAINERS:
-        raise HTTPException(status_code=404, detail="Container not allowed")
     try:
-        containers = list_containers()
+        containers = fetch_containers()
         full_name = next((c["full_name"] for c in containers if c["name"] == name), None)
         if not full_name:
             raise HTTPException(status_code=404, detail="Container not found")

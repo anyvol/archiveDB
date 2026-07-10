@@ -161,6 +161,16 @@ async def admin_containers(
     )
 
 
+@router.get("/containers/list")
+async def admin_containers_list_json(
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    await _require_master_admin_page(access_token, session)
+    containers = await fetch_containers()
+    return {"containers": containers}
+
+
 @router.get("/users", response_class=HTMLResponse)
 async def admin_users(
     request: Request,

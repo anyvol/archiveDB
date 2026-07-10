@@ -29,6 +29,7 @@ services:
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
       BACKUP_AGENT_URL: http://backup:9002
       OPS_AGENT_URL: http://ops-agent:9001
+      OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN:-}
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files
@@ -81,6 +82,7 @@ services:
     restart: unless-stopped
     environment:
       OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN:-}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:

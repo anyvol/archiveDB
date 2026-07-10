@@ -11,9 +11,12 @@
 </div>
 <div class="card">
     <h3>Контейнеры</h3>
-    {% if containers %}
-    <table>
-        <tr><th>Имя</th><th>Статус</th><th>Health</th></tr>
+    <table id="dashboard-containers-table">
+        <thead>
+            <tr><th>Имя</th><th>Статус</th><th>Health</th></tr>
+        </thead>
+        <tbody id="dashboard-containers-body">
+        {% if containers %}
         {% for c in containers %}
         <tr>
             <td>{{ c.name }}</td>
@@ -21,9 +24,40 @@
             <td>{{ c.health or '—' }}</td>
         </tr>
         {% endfor %}
+        {% else %}
+        <tr><td colspan="3">ops-agent недоступен или контейнеры не найдены.</td></tr>
+        {% endif %}
+        </tbody>
     </table>
-    {% else %}
-    <p>ops-agent недоступен или контейнеры не найдены.</p>
-    {% endif %}
 </div>
+
+<script>
+    const containersListUrl = {{ url_path('/admin/containers/list') | tojson }};
+
+    function renderDashboardContainers(containers) {
+        const tbody = document.getElementById('dashboard-containers-body');
+        if (!tbody) return;
+        if (!Array.isArray(containers) || !containers.length) {
+            tbody.innerHTML = '<tr><td colspan="3">ops-agent недоступен или контейнеры не найдены.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = containers.map(c => '<tr>'
+            + '<td>' + (c.name || '') + '</td>'
+            + '<td>' + (c.status || '') + '</td>'
+            + '<td>' + (c.health || '—') + '</td>'
+            + '</tr>').join('');
+    }
+
+    async function refreshDashboardContainers() {
+        try {
+            const resp = await fetch(containersListUrl, { credentials: 'same-origin' });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!Array.isArray(data.containers)) return;
+            renderDashboardContainers(data.containers);
+        } catch (e) { /* ignore */ }
+    }
+
+    setInterval(refreshDashboardContainers, 15000);
+</script>
 {% endblock %}

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.24.1
+
+- **Administration — containers:** ops-agent now discovers all services in the current Docker Compose project dynamically (no hard-coded whitelist). Service names are read from the `com.docker.compose.service` label instead of parsing container names. Container status on the dashboard and containers page auto-refreshes every 15 seconds.
+
+## 0.24.0
+
+- **Technical specifications (ТУ):** register ТУ by OKPO from the «Ещё» menu using the format OKPD2-product-serial-OKPO-year (e.g. `26.20.13-002-95979699-2024`). New «ТУ» tab on the main archive page with filters, column visibility in the profile, and record cards with preview/download.
+- **Projects — establishing TU:** administrators can attach a registered ТУ to a project (same pattern as establishing orders).
+- **Password recovery:** reset links in email always use HTTPS, even when the forgot-password form was submitted over HTTP.
+- **Profile — change password:** change password from the personal account with current password verification; optional «send link to email» reuses the forgot-password flow.
+- **Orders — metadata:** orders can be linked to a project and multiple products; editable on the order metadata edit page. Project and product columns added to the orders list.
+
 ## 0.23.2
 
 - **Profile — column visibility:** saving column checkboxes in the personal account now persists correctly (SQLAlchemy JSON column change detection).

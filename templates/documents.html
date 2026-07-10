@@ -170,6 +170,7 @@
                         <div class="doc-type-more-menu">
                             <button type="button" class="doc-type-more-item" data-type="II">Извещение об изменении</button>
                             <button type="button" class="doc-type-more-item" data-type="ORDER">Приказ</button>
+                            <button type="button" class="doc-type-more-item" data-type="TU">Технические условия (ТУ)</button>
                         </div>
                     </div>
                 </div>
@@ -201,6 +202,19 @@
                 <div class="form-group"><label for="order_name">Название *</label><input type="text" id="order_name" name="order_name" maxlength="255"></div>
                 <div class="form-group"><label for="order_date">Дата *</label><input type="date" id="order_date" name="order_date"></div>
                 <div class="form-group"><label for="order_file">Файл приказа *</label><input type="file" id="order_file" name="order_file" accept=".pdf,.doc,.docx"></div>
+            </div>
+
+            <div id="tu-create-fields" class="archive-create-fields">
+                <p><small>Формат номера: ОКПД2-изделие-порядковый номер-ОКПО-год (например, 26.20.13-002-95979699-2024).</small></p>
+                <div class="designation-row">
+                    <div class="form-group"><label for="tu_okpd2">ОКПД2 *</label><input type="text" id="tu_okpd2" name="tu_okpd2" placeholder="26.20.13" maxlength="32" pattern="\d{2}\.\d{2}\.\d{2}"></div>
+                    <div class="form-group"><label for="tu_product_index">Изделие *</label><input type="text" id="tu_product_index" name="tu_product_index" placeholder="002" maxlength="3" pattern="\d{1,3}"></div>
+                    <div class="form-group"><label for="tu_okpo">ОКПО *</label><input type="text" id="tu_okpo" name="tu_okpo" placeholder="95979699" maxlength="8" pattern="\d{8}" value="{% if preferred_org_okpo and preferred_org_code %}{{ preferred_org_code }}{% else %}95979699{% endif %}"></div>
+                    <div class="form-group"><label for="tu_year">Год *</label><input type="number" id="tu_year" name="tu_year" min="2000" max="2100" placeholder="2024"></div>
+                </div>
+                <div class="designation-preview" id="tu-number-preview"></div>
+                <div class="form-group"><label for="tu_name">Наименование изделия *</label><input type="text" id="tu_name" name="tu_name" maxlength="255" placeholder="Сенсорный киоск системы управления очередью SAGA S-27"></div>
+                <div class="form-group"><label for="tu_file">Файл ТУ *</label><input type="file" id="tu_file" name="tu_file" accept=".pdf,.doc,.docx"></div>
             </div>
 
             <div id="doc-fields" style="display: none;">
@@ -361,6 +375,7 @@
             <a class="tab-link{% if active_tab == 'documents' %} active{% endif %}" href="{{ url_path('/documents?tab=documents') }}">КД и ТД</a>
             <a class="tab-link{% if active_tab == 'notifications' %} active{% endif %}" href="{{ url_path('/documents?tab=notifications') }}">Извещения</a>
             <a class="tab-link{% if active_tab == 'orders' %} active{% endif %}" href="{{ url_path('/documents?tab=orders') }}">Приказы</a>
+            <a class="tab-link{% if active_tab == 'tu' %} active{% endif %}" href="{{ url_path('/documents?tab=tu') }}">ТУ</a>
         </div>
 
         <div class="list-panel">
@@ -514,12 +529,28 @@
         </div>
         {% endif %}
 
-        {% else %}
+        {% elif active_tab == 'orders' %}
         <h2>Приказы</h2>
         <form method="get" action="{{ url_path('/documents') }}" class="filters" id="orders-filters-form">
             <input type="hidden" name="tab" value="orders">
             <div><label>Номер</label><input name="number" value="{{ filters.number or '' }}"></div>
             <div><label>Название</label><input name="name" value="{{ filters.name or '' }}"></div>
+            <div><label>Проект</label>
+                <select name="project_id">
+                    <option value="">Все</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if filters.project_id and filters.project_id|string == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div><label>Изделие</label>
+                <select name="product_id">
+                    <option value="">Все</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" {% if filters.product_id and filters.product_id|string == product.id|string %}selected{% endif %}>{{ product.project.name }} / {{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <input type="hidden" name="sort" value="{{ filters.sort }}">
             <input type="hidden" name="order" value="{{ filters.order }}">
             <div class="filters-actions">
@@ -548,6 +579,43 @@
             <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
         </div>
         {% endif %}
+
+        {% elif active_tab == 'tu' %}
+        <h2>Технические условия (ТУ)</h2>
+        <form method="get" action="{{ url_path('/documents') }}" class="filters" id="tu-filters-form">
+            <input type="hidden" name="tab" value="tu">
+            <div><label>Номер ТУ</label><input name="number" value="{{ filters.number or '' }}"></div>
+            <div><label>Наименование</label><input name="name" value="{{ filters.name or '' }}"></div>
+            <div><label>ОКПО</label><input name="okpo" value="{{ filters.okpo or '' }}" maxlength="8"></div>
+            <input type="hidden" name="sort" value="{{ filters.sort }}">
+            <input type="hidden" name="order" value="{{ filters.order }}">
+            <div class="filters-actions">
+                <button type="submit" class="btn btn-primary">Применить фильтры</button>
+                <a href="{{ url_path('/documents?tab=tu') }}" class="btn btn-secondary">Сбросить</a>
+                <label class="filters-save"><input type="checkbox" id="save-filters-session-tu" data-tab="tu"><span>Сохранить фильтры</span></label>
+            </div>
+        </form>
+        <table>
+            <thead><tr>
+                {% for key, label in TU_COLUMNS %}
+                {% if key in visible_columns %}
+                <th><a href="{{ url_path('/documents') }}?tab=tu&{% for k,v in filters.items() if v and k not in ['sort','order','tab'] %}{{ k }}={{ v }}&{% endfor %}sort={{ key }}&order={% if filters.sort == key and filters.order == 'asc' %}desc{% else %}asc{% endif %}">{{ label }}</a></th>
+                {% endif %}
+                {% endfor %}
+            </tr></thead>
+            <tbody id="doc-table-body">
+                {% if tu_records %}{% include "_tu_rows.html" with context %}{% else %}
+                <tr id="empty-doc-row"><td colspan="{{ visible_columns|length }}" style="text-align:center;">ТУ не найдены.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        {% if has_more %}
+        <div class="load-more-wrap">
+            <button type="button" class="btn btn-primary load-more-btn" data-limit="{{ documents_page_size }}">Загрузить ещё {{ documents_page_size }}</button>
+            <button type="button" class="btn btn-secondary load-more-btn" data-limit="100">Загрузить ещё 100</button>
+        </div>
+        {% endif %}
+
         {% endif %}
         </div>
     </div>
@@ -883,19 +951,23 @@
             const createSubmit = document.getElementById('create-submit');
             const iiFields = document.getElementById('ii-create-fields');
             const orderFields = document.getElementById('order-create-fields');
+            const tuFields = document.getElementById('tu-create-fields');
             if (iiFields) iiFields.style.display = type === 'II' ? 'block' : 'none';
             if (orderFields) orderFields.style.display = type === 'ORDER' ? 'block' : 'none';
+            if (tuFields) tuFields.style.display = type === 'TU' ? 'block' : 'none';
             if (!type) {
                 docFields.style.display = 'none';
                 if (createSubmit) createSubmit.style.display = 'none';
                 return;
             }
-            if (type === 'II' || type === 'ORDER') {
+            if (type === 'II' || type === 'ORDER' || type === 'TU') {
                 docFields.style.display = 'none';
                 if (createSubmit) {
                     createSubmit.style.display = 'inline-block';
-                    createSubmit.textContent = type === 'II' ? 'Зарегистрировать извещение' : 'Зарегистрировать приказ';
+                    const labels = { II: 'Зарегистрировать извещение', ORDER: 'Зарегистрировать приказ', TU: 'Зарегистрировать ТУ' };
+                    createSubmit.textContent = labels[type] || 'Зарегистрировать';
                 }
+                if (type === 'TU') updateTuNumberPreview();
                 return;
             }
             docFields.style.display = 'block';
@@ -980,6 +1052,26 @@
         if (iiProjectSelect) {
             iiProjectSelect.addEventListener('change', () => loadIiProducts(iiProjectSelect.value));
         }
+
+        const tuOkpd2 = document.getElementById('tu_okpd2');
+        const tuProductIndex = document.getElementById('tu_product_index');
+        const tuOkpo = document.getElementById('tu_okpo');
+        const tuYear = document.getElementById('tu_year');
+        const tuNumberPreview = document.getElementById('tu-number-preview');
+
+        function updateTuNumberPreview() {
+            if (!tuNumberPreview) return;
+            const parts = [tuOkpd2, tuProductIndex, tuOkpo, tuYear].map(el => (el && el.value || '').trim());
+            if (parts.every(Boolean)) {
+                const index = String(parseInt(parts[1], 10)).padStart(3, '0');
+                tuNumberPreview.textContent = parts[0] + '-' + index + '-' + parts[2] + '-' + parts[3];
+            } else {
+                tuNumberPreview.textContent = '';
+            }
+        }
+        [tuOkpd2, tuProductIndex, tuOkpo, tuYear].forEach(el => {
+            if (el) el.addEventListener('input', updateTuNumberPreview);
+        });
 
         if (isOkpoCheckbox) {
             isOkpoCheckbox.addEventListener('change', function() {
@@ -1066,6 +1158,33 @@
                     }
                     if (!orderFile || !orderFile.files.length) {
                         showFormMessage('Приложите файл приказа.', 'error');
+                        return;
+                    }
+                } else if (type === 'TU') {
+                    const tuName = document.getElementById('tu_name');
+                    const tuFile = document.getElementById('tu_file');
+                    if (!tuOkpd2 || !/^\d{2}\.\d{2}\.\d{2}$/.test(tuOkpd2.value.trim())) {
+                        showFormMessage('Укажите корректный код ОКПД2 (например, 26.20.13).', 'error');
+                        return;
+                    }
+                    if (!tuProductIndex || !/^\d{1,3}$/.test(tuProductIndex.value.trim())) {
+                        showFormMessage('Укажите порядковый номер изделия (1–3 цифры).', 'error');
+                        return;
+                    }
+                    if (!tuOkpo || !/^\d{8}$/.test(tuOkpo.value.trim())) {
+                        showFormMessage('Укажите корректный ОКПО (8 цифр).', 'error');
+                        return;
+                    }
+                    if (!tuYear || !tuYear.value.trim()) {
+                        showFormMessage('Укажите год выпуска ТУ.', 'error');
+                        return;
+                    }
+                    if (!tuName || !tuName.value.trim()) {
+                        showFormMessage('Укажите наименование изделия.', 'error');
+                        return;
+                    }
+                    if (!tuFile || !tuFile.files.length) {
+                        showFormMessage('Приложите файл ТУ.', 'error');
                         return;
                     }
                 } else if (type === 'II') {
@@ -1209,8 +1328,10 @@
         }
 
         function openArchiveDeleteModal(recordId, recordLabel, deleteType) {
-            deleteForm.action = statusBaseUrl + '/' + (deleteType === 'notification' ? 'notifications/' : 'orders/') + recordId + '/delete';
-            deleteDocLabel.textContent = (deleteType === 'notification' ? 'Извещение: ' : 'Приказ: ') + recordLabel;
+            const deletePaths = { notification: 'notifications/', order: 'orders/', tu: 'tu/' };
+            const deleteLabels = { notification: 'Извещение: ', order: 'Приказ: ', tu: 'ТУ: ' };
+            deleteForm.action = statusBaseUrl + '/' + (deletePaths[deleteType] || 'orders/') + recordId + '/delete';
+            deleteDocLabel.textContent = (deleteLabels[deleteType] || 'Запись: ') + recordLabel;
             deleteForm.querySelector('textarea').required = false;
             deleteForm.querySelector('textarea').style.display = 'none';
             deleteModal.classList.add('active');
@@ -1346,7 +1467,7 @@
         const docTableBody = document.getElementById('doc-table-body');
         const documentsApiUrl = '{{ url_path('/api/documents') }}';
         const documentsFilterQuery = '{{ filters_query_string|e }}';
-        let loadedDocumentsCount = {% if active_tab == 'notifications' %}{{ notifications|length }}{% elif active_tab == 'orders' %}{{ orders|length }}{% else %}{{ documents|length }}{% endif %};
+        let loadedDocumentsCount = {% if active_tab == 'notifications' %}{{ notifications|length }}{% elif active_tab == 'orders' %}{{ orders|length }}{% elif active_tab == 'tu' %}{{ tu_records|length }}{% else %}{{ documents|length }}{% endif %};
 
         async function loadMoreDocuments(limit) {
             if (!loadMoreWrap || !docTableBody) return;
