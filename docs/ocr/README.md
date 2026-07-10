@@ -2,9 +2,32 @@
 
 ## Architecture
 
-- `ocr/` — separate FastAPI sidecar (`ocr` service in docker-compose), port 9003.
-- Main `api` talks to it only via HTTP (`OCR_SERVICE_URL`). If the sidecar is down, document archive still works; OCR jobs are marked `failed` and can be filled manually on the review screen.
-- Staging files live under `uploaded_files/_ocr_inbox/{batch_id}/`.
+```text
+Browser  →  proxy (:80/:8443)  →  api (:8000)  →  ocr (:9003, internal only)
+                                      ↓
+                                   Postgres
+                                      ↓
+                         uploaded_files/  (shared volume)
+```
+
+- `ocr/` — separate FastAPI sidecar on **internal** port 9003 (`expose`, not `ports`).
+- Browser never talks to OCR directly. Main `api` uses `OCR_SERVICE_URL=http://ocr:9003`.
+- If the sidecar is down, the archive still works; OCR jobs are marked `failed` and can be filled manually on the review screen.
+- Staging files: `uploaded_files/_ocr_inbox/{batch_id}/` (API path `/app/uploaded_files/...`, OCR path `/uploads/...`).
+
+## Deploy checklist
+
+```bash
+docker compose up -d --build
+docker compose exec api alembic upgrade head   # required: creates ocr_* tables
+
+# Health (from inside the Docker network — NOT localhost:9003 on the host)
+docker compose exec api python -c "import urllib.request; print(urllib.request.urlopen('http://ocr:9003/health').read().decode())"
+# or:
+docker compose exec ocr python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9003/health').read().decode())"
+```
+
+`curl http://localhost:9003/health` on the host returns nothing by design — port 9003 is not published.
 
 ## Phase 1A scope
 

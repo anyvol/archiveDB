@@ -97,7 +97,13 @@
                 });
                 const data = await resp.json().catch(() => ({}));
                 if (!resp.ok) {
-                    throw new Error(data.detail || ('Ошибка ' + resp.status));
+                    let detail = data.detail;
+                    if (Array.isArray(detail)) {
+                        detail = detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+                    } else if (detail && typeof detail === 'object') {
+                        detail = JSON.stringify(detail);
+                    }
+                    throw new Error(detail || ('Ошибка ' + resp.status));
                 }
                 window.location.href = data.redirect;
             } catch (err) {

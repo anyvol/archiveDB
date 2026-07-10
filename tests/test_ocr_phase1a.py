@@ -10,7 +10,19 @@ import pytest
 from app.document_format import detect_format_from_dimensions
 from app.ocr.client import OcrServiceError, call_extract, check_ocr_health
 from app.ocr.commit import prefill_from_extraction
-from app.ocr.service import _empty_fields, field_value
+from app.ocr.service import _empty_fields, field_value, path_for_ocr_service
+
+
+def test_path_for_ocr_service_strips_upload_dir(tmp_path, monkeypatch):
+    upload_dir = tmp_path / "uploaded_files"
+    inbox = upload_dir / "_ocr_inbox" / "1"
+    inbox.mkdir(parents=True)
+    stored = inbox / "a.pdf"
+    stored.write_bytes(b"%PDF")
+    monkeypatch.setattr("app.ocr.service.UPLOAD_DIR", str(upload_dir))
+    rel = path_for_ocr_service(str(stored))
+    assert rel == "_ocr_inbox/1/a.pdf"
+    assert not rel.startswith("/")
 
 
 def test_field_value_reads_value_then_raw():

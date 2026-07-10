@@ -86,7 +86,27 @@ async def api_create_ocr_batch(
     if isinstance(auth, Response):
         return auth
 
-    batch = await create_batch_with_files(session, auth, files)
+    try:
+        batch = await create_batch_with_files(session, auth, files)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Most common deploy miss: migration not applied → missing ocr_* tables.
+        message = str(exc)
+        lowered = message.lower()
+        if "ocr_batches" in lowered or "ocr_jobs" in lowered or "undefinedtable" in lowered.replace(" ", ""):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Таблицы OCR не найдены. Выполните миграцию: "
+                    "docker compose exec api alembic upgrade head"
+                ),
+            ) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Не удалось создать пакет OCR: {message[:400]}",
+        ) from exc
+
     return JSONResponse(
         {
             "ok": True,

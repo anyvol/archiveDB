@@ -88,6 +88,7 @@ services:
       - "9001"
 
   # Optional sidecar: API starts without waiting for OCR health.
+  # Not published to the host — browser uses proxy → api; api calls http://ocr:9003.
   ocr:
     build: ./ocr
     restart: unless-stopped
@@ -99,6 +100,18 @@ services:
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/uploads
     expose:
       - "9003"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9003/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pgdata:

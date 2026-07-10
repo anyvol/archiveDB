@@ -35,6 +35,25 @@ def _sanitize_name(name: str) -> str:
     return cleaned or "file"
 
 
+def path_for_ocr_service(stored_path: str) -> str:
+    """Map API-local path under UPLOAD_DIR to a path relative to the shared volume.
+
+    API mounts uploads at ``/app/uploaded_files`` (UPLOAD_DIR), OCR at ``/uploads``.
+    The sidecar must receive a path relative to that shared root, e.g.
+    ``_ocr_inbox/1/file.pdf``, not ``/app/uploaded_files/...``.
+    """
+    abs_stored = os.path.abspath(stored_path)
+    abs_upload = os.path.abspath(UPLOAD_DIR)
+    try:
+        common = os.path.commonpath([abs_stored, abs_upload])
+    except ValueError:
+        return stored_path.replace("\\", "/")
+    if common != abs_upload:
+        return stored_path.replace("\\", "/")
+    rel = os.path.relpath(abs_stored, abs_upload)
+    return rel.replace("\\", "/")
+
+
 def _empty_fields() -> dict:
     keys = (
         "designation",
@@ -161,7 +180,7 @@ async def process_job(
     try:
         result = await call_extract(
             job_id=job.id,
-            file_path=job.stored_path,
+            file_path=path_for_ocr_service(job.stored_path),
             mime=job.mime,
             original_filename=job.original_filename,
         )

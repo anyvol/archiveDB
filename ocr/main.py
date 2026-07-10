@@ -46,12 +46,28 @@ def _empty_field() -> dict[str, Any]:
 
 
 def _resolve_path(file_path: str) -> str:
-    """Allow absolute paths under UPLOADS_DIR or paths relative to UPLOADS_DIR."""
-    if os.path.isabs(file_path):
-        full = os.path.normpath(file_path)
-    else:
-        full = os.path.normpath(os.path.join(UPLOADS_DIR, file_path))
+    """Resolve a path under UPLOADS_DIR.
+
+    Accepts:
+    - relative paths: ``_ocr_inbox/1/file.pdf``
+    - absolute paths already under UPLOADS_DIR
+    - API-style absolute paths containing ``/uploaded_files/`` (mapped onto UPLOADS_DIR)
+    """
     uploads_root = os.path.normpath(UPLOADS_DIR)
+    raw = (file_path or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="file_path is required")
+
+    if os.path.isabs(raw):
+        full = os.path.normpath(raw)
+        marker = f"{os.sep}uploaded_files{os.sep}"
+        if marker in full and not (full == uploads_root or full.startswith(uploads_root + os.sep)):
+            # /app/uploaded_files/_ocr_inbox/... → /uploads/_ocr_inbox/...
+            rel = full.split(marker, 1)[1]
+            full = os.path.normpath(os.path.join(uploads_root, rel))
+    else:
+        full = os.path.normpath(os.path.join(uploads_root, raw))
+
     if not (full == uploads_root or full.startswith(uploads_root + os.sep)):
         raise HTTPException(status_code=400, detail="file_path outside uploads directory")
     if not os.path.isfile(full):
