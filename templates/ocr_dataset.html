@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.15rem; }
+        .container { max-width: 760px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .hint { color: #6c757d; font-size: 0.9rem; line-height: 1.5; }
+        .stat { background: #f8f9fa; border-radius: 6px; padding: 0.85rem 1rem; margin: 0.75rem 0; }
+        .btn { display: inline-block; padding: 0.55rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; background: #007bff; color: white; }
+        .btn:disabled { background: #6c757d; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-top: 1rem; display: none; }
+        ul { margin: 0.35rem 0 0 1.1rem; padding: 0; }
+        code { background: #eee; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    {% include "_page_header.html" %}
+    <div class="container">
+        <p class="hint">
+            Этап 3: выгрузка размеченных штампов для обучения детектора области штампа и ячеек.
+            В ZIP попадают задачи с разметкой ROI и/или «учебными примерами», плюс шаблоны форматов (A4/A3…).
+        </p>
+        <div class="stat">
+            <strong>Готово к экспорту:</strong> {{ stats.exportable_jobs }} задач
+            (учебных: {{ stats.labeled_jobs }}, с разметкой: {{ stats.annotated_jobs }})
+        </div>
+        <div class="stat">
+            <strong>Шаблоны форматов:</strong>
+            {% if stats.format_templates %}
+            <ul>
+                {% for t in stats.format_templates %}
+                <li>{{ t.document_format }}{% if t.has_stamp_roi %} — есть ROI штампа{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <span class="hint"> пока нет — разметьте хотя бы один лист</span>
+            {% endif %}
+        </div>
+        <p class="hint">После скачивания см. <code>docs/ocr/PHASE3.md</code> и скрипты в <code>ocr/training/</code>.</p>
+        <div class="actions">
+            <button type="button" class="btn" id="btn-export" {% if stats.exportable_jobs == 0 %}disabled{% endif %}>Скачать датасет ZIP</button>
+            <a class="btn btn-secondary" href="{{ url_path('/ocr') }}">К загрузке OCR</a>
+            <a class="btn btn-secondary" href="{{ url_path('/documents') }}">Документы</a>
+        </div>
+        <div id="err" class="error"></div>
+    </div>
+    <script>
+        document.getElementById('btn-export').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-export');
+            const err = document.getElementById('err');
+            err.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Сборка…';
+            try {
+                const resp = await fetch({{ url_path('/api/ocr/dataset/export') | tojson }}, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/zip',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ mark_exported: true }),
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || ('Ошибка ' + resp.status));
+                }
+                const blob = await resp.blob();
+                const cd = resp.headers.get('Content-Disposition') || '';
+                const m = /filename=\"?([^\";]+)\"?/.exec(cd);
+                const name = (m && m[1]) || 'ocr-dataset.zip';
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = name;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (e) {
+                err.style.display = 'block';
+                err.textContent = e.message || 'Не удалось выгрузить датасет.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Скачать датасет ZIP';
+            }
+        });
+    </script>
+    {% include "_session_auth.html" %}
+</body>
+</html>

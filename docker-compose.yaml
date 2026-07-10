@@ -97,8 +97,15 @@ services:
     environment:
       UPLOADS_DIR: /uploads
       OCR_SERVICE_TOKEN: ${OCR_SERVICE_TOKEN:-}
+      OCR_RENDER_DPI: ${OCR_RENDER_DPI:-400}
+      OCR_PAGE_PREVIEW_MAX_SIDE: ${OCR_PAGE_PREVIEW_MAX_SIDE:-2800}
+      OCR_PIPELINE_VERSION: ${OCR_PIPELINE_VERSION:-stamp-cells-1.1}
+      # Optional phase-3 stamp detector weights (Ultralytics .pt). Empty = off.
+      OCR_STAMP_DETECTOR_PATH: ${OCR_STAMP_DETECTOR_PATH:-}
+      OCR_STAMP_DETECTOR_MIN_CONF: ${OCR_STAMP_DETECTOR_MIN_CONF:-0.35}
     volumes:
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/uploads
+      - ${OCR_MODELS_HOST_PATH:-./models}:/models:ro
     expose:
       - "9003"
     healthcheck:

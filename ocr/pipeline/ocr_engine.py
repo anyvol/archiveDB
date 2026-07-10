@@ -91,9 +91,9 @@ def _ocr_tesseract(image: np.ndarray, *, category: str | None) -> dict[str, Any]
     import pytesseract
 
     pil = Image.fromarray(image)
-    # Upscale small cells for better recognition
-    if pil.width < 120 or pil.height < 40:
-        scale = max(2, int(140 / max(pil.height, 1)))
+    # Upscale small cells for better recognition (higher DPI still leaves tiny cells)
+    if pil.width < 160 or pil.height < 48:
+        scale = max(2, int(180 / max(pil.height, 1)))
         pil = pil.resize((pil.width * scale, pil.height * scale), Image.Resampling.LANCZOS)
 
     config_parts = ["--psm", "6", "-l", "rus+eng"]

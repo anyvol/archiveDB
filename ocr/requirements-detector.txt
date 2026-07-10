@@ -1,0 +1,7 @@
+# Optional ML deps for stamp detector *inference* inside the OCR sidecar.
+# Not installed by default (torch is large). On the training host use:
+#   pip install ultralytics mlflow
+# For runtime detection in Docker, either:
+#   - rebuild the ocr image with: pip install ultralytics
+#   - or add ultralytics to a custom Dockerfile that extends ./ocr
+ultralytics>=8.0.0

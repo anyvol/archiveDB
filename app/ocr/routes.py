@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -30,6 +31,7 @@ from app.ocr.commit import (
     prefill_from_extraction,
     save_training_example,
 )
+from app.ocr.dataset import build_dataset_zip, dataset_stats
 from app.ocr.service import (
     _build_field_suggestions,
     create_batch_with_files,
@@ -109,8 +111,72 @@ async def ocr_upload_page(
             "page_title": "Распознать из файла",
             "service_version": SERVICE_VERSION,
             "unread_count": 0,
+            "dataset_url": url_path("/ocr/dataset"),
         },
     )
+
+
+@router.get("/ocr/dataset", response_class=HTMLResponse)
+async def ocr_dataset_page(
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    stats = await dataset_stats(session)
+    return templates.TemplateResponse(
+        "ocr_dataset.html",
+        {
+            "request": request,
+            "user": auth,
+            "stats": stats,
+            "page_title": "OCR датасет (этап 3)",
+            "service_version": SERVICE_VERSION,
+            "unread_count": 0,
+        },
+    )
+
+
+@router.get("/api/ocr/dataset/stats")
+async def api_ocr_dataset_stats(
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    return await dataset_stats(session)
+
+
+@router.post("/api/ocr/dataset/export")
+async def api_ocr_dataset_export(
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mark = body.get("mark_exported", True)
+    job_ids = body.get("job_ids")
+    zip_bytes, summary = await build_dataset_zip(
+        session,
+        mark_exported=bool(mark),
+        job_ids=job_ids if isinstance(job_ids, list) else None,
+    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{summary["filename"]}"',
+        "X-Dataset-Samples": str(summary["sample_count"]),
+    }
+    return StreamingResponse(io.BytesIO(zip_bytes), media_type="application/zip", headers=headers)
 
 
 @router.post("/api/ocr/batches")

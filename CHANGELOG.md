@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.25.0
+
+- **OCR — higher DPI:** default render DPI raised from 250 to **400** (`OCR_RENDER_DPI`); page preview max side **2800** for clearer stamp/cell text and annotation.
+- **OCR phase 3 — dataset export:** UI `/ocr/dataset` and `POST /api/ocr/dataset/export` build a ZIP of labeled/annotated jobs (stamp + page images, labels, format templates).
+- **OCR phase 3 — training toolkit:** `ocr/training/` converts the ZIP to YOLO format and trains an optional stamp detector (Ultralytics), with DVC/MLflow stubs. See `docs/ocr/PHASE3.md`.
+- **OCR phase 3 — optional detector:** if `OCR_STAMP_DETECTOR_PATH` points to a `.pt` model in the OCR container, stamp location uses the detector after format-template ROI and before format defaults.
+
 ## 0.24.2
 
 - **OCR — stamp region per format:** annotate the title-block area on the page preview (not only cells). `stamp_roi_norm` is stored in `ocr_format_templates` and reused for later jobs of the same paper size (A4 vs A3).

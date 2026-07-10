@@ -15,8 +15,9 @@ from pipeline.stamp import extract_stamp, iter_cells
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_VERSION = os.getenv("OCR_PIPELINE_VERSION", "stamp-cells-1.0")
-RENDER_DPI = int(os.getenv("OCR_RENDER_DPI", "250"))
+PIPELINE_VERSION = os.getenv("OCR_PIPELINE_VERSION", "stamp-cells-1.1")
+RENDER_DPI = int(os.getenv("OCR_RENDER_DPI", "400"))
+PAGE_PREVIEW_MAX_SIDE = int(os.getenv("OCR_PAGE_PREVIEW_MAX_SIDE", "2800"))
 
 _EMPTY_KEYS = (
     "designation",
@@ -93,8 +94,8 @@ def run_extract(
     stamp_abs = os.path.join(abs_dir, stamp_name)
     preview_abs = os.path.join(abs_dir, preview_name)
     save_rgb(stamp_abs, stamp)
-    # smaller preview
-    save_rgb(preview_abs, _downscale(page, max_side=1600))
+    # higher-res page preview for stamp-ROI annotation UI
+    save_rgb(preview_abs, _downscale(page, max_side=PAGE_PREVIEW_MAX_SIDE))
 
     for spec, cell_img, local_bbox in iter_cells(stamp, cells):
         category = spec.whitelist or spec.key

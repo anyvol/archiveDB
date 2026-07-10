@@ -89,11 +89,17 @@ class ExtractResponse(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {
+    from pipeline.detector import detector_status
+
+    status = {
         "status": "ok",
         "pipeline_version": PIPELINE_VERSION,
         "engine": engine_name(),
+        "render_dpi": str(os.getenv("OCR_RENDER_DPI", "400")),
     }
+    det = detector_status()
+    status["stamp_detector"] = "on" if det.get("enabled") else "off"
+    return status
 
 
 @app.get("/v1/version")

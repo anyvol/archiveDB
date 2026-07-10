@@ -90,16 +90,30 @@ def extract_stamp(
     roi_norm: tuple[float, float, float, float] | list[float] | None = None,
     *,
     document_format: str | None = None,
+    use_detector: bool = True,
 ) -> tuple[np.ndarray, tuple[int, int, int, int], dict[str, Any]]:
     roi = normalize_roi_box(roi_norm) if roi_norm is not None else None
+    source = "provided" if roi is not None else None
+    if roi is None and use_detector:
+        try:
+            from pipeline.detector import detect_stamp_roi
+
+            detected = detect_stamp_roi(page)
+            if detected:
+                roi = detected
+                source = "detector"
+        except Exception:
+            pass
     if roi is None:
         roi = default_stamp_roi(document_format)
+        source = "format_default" if document_format else "builtin_default"
     stamp, bbox = crop_norm(page, roi)
     meta = {
         "stamp_roi_norm": list(roi),
         "stamp_roi_px": list(bbox),
         "template": "gost_2_104_form1_approx",
         "document_format_hint": document_format,
+        "stamp_roi_source": source,
     }
     return stamp, bbox, meta
 
