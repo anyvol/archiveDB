@@ -63,3 +63,76 @@ async def fetch_known_person_names(session: AsyncSession) -> list[str]:
         _add_person_value(names, approved_by)
 
     return sorted(names, key=lambda item: item.casefold())
+
+
+def suggest_person_names(
+    query: str,
+    known_names: list[str],
+    *,
+    limit: int = 5,
+    min_score: float = 55.0,
+) -> list[dict]:
+    """Fuzzy-match OCR surname/FIO against known names. Suggestions only — never auto-replace.
+
+    Returns list of ``{name, score, reason}`` sorted by score desc.
+    """
+    needle = normalize_person_name(query)
+    if not needle or not known_names:
+        return []
+
+    needle_cf = needle.casefold()
+    needle_surname = needle_cf.split()[0]
+
+    exact: list[dict] = []
+    for name in known_names:
+        name_cf = name.casefold()
+        if name_cf == needle_cf:
+            exact.append({"name": name, "score": 100.0, "reason": "exact"})
+        elif name_cf.startswith(needle_surname + " ") or name_cf == needle_surname:
+            exact.append({"name": name, "score": 95.0, "reason": "surname"})
+    if exact:
+        best: dict[str, dict] = {}
+        for item in exact:
+            prev = best.get(item["name"])
+            if not prev or item["score"] > prev["score"]:
+                best[item["name"]] = item
+        return sorted(best.values(), key=lambda x: (-x["score"], x["name"].casefold()))[:limit]
+
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return []
+
+    scored = process.extract(
+        needle,
+        known_names,
+        scorer=fuzz.WRatio,
+        limit=limit * 3,
+    )
+
+    surname_map: dict[str, list[str]] = {}
+    for name in known_names:
+        sur = name.casefold().split()[0]
+        surname_map.setdefault(sur, []).append(name)
+    sur_hits = process.extract(
+        needle_surname,
+        list(surname_map.keys()),
+        scorer=fuzz.WRatio,
+        limit=limit,
+    )
+
+    merged: dict[str, dict] = {}
+    for name, score, _ in scored:
+        if score < min_score:
+            continue
+        merged[name] = {"name": name, "score": float(score), "reason": "fuzzy"}
+    for sur, score, _ in sur_hits:
+        if score < min_score:
+            continue
+        for name in surname_map.get(sur, []):
+            prev = merged.get(name)
+            entry = {"name": name, "score": float(score), "reason": "surname_fuzzy"}
+            if not prev or entry["score"] > prev["score"]:
+                merged[name] = entry
+
+    return sorted(merged.values(), key=lambda x: (-x["score"], x["name"].casefold()))[:limit]

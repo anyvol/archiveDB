@@ -30,6 +30,7 @@ services:
       BACKUP_AGENT_URL: http://backup:9002
       OPS_AGENT_URL: http://ops-agent:9001
       OCR_SERVICE_URL: http://ocr:9003
+      OCR_SERVICE_TIMEOUT_SEC: ${OCR_SERVICE_TIMEOUT_SEC:-120}
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files

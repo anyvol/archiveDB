@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import re
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from app.config import MAX_UPLOAD_SIZE_MB, OCR_ALLOWED_EXTENSIONS, UPLOAD_DIR
+from app.config import MAX_UPLOAD_SIZE_MB, OCR_ALLOWED_EXTENSIONS, OCR_LOW_CONF_THRESHOLD, UPLOAD_DIR
 from app.metadata_helpers import detect_document_format_from_bytes
 from app.models import (
     OCR_INBOX_FOLDER,
@@ -25,7 +26,10 @@ from app.models import (
     OcrJobStatus,
     User,
 )
+from app.name_helpers import fetch_known_person_names, suggest_person_names
 from app.ocr.client import OcrServiceError, call_extract, check_ocr_health
+
+logger = logging.getLogger(__name__)
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -200,17 +204,48 @@ async def process_job(
 
         job.pipeline_version = result.get("pipeline_version")
         job.page_count = geometry.get("page_count")
-        job.status = OcrJobStatus.needs_review
         job.finished_at = datetime.utcnow()
+
+        # Map crop paths from OCR volume-relative to API UPLOAD_DIR absolute
+        stamp_rel = result.get("stamp_crop_path")
+        preview_rel = result.get("page_preview_path")
+        stamp_path = _abs_upload_path(stamp_rel) if stamp_rel else None
+        preview_path = _abs_upload_path(preview_rel) if preview_rel else None
+
+        person_suggestions = await _build_person_suggestions(session, fields)
+
+        low_conf = geometry.get("low_conf_fields") or []
+        critical_empty = not field_value(fields, "designation") and not field_value(fields, "doc_name")
+        if critical_empty and not any(field_value(fields, k) for k in ("developed_by", "document_format")):
+            job.status = OcrJobStatus.needs_annotation
+            job.error_message = "Не удалось уверенно распознать поля штампа — проверьте вручную."
+        else:
+            job.status = OcrJobStatus.needs_review
+            job.error_message = None
+
+        mean_conf = geometry.get("mean_conf")
+        logger.info(
+            "OCR job %s done pipeline=%s mean_conf=%s low_conf=%s status=%s latency_ms=%s",
+            job.id,
+            job.pipeline_version,
+            mean_conf,
+            low_conf,
+            job.status,
+            geometry.get("latency_ms"),
+        )
+
         session.add(
             OcrExtraction(
                 job_id=job.id,
                 source="auto",
                 fields=fields,
-                geometry=geometry,
-                stamp_crop_path=result.get("stamp_crop_path"),
-                page_preview_path=result.get("page_preview_path"),
-                person_suggestions=result.get("person_suggestions") or {},
+                geometry={
+                    **geometry,
+                    "low_conf_threshold": OCR_LOW_CONF_THRESHOLD,
+                },
+                stamp_crop_path=stamp_path,
+                page_preview_path=preview_path,
+                person_suggestions=person_suggestions,
                 created_at=datetime.utcnow(),
             )
         )
@@ -298,3 +333,32 @@ def latest_extraction(job: OcrJob) -> OcrExtraction | None:
 
 async def ocr_service_available() -> bool:
     return (await check_ocr_health()) is not None
+
+
+def _abs_upload_path(rel_or_abs: str) -> str:
+    if os.path.isabs(rel_or_abs):
+        return rel_or_abs
+    return os.path.normpath(os.path.join(UPLOAD_DIR, rel_or_abs))
+
+
+async def _build_person_suggestions(session: AsyncSession, fields: dict) -> dict:
+    known = await fetch_known_person_names(session)
+    suggestions: dict = {}
+    for key in ("developed_by", "reviewed_by", "approved_by"):
+        raw = field_value(fields, key)
+        if not raw:
+            suggestions[key] = []
+            continue
+        suggestions[key] = suggest_person_names(raw, known, limit=5)
+    return suggestions
+
+
+def field_confidence(fields: dict | None, key: str) -> float | None:
+    if not fields:
+        return None
+    entry = fields.get(key) or {}
+    conf = entry.get("conf")
+    try:
+        return float(conf) if conf is not None else None
+    except (TypeError, ValueError):
+        return None

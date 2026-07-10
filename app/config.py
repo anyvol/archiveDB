@@ -15,7 +15,8 @@ OPS_AGENT_URL = os.getenv("OPS_AGENT_URL", "http://ops-agent:9001").rstrip("/")
 OPS_AGENT_TOKEN = os.getenv("OPS_AGENT_TOKEN", "").strip()
 OCR_SERVICE_URL = os.getenv("OCR_SERVICE_URL", "http://ocr:9003").rstrip("/")
 OCR_SERVICE_TOKEN = os.getenv("OCR_SERVICE_TOKEN", "").strip()
-OCR_SERVICE_TIMEOUT_SEC = float(os.getenv("OCR_SERVICE_TIMEOUT_SEC", "30"))
+OCR_SERVICE_TIMEOUT_SEC = float(os.getenv("OCR_SERVICE_TIMEOUT_SEC", "120"))
+OCR_LOW_CONF_THRESHOLD = float(os.getenv("OCR_LOW_CONF_THRESHOLD", "0.5"))
 OCR_ALLOWED_EXTENSIONS = {
     ext.strip().lower()
     for ext in os.getenv(

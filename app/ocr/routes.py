@@ -1,16 +1,17 @@
-"""OCR web and API routes (phase 1A)."""
+"""OCR web and API routes (phase 1A/1B)."""
 
 from __future__ import annotations
 
+import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.config import OCR_ALLOWED_EXTENSIONS, SERVICE_VERSION, url_path
+from app.config import OCR_ALLOWED_EXTENSIONS, OCR_LOW_CONF_THRESHOLD, SERVICE_VERSION, UPLOAD_DIR, url_path
 from app.database import get_session
 from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS
 from app.models import DOC_KIND_CODES, OCR_JOB_STATUS_LABELS, OcrJobStatus, Project
@@ -18,6 +19,7 @@ from app.name_helpers import fetch_known_person_names
 from app.ocr.commit import commit_ocr_job, discard_job, prefill_from_extraction
 from app.ocr.service import (
     create_batch_with_files,
+    field_confidence,
     get_batch,
     get_job,
     latest_extraction,
@@ -204,6 +206,14 @@ async def ocr_review_page(
     projects = projects_result.scalars().all()
     known_names = await fetch_known_person_names(session)
 
+    fields = (extraction.fields if extraction else {}) or {}
+    geometry = (extraction.geometry if extraction else {}) or {}
+    confidences = {key: field_confidence(fields, key) for key in fields}
+    low_conf_fields = set(geometry.get("low_conf_fields") or [])
+    for key, conf in confidences.items():
+        if conf is not None and conf < OCR_LOW_CONF_THRESHOLD:
+            low_conf_fields.add(key)
+
     return templates.TemplateResponse(
         "ocr_review.html",
         {
@@ -214,6 +224,16 @@ async def ocr_review_page(
             "prefill": prefill,
             "projects": projects,
             "known_person_names": known_names,
+            "person_suggestions": (extraction.person_suggestions if extraction else {}) or {},
+            "field_confidences": confidences,
+            "low_conf_fields": low_conf_fields,
+            "low_conf_threshold": OCR_LOW_CONF_THRESHOLD,
+            "geometry": geometry,
+            "stamp_crop_url": (
+                url_path(f"/api/ocr/jobs/{job.id}/stamp-crop")
+                if extraction and extraction.stamp_crop_path
+                else None
+            ),
             "ocr_available": await ocr_service_available(),
             "error": error,
             "default_developed_by": prefill.get("developed_by") or auth.full_name or "",
@@ -302,6 +322,32 @@ async def api_discard_ocr_job(
     if wants_json_response(request):
         return JSONResponse({"ok": True, "redirect": url_path(f"/ocr/batches/{batch_id}")})
     return RedirectResponse(url=url_path(f"/ocr/batches/{batch_id}"), status_code=303)
+
+
+@router.get("/api/ocr/jobs/{job_id}/stamp-crop")
+async def api_ocr_stamp_crop(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    extraction = latest_extraction(job)
+    path = extraction.stamp_crop_path if extraction else None
+    if not path or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Превью штампа не найдено.")
+    # Path must stay under UPLOAD_DIR
+    abs_upload = os.path.abspath(UPLOAD_DIR)
+    abs_path = os.path.abspath(path)
+    if not (abs_path == abs_upload or abs_path.startswith(abs_upload + os.sep)):
+        raise HTTPException(status_code=404, detail="Превью штампа не найдено.")
+    return FileResponse(abs_path, media_type="image/png", filename=os.path.basename(abs_path))
 
 
 @router.get("/api/ocr/health")

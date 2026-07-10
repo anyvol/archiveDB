@@ -12,10 +12,17 @@
         .layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.25rem; }
         @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
         .panel { background: white; padding: 1.25rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-        .preview-box { min-height: 220px; background: #f8f9fa; border: 1px dashed #ccc; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #6c757d; text-align: center; padding: 1rem; }
+        .preview-box { min-height: 220px; background: #f8f9fa; border: 1px dashed #ccc; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #6c757d; text-align: center; padding: 0.5rem; overflow: auto; }
+        .preview-box img { max-width: 100%; height: auto; display: block; }
         .form-group { margin-bottom: 0.85rem; }
         .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; }
         .form-group input, .form-group select { width: 100%; padding: 0.45rem; box-sizing: border-box; }
+        .form-group.low-conf input, .form-group.low-conf select { border-color: #e0a800; background: #fffbeb; }
+        .conf-badge { font-size: 0.75rem; color: #6c757d; font-weight: normal; }
+        .conf-badge.low { color: #856404; }
+        .suggest-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+        .suggest-chip { border: 1px solid #cfe2ff; background: #e7f1ff; color: #084298; border-radius: 999px; padding: 0.15rem 0.55rem; font-size: 0.78rem; cursor: pointer; }
+        .suggest-chip:hover { background: #d0e3ff; }
         .designation-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.5rem; }
         .btn { display: inline-block; padding: 0.55rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; background: #007bff; color: white; }
         .btn-secondary { background: #6c757d; }
@@ -36,22 +43,26 @@
         {% if error %}<div class="error">{{ error }}</div>{% endif %}
         {% if job.status.value == 'failed' %}
         <div class="warning">Автораспознавание не удалось{% if job.error_message %}: {{ job.error_message }}{% endif %}. Заполните поля вручную или нажмите «Повторить OCR».</div>
+        {% elif job.status.value == 'needs_annotation' %}
+        <div class="warning">Распознавание слабое{% if job.error_message %}: {{ job.error_message }}{% endif %}. Проверьте поля и при необходимости исправьте вручную.</div>
         {% elif not ocr_available %}
         <div class="warning">Сервис OCR сейчас недоступен. Можно заполнить карточку вручную и создать документ.</div>
         {% else %}
-        <p class="hint">Этап 1A: поля штампа пока не извлекаются автоматически (кроме формата листа по размерам). Проверьте данные и создайте карточку.</p>
+        <p class="hint">Проверьте распознанные поля штампа. Жёлтая подсветка — низкая уверенность OCR. Подсказки ФИО не подставляются автоматически — нажмите chip, чтобы выбрать.</p>
         {% endif %}
 
         <div class="layout">
             <div class="panel">
                 <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}</div>
                 <div class="meta"><strong>Статус:</strong> {{ OCR_JOB_STATUS_LABELS.get(job.status, job.status.value) }}</div>
-                {% if job.pipeline_version %}<div class="meta"><strong>Пайплайн:</strong> {{ job.pipeline_version }}</div>{% endif %}
+                {% if job.pipeline_version %}<div class="meta"><strong>Пайплайн:</strong> {{ job.pipeline_version }}{% if geometry.get('engine') %} ({{ geometry.get('engine') }}){% endif %}</div>{% endif %}
+                {% if geometry.get('latency_ms') %}<div class="meta"><strong>Время OCR:</strong> {{ geometry.get('latency_ms') }} мс</div>{% endif %}
+                {% if geometry.get('mean_conf') is not none %}<div class="meta"><strong>Средняя conf:</strong> {{ '%.0f'|format(geometry.get('mean_conf') * 100) }}%</div>{% endif %}
                 <div class="preview-box">
-                    {% if extraction and extraction.stamp_crop_path %}
-                    <span>Превью штампа будет здесь (этап 1B+).</span>
+                    {% if stamp_crop_url %}
+                    <img src="{{ stamp_crop_url }}" alt="Штамп (crop)">
                     {% else %}
-                    <span>Превью штампа появится после внедрения OCR по ячейкам (этап 1B).<br>Исходный файл сохранён в staging.</span>
+                    <span>Превью штампа недоступно.<br>Исходный файл сохранён в staging.</span>
                     {% endif %}
                 </div>
                 <div class="actions">
@@ -140,12 +151,12 @@
                         <label for="org_name">Название организации (если новая)</label>
                         <input type="text" id="org_name" name="org_name">
                     </div>
-                    <div class="form-group">
-                        <label for="doc_name">Наименование</label>
+                    <div class="form-group {% if 'doc_name' in low_conf_fields %}low-conf{% endif %}">
+                        <label for="doc_name">Наименование {% if field_confidences.get('doc_name') is not none %}<span class="conf-badge {% if 'doc_name' in low_conf_fields %}low{% endif %}">({{ '%.0f'|format(field_confidences.get('doc_name') * 100) }}%)</span>{% endif %}</label>
                         <input type="text" id="doc_name" name="doc_name" value="{{ prefill.doc_name }}">
                     </div>
-                    <div class="form-group">
-                        <label for="document_format">Формат листа *</label>
+                    <div class="form-group {% if 'document_format' in low_conf_fields %}low-conf{% endif %}">
+                        <label for="document_format">Формат листа * {% if field_confidences.get('document_format') is not none %}<span class="conf-badge">({{ '%.0f'|format(field_confidences.get('document_format') * 100) }}%)</span>{% endif %}</label>
                         <select id="document_format" name="document_format" required>
                             <option value="">— выберите —</option>
                             {% for fmt in DOCUMENT_FORMATS %}
@@ -153,27 +164,48 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="developed_by">Разработал *</label>
+                    <div class="form-group {% if 'developed_by' in low_conf_fields %}low-conf{% endif %}">
+                        <label for="developed_by">Разработал * {% if field_confidences.get('developed_by') is not none %}<span class="conf-badge {% if 'developed_by' in low_conf_fields %}low{% endif %}">({{ '%.0f'|format(field_confidences.get('developed_by') * 100) }}%)</span>{% endif %}</label>
                         <input type="text" id="developed_by" name="developed_by" list="known-names" value="{{ default_developed_by }}" required>
+                        {% if person_suggestions.get('developed_by') %}
+                        <div class="suggest-chips" data-target="developed_by">
+                            {% for s in person_suggestions.get('developed_by') %}
+                            <button type="button" class="suggest-chip" data-value="{{ s.name }}">{{ s.name }} ({{ '%.0f'|format(s.score) }})</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
-                    <div class="form-group">
+                    <div class="form-group {% if 'developer_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="developer_signed_date">Дата (разраб.)</label>
                         <input type="date" id="developer_signed_date" name="developer_signed_date" value="{{ prefill.developer_signed_date }}">
                     </div>
-                    <div class="form-group">
-                        <label for="reviewed_by">Проверил</label>
+                    <div class="form-group {% if 'reviewed_by' in low_conf_fields %}low-conf{% endif %}">
+                        <label for="reviewed_by">Проверил {% if field_confidences.get('reviewed_by') is not none %}<span class="conf-badge">({{ '%.0f'|format(field_confidences.get('reviewed_by') * 100) }}%)</span>{% endif %}</label>
                         <input type="text" id="reviewed_by" name="reviewed_by" list="known-names" value="{{ prefill.reviewed_by }}">
+                        {% if person_suggestions.get('reviewed_by') %}
+                        <div class="suggest-chips" data-target="reviewed_by">
+                            {% for s in person_suggestions.get('reviewed_by') %}
+                            <button type="button" class="suggest-chip" data-value="{{ s.name }}">{{ s.name }} ({{ '%.0f'|format(s.score) }})</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
-                    <div class="form-group">
+                    <div class="form-group {% if 'reviewer_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="reviewer_signed_date">Дата (пров.)</label>
                         <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" value="{{ prefill.reviewer_signed_date }}">
                     </div>
-                    <div class="form-group">
-                        <label for="approved_by">Утвердил</label>
+                    <div class="form-group {% if 'approved_by' in low_conf_fields %}low-conf{% endif %}">
+                        <label for="approved_by">Утвердил {% if field_confidences.get('approved_by') is not none %}<span class="conf-badge">({{ '%.0f'|format(field_confidences.get('approved_by') * 100) }}%)</span>{% endif %}</label>
                         <input type="text" id="approved_by" name="approved_by" list="known-names" value="{{ prefill.approved_by }}">
+                        {% if person_suggestions.get('approved_by') %}
+                        <div class="suggest-chips" data-target="approved_by">
+                            {% for s in person_suggestions.get('approved_by') %}
+                            <button type="button" class="suggest-chip" data-value="{{ s.name }}">{{ s.name }} ({{ '%.0f'|format(s.score) }})</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
-                    <div class="form-group">
+                    <div class="form-group {% if 'approver_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="approver_signed_date">Дата (утв.)</label>
                         <input type="date" id="approver_signed_date" name="approver_signed_date" value="{{ prefill.approver_signed_date }}">
                     </div>
@@ -226,6 +258,15 @@
             });
         }
         projectSelect.addEventListener('change', () => loadProducts(projectSelect.value));
+
+        document.querySelectorAll('.suggest-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const wrap = btn.closest('.suggest-chips');
+                const targetId = wrap && wrap.getAttribute('data-target');
+                const input = targetId && document.getElementById(targetId);
+                if (input) input.value = btn.getAttribute('data-value') || '';
+            });
+        });
     </script>
     {% include "_session_auth.html" %}
 </body>
