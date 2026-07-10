@@ -45,7 +45,19 @@ On commit, booleans are stored on `documents.has_*_signature`.
 - Org code / FIO suggestion chips (never auto-applied); near-misses like РЕТР→ФЕТР
 - Project/product: select existing only (create them under Projects)
 
-### Training example & discard
+### Stamp region (page ROI)
+
+The stamp crop location on the full page differs by paper format (A4 vs A3). On **«Разметить штамп и ячейки»**:
+
+1. Tab **«Область штампа на листе»** — drag the box on the page preview
+2. Tab **«Ячейки штампа»** — adjust field boxes inside the crop
+3. Save / re-OCR — `stamp_roi_norm` + cells are stored in `ocr_format_templates` for that format
+
+Auto extract loads the format template **before** cropping when page dimensions already give A4/A3/….
+
+### Review ROI previews
+
+The review page shows per-cell crop thumbnails (what each ROI sent to OCR).
 
 - **«Сохранить как учебный пример»** stores corrected fields (`ocr_extractions.source=training`, job status `labeled`) without creating an archive card. Format ROI templates are updated. This improves later runs via ROI reuse; full model training is phase 3.
 - **Discard** keeps cell annotations and upserts the format-bound ROI template.

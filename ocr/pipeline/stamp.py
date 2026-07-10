@@ -18,8 +18,40 @@ class CellSpec:
 
 # Relative stamp ROI on the full page (bottom-right title block, ГОСТ 2.104 form 1-ish).
 # Tuned for typical landscape/portrait drawing scans; human review corrects misses.
+# Prefer format-bound templates from DB when available (A4 vs A3 differ a lot).
 STAMP_ROI_PAGE = (0.55, 0.72, 0.995, 0.995)  # x0,y0,x1,y1
 
+# Starting guesses when no learned template exists yet (still overridable by annotation).
+STAMP_ROI_BY_FORMAT: dict[str, tuple[float, float, float, float]] = {
+    "A0": (0.62, 0.78, 0.995, 0.995),
+    "A1": (0.60, 0.76, 0.995, 0.995),
+    "A2": (0.58, 0.74, 0.995, 0.995),
+    "A3": (0.55, 0.72, 0.995, 0.995),
+    "A4": (0.48, 0.78, 0.995, 0.995),
+    "A5": (0.42, 0.76, 0.995, 0.995),
+}
+
+
+def default_stamp_roi(document_format: str | None = None) -> tuple[float, float, float, float]:
+    if document_format and document_format in STAMP_ROI_BY_FORMAT:
+        return STAMP_ROI_BY_FORMAT[document_format]
+    return STAMP_ROI_PAGE
+
+
+def normalize_roi_box(box: list | tuple) -> tuple[float, float, float, float] | None:
+    if not box or len(box) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+    except (TypeError, ValueError):
+        return None
+    x0 = max(0.0, min(1.0, x0))
+    y0 = max(0.0, min(1.0, y0))
+    x1 = max(0.0, min(1.0, x1))
+    y1 = max(0.0, min(1.0, y1))
+    if x1 <= x0 + 0.01 or y1 <= y0 + 0.01:
+        return None
+    return (x0, y0, x1, y1)
 # Cells inside the stamp crop (relative). Layout approximates форма 1:
 # top: designation | format/scale/sheets
 # mid: doc_name
@@ -53,17 +85,36 @@ def crop_norm(image: np.ndarray, box: tuple[float, float, float, float]) -> tupl
     return image[y0:y1, x0:x1].copy(), (x0, y0, x1, y1)
 
 
-def extract_stamp(page: np.ndarray) -> tuple[np.ndarray, tuple[int, int, int, int], dict[str, Any]]:
-    stamp, bbox = crop_norm(page, STAMP_ROI_PAGE)
+def extract_stamp(
+    page: np.ndarray,
+    roi_norm: tuple[float, float, float, float] | list[float] | None = None,
+    *,
+    document_format: str | None = None,
+) -> tuple[np.ndarray, tuple[int, int, int, int], dict[str, Any]]:
+    roi = normalize_roi_box(roi_norm) if roi_norm is not None else None
+    if roi is None:
+        roi = default_stamp_roi(document_format)
+    stamp, bbox = crop_norm(page, roi)
     meta = {
-        "stamp_roi_norm": list(STAMP_ROI_PAGE),
+        "stamp_roi_norm": list(roi),
         "stamp_roi_px": list(bbox),
         "template": "gost_2_104_form1_approx",
+        "document_format_hint": document_format,
     }
     return stamp, bbox, meta
 
 
-def iter_cells(stamp: np.ndarray):
+def iter_cells(stamp: np.ndarray, cells: list[dict[str, Any]] | None = None):
+    if cells:
+        for item in cells:
+            key = (item.get("key") or "").strip()
+            box = normalize_roi_box(item.get("bbox_norm") or [])
+            if not key or not box:
+                continue
+            category = item.get("category") or key
+            cell_img, local_bbox = crop_norm(stamp, box)
+            yield CellSpec(key, box, category if isinstance(category, str) else key), cell_img, local_bbox
+        return
     for spec in CELL_TEMPLATE_FORM1:
         cell_img, local_bbox = crop_norm(stamp, spec.box)
         yield spec, cell_img, local_bbox

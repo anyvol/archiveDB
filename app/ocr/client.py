@@ -43,14 +43,23 @@ async def call_extract(
     file_path: str,
     mime: str | None = None,
     original_filename: str | None = None,
+    stamp_roi_norm: list[float] | None = None,
+    cells: list[dict[str, Any]] | None = None,
+    document_format_hint: str | None = None,
 ) -> dict[str, Any]:
     """Call POST /v1/extract. Raises OcrServiceError on transport/HTTP failures."""
-    payload = {
+    payload: dict[str, Any] = {
         "job_id": job_id,
         "file_path": file_path,
         "mime": mime,
         "original_filename": original_filename,
     }
+    if stamp_roi_norm:
+        payload["stamp_roi_norm"] = stamp_roi_norm
+    if cells:
+        payload["cells"] = cells
+    if document_format_hint:
+        payload["document_format_hint"] = document_format_hint
     return await _post_json("/v1/extract", payload)
 
 

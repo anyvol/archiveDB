@@ -12,9 +12,10 @@ from sqlalchemy.future import select
 
 from app.config import OCR_LOW_CONF_THRESHOLD
 from app.models import OcrAnnotation, OcrExtraction, OcrFormatTemplate, OcrJob, OcrJobStatus, User
-from app.ocr.client import OcrServiceError, call_extract_cells
+from app.ocr.client import OcrServiceError, call_extract, call_extract_cells
 from app.ocr.normalize import coerce_document_format
 from app.ocr.service import (
+    _abs_upload_path,
     _build_field_suggestions,
     field_value,
     latest_extraction,
@@ -57,6 +58,42 @@ FIELD_KEY_LABELS = {
     "approver_signature": "Подпись (утв.)",
     "approver_signed_date": "Дата (утв.)",
 }
+
+# Defaults mirrored from ocr/pipeline/stamp.py (API cannot import sidecar package).
+DEFAULT_STAMP_ROI = [0.55, 0.72, 0.995, 0.995]
+DEFAULT_STAMP_ROI_BY_FORMAT = {
+    "A0": [0.62, 0.78, 0.995, 0.995],
+    "A1": [0.60, 0.76, 0.995, 0.995],
+    "A2": [0.58, 0.74, 0.995, 0.995],
+    "A3": [0.55, 0.72, 0.995, 0.995],
+    "A4": [0.48, 0.78, 0.995, 0.995],
+    "A5": [0.42, 0.76, 0.995, 0.995],
+}
+
+
+def default_stamp_roi_for_format(document_format: str | None) -> list[float]:
+    fmt = coerce_document_format(document_format)
+    if fmt and fmt in DEFAULT_STAMP_ROI_BY_FORMAT:
+        return list(DEFAULT_STAMP_ROI_BY_FORMAT[fmt])
+    return list(DEFAULT_STAMP_ROI)
+
+
+def normalize_stamp_roi(raw) -> list[float] | None:
+    if not raw or not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    try:
+        box = [float(v) for v in raw]
+    except (TypeError, ValueError):
+        return None
+    x0, y0, x1, y1 = (
+        max(0.0, min(1.0, box[0])),
+        max(0.0, min(1.0, box[1])),
+        max(0.0, min(1.0, box[2])),
+        max(0.0, min(1.0, box[3])),
+    )
+    if x1 <= x0 + 0.01 or y1 <= y0 + 0.01:
+        return None
+    return [x0, y0, x1, y1]
 
 
 async def latest_annotation(session: AsyncSession, job_id: int) -> OcrAnnotation | None:
@@ -114,10 +151,20 @@ async def upsert_format_template(
     }
     if isinstance(labels.get("stamp_size"), (list, tuple)) and len(labels["stamp_size"]) == 2:
         payload["stamp_size"] = [int(labels["stamp_size"][0]), int(labels["stamp_size"][1])]
+    stamp_roi = normalize_stamp_roi(labels.get("stamp_roi_norm"))
+    if stamp_roi:
+        payload["stamp_roi_norm"] = stamp_roi
     now = datetime.utcnow()
     existing = await get_format_template(session, fmt)
     if existing:
-        existing.labels = payload
+        # Merge: keep previous stamp_roi if new payload omits it
+        merged = dict(existing.labels or {})
+        merged.update(payload)
+        if stamp_roi:
+            merged["stamp_roi_norm"] = stamp_roi
+        elif "stamp_roi_norm" in (existing.labels or {}):
+            merged["stamp_roi_norm"] = existing.labels["stamp_roi_norm"]
+        existing.labels = merged
         existing.updated_by_user_id = user.id
         existing.updated_at = now
         return existing
@@ -235,6 +282,9 @@ def normalize_labels_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
     fmt = coerce_document_format(raw.get("document_format"))
     if fmt:
         labels["document_format"] = fmt
+    stamp_roi = normalize_stamp_roi(raw.get("stamp_roi_norm"))
+    if stamp_roi:
+        labels["stamp_roi_norm"] = stamp_roi
     return labels
 
 
@@ -296,18 +346,18 @@ async def reocr_from_annotation(
     *,
     labels_raw: dict[str, Any] | None = None,
 ) -> OcrExtraction:
-    """Save labels (optional) and run cell OCR against the stamp crop."""
+    """Save labels (optional) and re-OCR.
+
+    If ``stamp_roi_norm`` is set, re-runs full page extract with that stamp crop
+    (so A4/A3 stamp location can be corrected). Otherwise OCR only cell boxes
+    on the existing stamp crop.
+    """
     if job.status == OcrJobStatus.committed:
         raise HTTPException(status_code=400, detail="Документ уже создан.")
     if job.status == OcrJobStatus.discarded:
         raise HTTPException(status_code=400, detail="Задача отклонена.")
 
     extraction = latest_extraction(job)
-    if not extraction or not extraction.stamp_crop_path or not os.path.isfile(extraction.stamp_crop_path):
-        raise HTTPException(
-            status_code=400,
-            detail="Нет crop штампа. Сначала выполните обычное распознавание (Повторить OCR).",
-        )
 
     if labels_raw is not None:
         annotation = await save_annotation(session, job, user, labels_raw, commit=False)
@@ -321,18 +371,44 @@ async def reocr_from_annotation(
     if not cells:
         raise HTTPException(status_code=400, detail="В разметке нет ячеек.")
 
-    stamp_rel = path_for_ocr_service(extraction.stamp_crop_path)
+    stamp_roi = normalize_stamp_roi(labels.get("stamp_roi_norm"))
+    fmt = resolve_document_format(extraction, labels)
+
     job.status = OcrJobStatus.processing
     job.started_at = datetime.utcnow()
     job.error_message = None
     await session.flush()
 
     try:
-        result = await call_extract_cells(
-            job_id=job.id,
-            stamp_crop_path=stamp_rel,
-            cells=cells,
-        )
+        if stamp_roi and job.stored_path and os.path.isfile(job.stored_path):
+            result = await call_extract(
+                job_id=job.id,
+                file_path=path_for_ocr_service(job.stored_path),
+                mime=job.mime,
+                original_filename=job.original_filename,
+                stamp_roi_norm=stamp_roi,
+                cells=cells,
+                document_format_hint=fmt or None,
+            )
+            stamp_path = _abs_upload_path(result["stamp_crop_path"]) if result.get("stamp_crop_path") else None
+            preview_path = (
+                _abs_upload_path(result["page_preview_path"]) if result.get("page_preview_path") else None
+            )
+            source = "annotated_stamp"
+        else:
+            if not extraction or not extraction.stamp_crop_path or not os.path.isfile(extraction.stamp_crop_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Нет crop штампа. Укажите область штампа на листе или нажмите «Повторить OCR».",
+                )
+            result = await call_extract_cells(
+                job_id=job.id,
+                stamp_crop_path=path_for_ocr_service(extraction.stamp_crop_path),
+                cells=cells,
+            )
+            stamp_path = extraction.stamp_crop_path
+            preview_path = extraction.page_preview_path
+            source = "annotated"
     except OcrServiceError as exc:
         job.status = OcrJobStatus.failed
         job.error_message = str(exc)
@@ -342,11 +418,14 @@ async def reocr_from_annotation(
 
     fields = result.get("fields") or {}
     geometry = dict(result.get("geometry") or {})
-    # Preserve paper format from prior auto-extract / dims
-    prev_geo = extraction.geometry or {}
+    prev_geo = (extraction.geometry if extraction else {}) or {}
     if prev_geo.get("format_from_dims") and not geometry.get("format_from_dims"):
         geometry["format_from_dims"] = prev_geo["format_from_dims"]
-    fmt = resolve_document_format(extraction, labels)
+    if stamp_roi:
+        geometry["stamp_roi"] = {
+            **(geometry.get("stamp_roi") or {}),
+            "stamp_roi_norm": stamp_roi,
+        }
     if fmt and not coerce_document_format(field_value(fields, "document_format")):
         fields = dict(fields)
         fields["document_format"] = {
@@ -365,11 +444,11 @@ async def reocr_from_annotation(
 
     new_extraction = OcrExtraction(
         job_id=job.id,
-        source="annotated",
+        source=source,
         fields=fields,
         geometry=geometry,
-        stamp_crop_path=extraction.stamp_crop_path,
-        page_preview_path=extraction.page_preview_path,
+        stamp_crop_path=stamp_path,
+        page_preview_path=preview_path,
         person_suggestions=suggestions,
         created_at=datetime.utcnow(),
     )
@@ -398,6 +477,7 @@ async def annotation_bootstrap(
         labels = annotation.labels
         cells = labels.get("cells") or []
         stamp_size = labels.get("stamp_size")
+        stamp_roi = normalize_stamp_roi(labels.get("stamp_roi_norm"))
         source = "job_annotation"
     elif format_template and format_template.labels and format_template.labels.get("cells"):
         labels = format_template.labels
@@ -405,19 +485,33 @@ async def annotation_bootstrap(
         stamp_size = labels.get("stamp_size") or (
             (extraction.geometry or {}).get("stamp_size") if extraction else None
         )
+        stamp_roi = normalize_stamp_roi(labels.get("stamp_roi_norm"))
         source = "format_template"
     else:
         cells = cells_from_extraction(extraction)
         stamp_size = (extraction.geometry or {}).get("stamp_size") if extraction else None
+        stamp_roi = None
         source = "extraction_or_default"
+
+    if not stamp_roi and extraction and extraction.geometry:
+        geo_roi = (extraction.geometry.get("stamp_roi") or {}).get("stamp_roi_norm")
+        stamp_roi = normalize_stamp_roi(geo_roi)
+    if not stamp_roi and format_template and format_template.labels:
+        stamp_roi = normalize_stamp_roi(format_template.labels.get("stamp_roi_norm"))
+    if not stamp_roi:
+        stamp_roi = default_stamp_roi_for_format(fmt)
 
     return {
         "cells": cells,
         "stamp_size": stamp_size,
+        "stamp_roi_norm": stamp_roi,
         "document_format": fmt,
         "template_source": source,
         "field_keys": [
             {"key": k, "label": FIELD_KEY_LABELS.get(k, k)} for k in FIELD_KEY_LABELS
         ],
         "has_stamp_crop": bool(extraction and extraction.stamp_crop_path and os.path.isfile(extraction.stamp_crop_path)),
+        "has_page_preview": bool(
+            extraction and extraction.page_preview_path and os.path.isfile(extraction.page_preview_path)
+        ),
     }

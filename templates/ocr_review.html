@@ -35,6 +35,12 @@
         .checkbox-group label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; }
         .project-subgroup { margin-bottom: 0.5rem; }
         .section-label { font-weight: 600; margin-bottom: 0.35rem; display: block; }
+        .roi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.55rem; margin-top: 0.85rem; }
+        .roi-card { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 0.4rem; text-align: center; }
+        .roi-card canvas { max-width: 100%; height: auto; background: #111; border-radius: 3px; display: block; margin: 0 auto; }
+        .roi-card .roi-label { font-size: 0.72rem; color: #495057; margin-top: 0.3rem; font-weight: 600; }
+        .roi-card .roi-value { font-size: 0.7rem; color: #6c757d; word-break: break-all; margin-top: 0.15rem; }
+        .roi-card.low-conf { border-color: #e0a800; background: #fffbeb; }
     </style>
 </head>
 <body>
@@ -60,17 +66,29 @@
                 {% if geometry.get('mean_conf') is not none %}<div class="meta"><strong>Средняя conf:</strong> {{ '%.0f'|format(geometry.get('mean_conf') * 100) }}%</div>{% endif %}
                 <div class="preview-box">
                     {% if stamp_crop_url %}
-                    <img src="{{ stamp_crop_url }}" alt="Штамп (crop)">
+                    <img id="stamp-full" src="{{ stamp_crop_url }}" alt="Штамп (crop)">
                     {% else %}
                     <span>Превью штампа недоступно.<br>Исходный файл сохранён в staging.</span>
                     {% endif %}
                 </div>
+                {% if field_rois and stamp_crop_url %}
+                <p class="hint" style="margin-top:0.75rem;">Вырезки ROI (что реально ушло в OCR по каждой ячейке):</p>
+                <div class="roi-grid" id="roi-grid">
+                    {% for roi in field_rois %}
+                    <div class="roi-card {% if roi.key in low_conf_fields %}low-conf{% endif %}" data-key="{{ roi.key }}">
+                        <canvas width="140" height="60" data-bbox='{{ roi.bbox_norm | tojson }}'></canvas>
+                        <div class="roi-label">{{ roi.label }}</div>
+                        <div class="roi-value">{% if roi.value %}{{ roi.value }}{% else %}—{% endif %}{% if roi.conf is not none %} ({{ '%.0f'|format(roi.conf * 100) }}%){% endif %}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="actions">
-                    <a class="btn" href="{{ annotate_url }}">Разметить ячейки</a>
+                    <a class="btn" href="{{ annotate_url }}">Разметить штамп и ячейки</a>
                     <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/retry') }}" style="display:inline;">
                         <button type="submit" class="btn btn-secondary">Повторить OCR</button>
                     </form>
-                    <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/discard') }}" style="display:inline;" onsubmit="return confirm('Отклонить задачу?');">
+                    <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/discard') }}" style="display:inline;" onsubmit="return confirm('Отклонить задачу? Разметка ROI сохранится.');">
                         <button type="submit" class="btn btn-danger">Отклонить</button>
                     </form>
                     <a class="btn btn-secondary" href="{{ url_path('/ocr/batches/' ~ job.batch_id) }}">К пакету</a>
@@ -297,6 +315,32 @@
                 if (input) input.value = btn.getAttribute('data-value') || '';
             });
         });
+
+        // Draw per-ROI crops from the stamp image
+        (function renderRoiCrops() {
+            const stamp = document.getElementById('stamp-full');
+            if (!stamp) return;
+            function paint() {
+                document.querySelectorAll('#roi-grid canvas').forEach(cv => {
+                    let bbox;
+                    try { bbox = JSON.parse(cv.getAttribute('data-bbox')); } catch (e) { return; }
+                    if (!bbox || bbox.length !== 4) return;
+                    const sx = bbox[0] * stamp.naturalWidth;
+                    const sy = bbox[1] * stamp.naturalHeight;
+                    const sw = Math.max(1, (bbox[2] - bbox[0]) * stamp.naturalWidth);
+                    const sh = Math.max(1, (bbox[3] - bbox[1]) * stamp.naturalHeight);
+                    const maxW = 140, maxH = 60;
+                    const scale = Math.min(maxW / sw, maxH / sh, 2);
+                    cv.width = Math.max(1, Math.round(sw * scale));
+                    cv.height = Math.max(1, Math.round(sh * scale));
+                    const ctx = cv.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.drawImage(stamp, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+                });
+            }
+            if (stamp.complete && stamp.naturalWidth) paint();
+            else stamp.addEventListener('load', paint);
+        })();
     </script>
     {% include "_session_auth.html" %}
 </body>

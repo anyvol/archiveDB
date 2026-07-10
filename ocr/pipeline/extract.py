@@ -47,9 +47,13 @@ def run_extract(
     full_path: str,
     uploads_dir: str,
     original_filename: str | None = None,
+    stamp_roi_norm: list[float] | tuple[float, float, float, float] | None = None,
+    cells: list[dict[str, Any]] | None = None,
+    document_format_hint: str | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     format_code, page_count = detect_format_from_file(full_path)
+    fmt_hint = document_format_hint or format_code
     fields = {key: _empty_field() for key in _EMPTY_KEYS}
 
     pages = render_pages(full_path, dpi=RENDER_DPI, max_pages=1)
@@ -74,7 +78,11 @@ def run_extract(
         }
 
     page, angle = deskew(pages[0])
-    stamp, stamp_bbox, stamp_meta = extract_stamp(page)
+    stamp, stamp_bbox, stamp_meta = extract_stamp(
+        page,
+        stamp_roi_norm,
+        document_format=fmt_hint,
+    )
 
     # Persist crops under the same inbox folder as the source file when possible
     rel_dir = _artifact_dir(full_path, uploads_dir, job_id)
@@ -88,9 +96,9 @@ def run_extract(
     # smaller preview
     save_rgb(preview_abs, _downscale(page, max_side=1600))
 
-    for spec, cell_img, local_bbox in iter_cells(stamp):
-        result = ocr_cell(cell_img, category=spec.whitelist or spec.key)
-        # bbox in stamp-crop coordinates + normalized for annotation UI
+    for spec, cell_img, local_bbox in iter_cells(stamp, cells):
+        category = spec.whitelist or spec.key
+        result = ocr_cell(cell_img, category=category)
         fields[spec.key] = {
             "raw": result.get("raw"),
             "value": result.get("value"),

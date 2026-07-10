@@ -190,17 +190,39 @@ async def process_job(
 
     local_format = detect_document_format_from_bytes(contents, job.original_filename)
 
+    # Load format-bound stamp ROI + cell boxes before first extract (A4 ≠ A3)
+    stamp_roi_norm = None
+    template_cells = None
+    fmt_hint = coerce_document_format(local_format)
+    if fmt_hint:
+        from app.ocr.annotate import get_format_template
+
+        template = await get_format_template(session, fmt_hint)
+        if template and template.labels:
+            roi = template.labels.get("stamp_roi_norm")
+            if isinstance(roi, (list, tuple)) and len(roi) == 4:
+                stamp_roi_norm = [float(v) for v in roi]
+            cells = template.labels.get("cells")
+            if cells:
+                template_cells = cells
+
     try:
         result = await call_extract(
             job_id=job.id,
             file_path=path_for_ocr_service(job.stored_path),
             mime=job.mime,
             original_filename=job.original_filename,
+            stamp_roi_norm=stamp_roi_norm,
+            cells=template_cells,
+            document_format_hint=fmt_hint or None,
         )
         fields = result.get("fields") or _empty_fields()
         geometry = dict(result.get("geometry") or {})
         if local_format and not geometry.get("format_from_dims"):
             geometry["format_from_dims"] = local_format
+        if stamp_roi_norm:
+            geometry["stamp_roi_from_template"] = True
+            geometry["format_template"] = fmt_hint
 
         # Normalize format to a valid dropdown code; prefer dims when OCR is invalid
         fmt = (
@@ -230,8 +252,8 @@ async def process_job(
         stamp_path = _abs_upload_path(stamp_rel) if stamp_rel else None
         preview_path = _abs_upload_path(preview_rel) if preview_rel else None
 
-        # Re-OCR with saved ROI template for this paper format when available
-        if fmt and stamp_path and os.path.isfile(stamp_path):
+        # If we had cell template but no stamp_roi yet, still re-OCR cells on the crop
+        if fmt and stamp_path and os.path.isfile(stamp_path) and not template_cells:
             from app.ocr.annotate import get_format_template
 
             template = await get_format_template(session, fmt)
@@ -246,7 +268,6 @@ async def process_job(
                     cell_fields = cell_result.get("fields") or {}
                     if cell_fields:
                         fields = {**fields, **cell_fields}
-                        # Keep valid format code after cell OCR
                         if not coerce_document_format(field_value(fields, "document_format")):
                             fields["document_format"] = {
                                 "raw": fmt,
@@ -267,6 +288,8 @@ async def process_job(
                             job.pipeline_version = cell_result.get("pipeline_version")
                 except OcrServiceError as exc:
                     logger.warning("format-template re-OCR skipped for job %s: %s", job.id, exc)
+        elif template_cells:
+            geometry["source"] = "auto+format_template"
 
         suggestions = await _build_field_suggestions(session, fields)
 

@@ -59,6 +59,10 @@ class ExtractRequest(BaseModel):
     file_path: str
     mime: str | None = None
     original_filename: str | None = None
+    # Optional overrides from format-bound templates / human stamp annotation
+    stamp_roi_norm: list[float] | None = None
+    cells: list[CellBox] | None = None
+    document_format_hint: str | None = None
 
 
 class CellBox(BaseModel):
@@ -117,6 +121,9 @@ def extract(body: ExtractRequest, _: None = Depends(_auth)) -> ExtractResponse:
             full_path=full_path,
             uploads_dir=UPLOADS_DIR,
             original_filename=body.original_filename,
+            stamp_roi_norm=body.stamp_roi_norm,
+            cells=[c.model_dump() for c in body.cells] if body.cells else None,
+            document_format_hint=body.document_format_hint,
         )
     except Exception as exc:
         logger.exception("extract failed job_id=%s", body.job_id)

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.24.2
+
+- **OCR — stamp region per format:** annotate the title-block area on the page preview (not only cells). `stamp_roi_norm` is stored in `ocr_format_templates` and reused for later jobs of the same paper size (A4 vs A3).
+- **OCR — format-aware defaults:** starting stamp ROI guesses differ by format (A4/A3/…) until a learned template exists.
+- **OCR — review ROI previews:** the review page shows a crop thumbnail for each recognized cell ROI so you can see what OCR actually read.
+
 ## 0.24.1
 
 - **OCR — discard keeps markup:** rejecting a job on review still keeps cell annotations and upserts the format-bound ROI template.

@@ -50,6 +50,28 @@ templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 templates.env.globals["DOC_KIND_CODES"] = DOC_KIND_CODES
 templates.env.globals["OCR_JOB_STATUS_LABELS"] = OCR_JOB_STATUS_LABELS
+
+
+def _field_rois_for_review(fields: dict) -> list[dict]:
+    """Ordered ROI snippets metadata for the review page (client crops from stamp image)."""
+    out: list[dict] = []
+    for key, label in FIELD_KEY_LABELS.items():
+        entry = (fields or {}).get(key) or {}
+        bbox = entry.get("bbox_norm")
+        if not bbox or len(bbox) != 4:
+            continue
+        out.append(
+            {
+                "key": key,
+                "label": label,
+                "bbox_norm": [float(v) for v in bbox],
+                "value": entry.get("value") or entry.get("raw") or "",
+                "conf": entry.get("conf"),
+            }
+        )
+    return out
+
+
 templates.env.globals["is_admin"] = is_admin
 templates.env.globals["is_master_admin"] = is_master_admin
 
@@ -257,6 +279,12 @@ async def ocr_review_page(
                 if extraction and extraction.stamp_crop_path
                 else None
             ),
+            "page_preview_url": (
+                url_path(f"/api/ocr/jobs/{job.id}/page-preview")
+                if extraction and extraction.page_preview_path
+                else None
+            ),
+            "field_rois": _field_rois_for_review(fields),
             "annotate_url": url_path(f"/ocr/jobs/{job.id}/annotate"),
             "ocr_available": await ocr_service_available(),
             "error": error,
@@ -303,6 +331,11 @@ async def ocr_annotate_page(
             "stamp_crop_url": (
                 url_path(f"/api/ocr/jobs/{job.id}/stamp-crop")
                 if bootstrap.get("has_stamp_crop")
+                else None
+            ),
+            "page_preview_url": (
+                url_path(f"/api/ocr/jobs/{job.id}/page-preview")
+                if bootstrap.get("has_page_preview")
                 else None
             ),
             "review_url": url_path(f"/ocr/jobs/{job.id}/review"),
@@ -514,6 +547,31 @@ async def api_ocr_stamp_crop(
     abs_path = os.path.abspath(path)
     if not (abs_path == abs_upload or abs_path.startswith(abs_upload + os.sep)):
         raise HTTPException(status_code=404, detail="Превью штампа не найдено.")
+    return FileResponse(abs_path, media_type="image/png", filename=os.path.basename(abs_path))
+
+
+@router.get("/api/ocr/jobs/{job_id}/page-preview")
+async def api_ocr_page_preview(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    extraction = latest_extraction(job)
+    path = extraction.page_preview_path if extraction else None
+    if not path or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Превью листа не найдено.")
+    abs_upload = os.path.abspath(UPLOAD_DIR)
+    abs_path = os.path.abspath(path)
+    if not (abs_path == abs_upload or abs_path.startswith(abs_upload + os.sep)):
+        raise HTTPException(status_code=404, detail="Превью листа не найдено.")
     return FileResponse(abs_path, media_type="image/png", filename=os.path.basename(abs_path))
 
 
