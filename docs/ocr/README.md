@@ -40,10 +40,15 @@ On commit, booleans are stored on `documents.has_*_signature`.
 
 ### Review prefill
 
-- Dates → `YYYY-MM-DD` for `<input type="date">`
-- Doc kind from designation suffix (СБ, СП, …)
-- Org code / FIO suggestion chips (never auto-applied)
+- Dates → `YYYY-MM-DD` for `<input type="date">` (including `dd.mm.yy`)
+- Doc kind from designation suffix (СБ, СП, …), including Latin OCR aliases (`CB` → `СБ`)
+- Org code / FIO suggestion chips (never auto-applied); near-misses like РЕТР→ФЕТР
 - Project/product: select existing only (create them under Projects)
+
+### Training example & discard
+
+- **«Сохранить как учебный пример»** stores corrected fields (`ocr_extractions.source=training`, job status `labeled`) without creating an archive card. Format ROI templates are updated. This improves later runs via ROI reuse; full model training is phase 3.
+- **Discard** keeps cell annotations and upserts the format-bound ROI template.
 
 ## Deploy
 

@@ -170,31 +170,80 @@ def suggest_org_codes(
     known_codes: list[str],
     *,
     limit: int = 5,
-    min_score: float = 60.0,
+    min_score: float = 50.0,
 ) -> list[dict]:
-    """Fuzzy-match OCR org code against known codes. Suggestions only."""
-    needle = (query or "").strip().replace(" ", "").upper()
-    if not needle or not known_codes:
+    """Fuzzy-match OCR org code against known codes. Suggestions only.
+
+    Handles Latin/Cyrillic lookalikes (PETR↔РЕТР) and near-misses (РЕТР↔ФЕТР).
+    """
+    from app.ocr.normalize import fold_latin_to_cyrillic
+
+    needle_raw = (query or "").strip().replace(" ", "")
+    if not needle_raw or not known_codes:
         return []
 
-    exact = [c for c in known_codes if c.casefold() == needle.casefold()]
-    if exact:
-        return [{"name": c, "score": 100.0, "reason": "exact"} for c in exact[:limit]]
+    needle = needle_raw.upper()
+    needle_fold = fold_latin_to_cyrillic(needle_raw)
 
-    prefix = [c for c in known_codes if c.casefold().startswith(needle.casefold())]
+    exact: list[dict] = []
+    for c in known_codes:
+        c_fold = fold_latin_to_cyrillic(c)
+        if c.casefold() == needle.casefold() or c_fold == needle_fold:
+            exact.append({"name": c, "score": 100.0, "reason": "exact"})
+    if exact:
+        return exact[:limit]
+
+    prefix = [
+        c
+        for c in known_codes
+        if c.casefold().startswith(needle.casefold())
+        or fold_latin_to_cyrillic(c).startswith(needle_fold)
+    ]
     if prefix:
         return [{"name": c, "score": 90.0, "reason": "prefix"} for c in prefix[:limit]]
+
+    # Edit distance 1 for short letter codes (РЕТР → ФЕТР)
+    if len(needle_fold) <= 8:
+        near: list[dict] = []
+        for c in known_codes:
+            c_fold = fold_latin_to_cyrillic(c)
+            if len(c_fold) != len(needle_fold):
+                # still allow length±1
+                if abs(len(c_fold) - len(needle_fold)) > 1:
+                    continue
+            diffs = sum(1 for a, b in zip(c_fold, needle_fold) if a != b)
+            diffs += abs(len(c_fold) - len(needle_fold))
+            if 1 <= diffs <= 2:
+                near.append({"name": c, "score": 100.0 - diffs * 12, "reason": "near"})
+        if near:
+            near.sort(key=lambda x: (-x["score"], x["name"].casefold()))
+            return near[:limit]
 
     try:
         from rapidfuzz import fuzz, process
     except ImportError:
         return []
 
-    scored = process.extract(needle, known_codes, scorer=fuzz.WRatio, limit=limit * 2)
+    # Score against folded forms, return original code strings
+    folded_map: dict[str, str] = {}
+    for c in known_codes:
+        folded_map.setdefault(fold_latin_to_cyrillic(c) or c.upper(), c)
+
+    scored = process.extract(
+        needle_fold or needle,
+        list(folded_map.keys()),
+        scorer=fuzz.WRatio,
+        limit=limit * 3,
+    )
     out: list[dict] = []
-    for code, score, _ in scored:
+    seen: set[str] = set()
+    for folded, score, _ in scored:
         if score < min_score:
             continue
+        code = folded_map[folded]
+        if code in seen:
+            continue
+        seen.add(code)
         out.append({"name": code, "score": float(score), "reason": "fuzzy"})
     return out[:limit]
 

@@ -183,6 +183,12 @@
                     <div class="form-group {% if 'developer_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="developer_signed_date">Дата (разраб.)</label>
                         <input type="date" id="developer_signed_date" name="developer_signed_date" value="{{ prefill.developer_signed_date }}">
+                        {% set dh = date_hints.get('developer_signed_date') or {} %}
+                        {% if dh.raw and not prefill.developer_signed_date %}
+                        <p class="hint">OCR: {{ dh.raw }}{% if dh.normalized %} → <button type="button" class="suggest-chip" data-target="developer_signed_date" data-value="{{ dh.normalized }}">{{ dh.normalized }}</button>{% endif %}</p>
+                        {% elif dh.raw and dh.normalized and dh.normalized != prefill.developer_signed_date %}
+                        <p class="hint">OCR: {{ dh.raw }}</p>
+                        {% endif %}
                     </div>
                     <div class="checkbox-group form-group">
                         <label><input type="checkbox" name="has_developer_signature" value="true" {% if prefill.has_developer_signature == 'true' %}checked{% endif %}> Подпись разработчика в штампе</label>
@@ -201,6 +207,10 @@
                     <div class="form-group {% if 'reviewer_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="reviewer_signed_date">Дата (пров.)</label>
                         <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" value="{{ prefill.reviewer_signed_date }}">
+                        {% set dh = date_hints.get('reviewer_signed_date') or {} %}
+                        {% if dh.raw and not prefill.reviewer_signed_date %}
+                        <p class="hint">OCR: {{ dh.raw }}{% if dh.normalized %} → <button type="button" class="suggest-chip" data-target="reviewer_signed_date" data-value="{{ dh.normalized }}">{{ dh.normalized }}</button>{% endif %}</p>
+                        {% endif %}
                     </div>
                     <div class="checkbox-group form-group">
                         <label><input type="checkbox" name="has_reviewer_signature" value="true" {% if prefill.has_reviewer_signature == 'true' %}checked{% endif %}> Подпись проверяющего в штампе</label>
@@ -219,6 +229,10 @@
                     <div class="form-group {% if 'approver_signed_date' in low_conf_fields %}low-conf{% endif %}">
                         <label for="approver_signed_date">Дата (утв.)</label>
                         <input type="date" id="approver_signed_date" name="approver_signed_date" value="{{ prefill.approver_signed_date }}">
+                        {% set dh = date_hints.get('approver_signed_date') or {} %}
+                        {% if dh.raw and not prefill.approver_signed_date %}
+                        <p class="hint">OCR: {{ dh.raw }}{% if dh.normalized %} → <button type="button" class="suggest-chip" data-target="approver_signed_date" data-value="{{ dh.normalized }}">{{ dh.normalized }}</button>{% endif %}</p>
+                        {% endif %}
                     </div>
                     <div class="checkbox-group form-group">
                         <label><input type="checkbox" name="has_approver_signature" value="true" {% if prefill.has_approver_signature == 'true' %}checked{% endif %}> Подпись утвердившего в штампе</label>
@@ -230,7 +244,9 @@
                     </datalist>
                     <div class="actions">
                         <button type="submit" class="btn">Принять и создать документ</button>
+                        <button type="submit" class="btn btn-secondary" formaction="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/save-training') }}" formnovalidate title="Сохранить исправленные поля и ROI как ground truth без создания записи в архиве">Сохранить как учебный пример</button>
                     </div>
+                    <p class="hint">«Учебный пример» не создаёт документ: сохраняет ваши правки (и разметку ячеек) для датасета и шаблона ROI по формату. Сейчас это улучшает следующие прогоны через шаблон рамок; обучение модели OCR — этап 3.</p>
                 </form>
             </div>
         </div>
@@ -276,7 +292,7 @@
         document.querySelectorAll('.suggest-chip').forEach(btn => {
             btn.addEventListener('click', () => {
                 const wrap = btn.closest('.suggest-chips');
-                const targetId = wrap && wrap.getAttribute('data-target');
+                const targetId = (wrap && wrap.getAttribute('data-target')) || btn.getAttribute('data-target');
                 const input = targetId && document.getElementById(targetId);
                 if (input) input.value = btn.getAttribute('data-value') || '';
             });

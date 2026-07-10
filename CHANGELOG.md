@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.24.1
+
+- **OCR — discard keeps markup:** rejecting a job on review still keeps cell annotations and upserts the format-bound ROI template.
+- **OCR — org code suggestions:** Latin/Cyrillic lookalikes and near-misses (РЕТР→ФЕТР) are suggested as chips on review.
+- **OCR — doc kind:** Latin OCR of kinds (e.g. `CB` → `СБ`) prefills the «Вид» dropdown.
+- **OCR — dates:** better `dd.mm.yy` / noisy OCR parsing; raw OCR shown under empty date fields with one-click apply.
+- **OCR — training example:** «Сохранить как учебный пример» stores corrected fields (`source=training`, status `labeled`) without creating an archive document — for dataset/ROI reuse (model training remains phase 3).
+
 ## 0.24.0
 
 - **OCR — format-bound ROI templates:** cell boxes saved on the annotation page are stored per paper format (A4, A3, …) and reused for later jobs of the same format.

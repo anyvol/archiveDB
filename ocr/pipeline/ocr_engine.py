@@ -200,8 +200,17 @@ def _normalize_value(raw: str | None, category: str | None) -> str | None:
 
 
 def _normalize_date(text: str) -> str | None:
-    """Return YYYY-MM-DD for HTML date inputs, or None if unparseable."""
-    digits = re.findall(r"\d+", text or "")
+    """Return YYYY-MM-DD for HTML date inputs, or None if unparseable.
+
+    Stamps often use dd.mm.yy (two-digit year → 20xx).
+    """
+    if not text:
+        return None
+    cleaned = text.replace(",", ".").replace("·", ".").replace(" ", "")
+    m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", cleaned)
+    if m_iso:
+        return m_iso.group(0)
+    digits = re.findall(r"\d+", text)
     if len(digits) >= 3:
         d, m, y = digits[0], digits[1], digits[2]
         if len(y) == 2:
@@ -214,10 +223,11 @@ def _normalize_date(text: str) -> str | None:
             di, mi, yi = int(d), int(m), int(y)
         except ValueError:
             return None
-        if len(y) == 4 and 1 <= mi <= 12 and 1 <= di <= 31:
+        if len(y) == 4 and 1 <= mi <= 12 and 1 <= di <= 31 and 1990 <= yi <= 2099:
             return f"{yi:04d}-{mi:02d}-{di:02d}"
-    # Already ISO
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", (text or "").strip())
-    if m:
-        return m.group(0)
+    compact = re.sub(r"\D", "", text)
+    if len(compact) == 6 and compact.isdigit():
+        d, m, y = int(compact[0:2]), int(compact[2:4]), int("20" + compact[4:6])
+        if 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
     return None

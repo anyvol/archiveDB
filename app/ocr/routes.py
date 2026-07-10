@@ -15,7 +15,7 @@ from app.config import OCR_ALLOWED_EXTENSIONS, OCR_LOW_CONF_THRESHOLD, SERVICE_V
 from app.database import get_session
 from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS
 from app.models import DOC_KIND_CODES, OCR_JOB_STATUS_LABELS, OcrJobStatus, Project
-from app.name_helpers import fetch_known_person_names
+from app.name_helpers import fetch_known_org_codes, fetch_known_person_names, suggest_org_codes
 from app.ocr.annotate import (
     FIELD_KEY_LABELS,
     annotation_bootstrap,
@@ -23,8 +23,15 @@ from app.ocr.annotate import (
     reocr_from_annotation,
     save_annotation,
 )
-from app.ocr.commit import commit_ocr_job, discard_job, prefill_from_extraction
+from app.ocr.commit import (
+    commit_ocr_job,
+    date_hints_from_extraction,
+    discard_job,
+    prefill_from_extraction,
+    save_training_example,
+)
 from app.ocr.service import (
+    _build_field_suggestions,
     create_batch_with_files,
     field_confidence,
     get_batch,
@@ -221,6 +228,14 @@ async def ocr_review_page(
         if conf is not None and conf < OCR_LOW_CONF_THRESHOLD:
             low_conf_fields.add(key)
 
+    # Fresh suggestions at review time (org near-misses like РЕТР→ФЕТР)
+    stored_suggestions = dict((extraction.person_suggestions if extraction else {}) or {})
+    live_suggestions = await _build_field_suggestions(session, fields)
+    if prefill.get("org_code"):
+        known_orgs = await fetch_known_org_codes(session)
+        live_suggestions["org_code"] = suggest_org_codes(prefill["org_code"], known_orgs, limit=5)
+    person_suggestions = {**stored_suggestions, **live_suggestions}
+
     return templates.TemplateResponse(
         "ocr_review.html",
         {
@@ -229,9 +244,10 @@ async def ocr_review_page(
             "job": job,
             "extraction": extraction,
             "prefill": prefill,
+            "date_hints": date_hints_from_extraction(extraction),
             "projects": projects,
             "known_person_names": known_names,
-            "person_suggestions": (extraction.person_suggestions if extraction else {}) or {},
+            "person_suggestions": person_suggestions,
             "field_confidences": confidences,
             "low_conf_fields": low_conf_fields,
             "low_conf_threshold": OCR_LOW_CONF_THRESHOLD,
@@ -431,9 +447,47 @@ async def api_discard_ocr_job(
     if not job:
         raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
     batch_id = job.batch_id
-    await discard_job(session, job)
+    await discard_job(session, job, user=auth)
     if wants_json_response(request):
         return JSONResponse({"ok": True, "redirect": url_path(f"/ocr/batches/{batch_id}")})
+    return RedirectResponse(url=url_path(f"/ocr/batches/{batch_id}"), status_code=303)
+
+
+@router.post("/api/ocr/jobs/{job_id}/save-training")
+async def api_save_training_example(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Save corrected review fields as a training example without creating a document."""
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+
+    form = dict(await request.form())
+    try:
+        await save_training_example(session, job, auth, form)
+    except HTTPException as exc:
+        if wants_json_response(request):
+            return JSONResponse({"ok": False, "detail": exc.detail}, status_code=exc.status_code)
+        return await ocr_review_page(
+            job_id, request, access_token, session, error=str(exc.detail)
+        )
+
+    batch_id = job.batch_id
+    if wants_json_response(request):
+        return JSONResponse(
+            {
+                "ok": True,
+                "status": "labeled",
+                "redirect": url_path(f"/ocr/batches/{batch_id}"),
+            }
+        )
     return RedirectResponse(url=url_path(f"/ocr/batches/{batch_id}"), status_code=303)
 
 

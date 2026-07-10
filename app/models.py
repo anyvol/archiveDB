@@ -583,6 +583,7 @@ class OcrJobStatus(str, enum.Enum):
     committed = "committed"
     failed = "failed"
     discarded = "discarded"
+    labeled = "labeled"  # ground-truth saved for training, no document created
 
 
 OCR_JOB_STATUS_LABELS = {
@@ -594,6 +595,7 @@ OCR_JOB_STATUS_LABELS = {
     OcrJobStatus.committed: "Создан документ",
     OcrJobStatus.failed: "Ошибка",
     OcrJobStatus.discarded: "Отклонено",
+    OcrJobStatus.labeled: "Учебный пример",
 }
 
 OCR_INBOX_FOLDER = "_ocr_inbox"

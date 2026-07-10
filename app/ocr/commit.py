@@ -36,6 +36,7 @@ from app.name_helpers import normalize_person_name
 from app.notifications import get_document_designation, notify_file_upload
 from app.ocr.normalize import (
     coerce_document_format,
+    date_hint_from_field,
     normalize_ocr_date,
     parse_bool_flag,
     parse_designation_parts,
@@ -333,12 +334,126 @@ def _fields_from_form(form: dict[str, Any], previous: dict) -> dict:
     return result
 
 
-async def discard_job(session: AsyncSession, job: OcrJob) -> None:
+async def discard_job(session: AsyncSession, job: OcrJob, user: User | None = None) -> None:
+    """Mark job discarded but keep annotations and format-bound ROI templates."""
     if job.status == OcrJobStatus.committed:
         raise HTTPException(status_code=400, detail="Нельзя отклонить задачу с созданным документом.")
+
+    # Persist ROI template for this paper format even when the job is rejected
+    from app.ocr.annotate import (
+        latest_annotation,
+        resolve_document_format,
+        upsert_format_template,
+    )
+
+    extraction = latest_extraction(job)
+    annotation = await latest_annotation(session, job.id)
+    if annotation and annotation.labels and annotation.labels.get("cells"):
+        fmt = resolve_document_format(extraction, annotation.labels)
+        if fmt and user is not None:
+            await upsert_format_template(
+                session,
+                document_format=fmt,
+                labels=annotation.labels,
+                user=user,
+            )
+        elif fmt and annotation.labels.get("document_format") != fmt:
+            labels = dict(annotation.labels)
+            labels["document_format"] = fmt
+            annotation.labels = labels
+
     job.status = OcrJobStatus.discarded
     job.finished_at = datetime.utcnow()
     await session.commit()
+
+
+async def save_training_example(
+    session: AsyncSession,
+    job: OcrJob,
+    user: User,
+    form: dict[str, Any],
+) -> OcrExtraction:
+    """Save human-corrected fields as a training/ground-truth extraction without creating a document.
+
+    Also upserts the format-bound ROI template when cell annotation exists.
+    This feeds phase-3 dataset export; format templates already improve the next OCR runs.
+    """
+    if job.status == OcrJobStatus.committed:
+        raise HTTPException(status_code=400, detail="Документ уже создан из этой задачи.")
+    if job.status == OcrJobStatus.discarded:
+        raise HTTPException(status_code=400, detail="Задача отклонена — учебный пример не сохранить.")
+
+    from app.ocr.annotate import (
+        latest_annotation,
+        resolve_document_format,
+        upsert_format_template,
+    )
+
+    extraction = latest_extraction(job)
+    prev_fields = (extraction.fields if extraction else {}) or {}
+    fields = _fields_from_form(form, prev_fields)
+
+    # Attach signature flags into fields for export
+    for form_key, field_key in (
+        ("has_developer_signature", "developer_signature"),
+        ("has_reviewer_signature", "reviewer_signature"),
+        ("has_approver_signature", "approver_signature"),
+    ):
+        flag = parse_bool_flag(form.get(form_key))
+        if form_key not in form:
+            flag = False
+        prev = fields.get(field_key) or {}
+        fields[field_key] = {
+            "raw": prev.get("raw"),
+            "value": "true" if flag else "false",
+            "conf": 1.0,
+            "bbox": prev.get("bbox"),
+            "page": prev.get("page", 0),
+        }
+
+    geometry = dict((extraction.geometry if extraction else {}) or {})
+    fmt = coerce_document_format(form.get("document_format")) or resolve_document_format(extraction)
+    if fmt:
+        geometry["format_from_dims"] = geometry.get("format_from_dims") or fmt
+        fields["document_format"] = {
+            "raw": fields.get("document_format", {}).get("raw") or fmt,
+            "value": fmt,
+            "conf": 1.0,
+            "bbox": (fields.get("document_format") or {}).get("bbox"),
+            "page": 0,
+        }
+
+    annotation = await latest_annotation(session, job.id)
+    if annotation and annotation.labels and annotation.labels.get("cells") and fmt:
+        await upsert_format_template(
+            session,
+            document_format=fmt,
+            labels={**annotation.labels, "document_format": fmt},
+            user=user,
+        )
+        geometry["annotation_id"] = annotation.id
+        geometry["format_template"] = fmt
+
+    geometry["training"] = True
+    geometry["labeled_by_user_id"] = user.id
+
+    new_extraction = OcrExtraction(
+        job_id=job.id,
+        source="training",
+        fields=fields,
+        geometry=geometry,
+        stamp_crop_path=extraction.stamp_crop_path if extraction else None,
+        page_preview_path=extraction.page_preview_path if extraction else None,
+        person_suggestions=extraction.person_suggestions if extraction else None,
+        created_at=datetime.utcnow(),
+    )
+    session.add(new_extraction)
+    job.status = OcrJobStatus.labeled
+    job.finished_at = datetime.utcnow()
+    job.error_message = None
+    await session.commit()
+    await session.refresh(new_extraction)
+    return new_extraction
 
 
 def prefill_from_extraction(extraction: OcrExtraction | None) -> dict[str, str]:
@@ -351,10 +466,22 @@ def prefill_from_extraction(extraction: OcrExtraction | None) -> dict[str, str]:
     )
     designation = field_value(fields, "designation")
     parts = parse_designation_parts(designation)
+    if not parts["doc_kind_code"]:
+        raw_des = ((fields or {}).get("designation") or {}).get("raw") or ""
+        if raw_des:
+            parts["doc_kind_code"] = parse_designation_parts(str(raw_des))["doc_kind_code"]
 
     def _sig(key: str) -> str:
         flag = parse_bool_flag(field_value(fields, key))
         return "true" if flag else ""
+
+    def _date(key: str) -> str:
+        entry = (fields or {}).get(key) or {}
+        return (
+            normalize_ocr_date(entry.get("value"))
+            or normalize_ocr_date(entry.get("raw"))
+            or normalize_ocr_date(field_value(fields, key))
+        )
 
     return {
         "org_code": parts["org_code"],
@@ -366,11 +493,17 @@ def prefill_from_extraction(extraction: OcrExtraction | None) -> dict[str, str]:
         "developed_by": field_value(fields, "developed_by"),
         "reviewed_by": field_value(fields, "reviewed_by"),
         "approved_by": field_value(fields, "approved_by"),
-        "developer_signed_date": normalize_ocr_date(field_value(fields, "developer_signed_date")),
-        "reviewer_signed_date": normalize_ocr_date(field_value(fields, "reviewer_signed_date")),
-        "approver_signed_date": normalize_ocr_date(field_value(fields, "approver_signed_date")),
+        "developer_signed_date": _date("developer_signed_date"),
+        "reviewer_signed_date": _date("reviewer_signed_date"),
+        "approver_signed_date": _date("approver_signed_date"),
         "document_format": fmt,
         "has_developer_signature": _sig("developer_signature"),
         "has_reviewer_signature": _sig("reviewer_signature"),
         "has_approver_signature": _sig("approver_signature"),
     }
+
+
+def date_hints_from_extraction(extraction: OcrExtraction | None) -> dict[str, dict[str, str]]:
+    fields = (extraction.fields if extraction else {}) or {}
+    keys = ("developer_signed_date", "reviewer_signed_date", "approver_signed_date")
+    return {k: date_hint_from_field(fields.get(k)) for k in keys}
