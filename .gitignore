@@ -1,5 +1,11 @@
 uploaded_files/*
 !uploaded_files/.gitkeep
+models/*.pt
+models/*.onnx
+!models/README.md
+data/stamp_yolo/
+data/stamp_runs/
+mlruns/
 __pycache__/
 *.pyc
 .env

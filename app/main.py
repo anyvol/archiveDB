@@ -47,6 +47,7 @@ from app.models import (
 )
 from app.routers import router as user_router
 from app import docs
+from app.ocr.routes import router as ocr_router
 from app.auth import (
     get_current_user_from_token,
     authenticate_user,
@@ -266,6 +267,7 @@ templates.env.globals["date_input_value"] = date_input_value
 app.include_router(user_router, prefix="/users")
 app.include_router(docs.router, prefix="/docs")
 app.include_router(admin_router, prefix="/admin")
+app.include_router(ocr_router)
 
 _COOKIE_PATH = cookie_path()
 _ACCESS_EXEMPT_PREFIXES = (

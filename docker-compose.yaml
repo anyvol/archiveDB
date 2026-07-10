@@ -30,6 +30,8 @@ services:
       BACKUP_AGENT_URL: http://backup:9002
       OPS_AGENT_URL: http://ops-agent:9001
       OPS_AGENT_TOKEN: ${OPS_AGENT_TOKEN:-}
+      OCR_SERVICE_URL: http://ocr:9003
+      OCR_SERVICE_TIMEOUT_SEC: ${OCR_SERVICE_TIMEOUT_SEC:-120}
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files
@@ -87,6 +89,39 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "9001"
+
+  # Optional sidecar: API starts without waiting for OCR health.
+  # Not published to the host — browser uses proxy → api; api calls http://ocr:9003.
+  ocr:
+    build: ./ocr
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      UPLOADS_DIR: /uploads
+      OCR_SERVICE_TOKEN: ${OCR_SERVICE_TOKEN:-}
+      OCR_RENDER_DPI: ${OCR_RENDER_DPI:-400}
+      OCR_PAGE_PREVIEW_MAX_SIDE: ${OCR_PAGE_PREVIEW_MAX_SIDE:-2800}
+      OCR_PIPELINE_VERSION: ${OCR_PIPELINE_VERSION:-stamp-cells-1.1}
+      # Optional phase-3 stamp detector weights (Ultralytics .pt). Empty = off.
+      OCR_STAMP_DETECTOR_PATH: ${OCR_STAMP_DETECTOR_PATH:-}
+      OCR_STAMP_DETECTOR_MIN_CONF: ${OCR_STAMP_DETECTOR_MIN_CONF:-0.35}
+    volumes:
+      - ${UPLOAD_HOST_PATH:-./uploaded_files}:/uploads
+      - ${OCR_MODELS_HOST_PATH:-./models}:/models:ro
+    expose:
+      - "9003"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9003/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pgdata:

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .container { max-width: 900px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
+        th { background: #f8f9fa; }
+        .btn { display: inline-block; padding: 0.4rem 0.8rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.85rem; background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; }
+        .status-failed { color: #721c24; }
+        .status-needs_review, .status-ready { color: #155724; }
+        .status-committed { color: #004085; }
+        .hint { color: #6c757d; font-size: 0.9rem; margin-bottom: 1rem; }
+        .actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+    {% include "_page_header.html" %}
+    <div class="container">
+        <p class="hint">Пакет #{{ batch.id }} — статус: {{ batch.status.value }}. Откройте задачу для сверки и создания карточки документа.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Файл</th>
+                    <th>Статус</th>
+                    <th>Сообщение</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in batch.jobs %}
+                <tr>
+                    <td>{{ job.original_filename }}</td>
+                    <td class="status-{{ job.status.value }}">{{ OCR_JOB_STATUS_LABELS.get(job.status, job.status.value) }}</td>
+                    <td>{{ job.error_message or '—' }}</td>
+                    <td>
+                        {% if job.status.value == 'committed' and job.document_id %}
+                        <a class="btn" href="{{ url_path('/documents/' ~ job.document_id) }}">Документ</a>
+                        {% elif job.status.value != 'discarded' %}
+                        <a class="btn" href="{{ url_path('/ocr/jobs/' ~ job.id ~ '/review') }}">Сверка</a>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">Нет файлов в пакете.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="actions">
+            <a class="btn btn-secondary" href="{{ url_path('/ocr') }}">Новая загрузка</a>
+            <a class="btn btn-secondary" href="{{ url_path('/ocr/dataset') }}">Датасет (этап 3)</a>
+            <a class="btn btn-secondary" href="{{ url_path('/documents') }}">К документам</a>
+        </div>
+    </div>
+    {% include "_session_auth.html" %}
+</body>
+</html>

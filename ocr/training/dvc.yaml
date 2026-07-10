@@ -1,0 +1,33 @@
+# DVC pipeline stub for stamp detector training (phase 3).
+#
+# Usage (from ocr/training/ after exporting a dataset ZIP):
+#   export DATASET_ZIP=/path/to/archivedb-ocr-dataset-....zip
+#   dvc repro
+#
+# Or run the Python scripts directly — see README.md and docs/ocr/PHASE3.md.
+# This file is a reproducible-training sketch; adjust paths for your host.
+
+stages:
+  prepare:
+    cmd: >-
+      python prepare_yolo_dataset.py
+      --zip ${DATASET_ZIP}
+      --out ../../data/stamp_yolo
+    deps:
+      - prepare_yolo_dataset.py
+    outs:
+      - ../../data/stamp_yolo
+
+  train:
+    cmd: >-
+      python train_stamp_detector.py
+      --data ../../data/stamp_yolo/data.yaml
+      --epochs 80
+      --imgsz 1280
+      --project ../../data/stamp_runs
+      --mlflow-uri ../../mlruns
+    deps:
+      - train_stamp_detector.py
+      - ../../data/stamp_yolo
+    outs:
+      - ../../data/stamp_runs

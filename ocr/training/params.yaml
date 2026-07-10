@@ -1,0 +1,7 @@
+prepare:
+  min_samples: 5
+
+train:
+  epochs: 80
+  imgsz: 1280
+  model: yolov8n.pt

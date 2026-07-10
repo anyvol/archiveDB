@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.25.0
+
+- **OCR phases 1–3:** isolated OCR sidecar, stamp/cell recognition, review/commit, annotation UI, format-bound ROI templates, signatures, training examples, dataset ZIP export, and optional stamp detector. See `docs/ocr/README.md` and `docs/ocr/PHASE3.md`.
+- **OCR — higher DPI:** default render DPI **400** (`OCR_RENDER_DPI`); page preview max side **2800**.
+- **OCR — stamp region per format:** annotate title-block area on the page preview; `stamp_roi_norm` stored in `ocr_format_templates` (A4 vs A3).
+- **OCR — format-bound cell ROI templates:** cell boxes reused per paper format; format dropdown coerced to ISO codes (Cyrillic «А» → Latin «A»).
+- **OCR — review UX:** org/FIO suggestion chips, date normalization (`YYYY-MM-DD` / `dd.mm.yy`), doc-kind from designation (incl. Latin aliases), signature ink detection, per-cell ROI thumbnails, «учебный пример», discard keeps markup.
+- **OCR phase 3 — dataset / detector:** `/ocr/dataset` ZIP export; `ocr/training/` YOLO + DVC/MLflow stubs; optional `OCR_STAMP_DETECTOR_PATH`.
+
 ## 0.24.1
 
 - **Administration — containers:** ops-agent now discovers all services in the current Docker Compose project dynamically (no hard-coded whitelist). Service names are read from the `com.docker.compose.service` label instead of parsing container names. Container status on the dashboard and containers page auto-refreshes every 15 seconds.

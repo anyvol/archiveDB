@@ -305,6 +305,9 @@ class BaseDocument(Base):
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
     document_format = Column(String(32), nullable=True)
+    has_developer_signature = Column(Boolean, nullable=True)
+    has_reviewer_signature = Column(Boolean, nullable=True)
+    has_approver_signature = Column(Boolean, nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     status = Column(
@@ -600,3 +603,158 @@ class BackupRecord(Base):
     checksum_sha256 = Column(String(64), nullable=True)
     triggered_by = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OcrBatchStatus(str, enum.Enum):
+    open = "open"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+
+
+class OcrJobStatus(str, enum.Enum):
+    queued = "queued"
+    processing = "processing"
+    needs_review = "needs_review"
+    needs_annotation = "needs_annotation"
+    ready = "ready"
+    committed = "committed"
+    failed = "failed"
+    discarded = "discarded"
+    labeled = "labeled"  # ground-truth saved for training, no document created
+
+
+OCR_JOB_STATUS_LABELS = {
+    OcrJobStatus.queued: "В очереди",
+    OcrJobStatus.processing: "Обработка",
+    OcrJobStatus.needs_review: "На проверке",
+    OcrJobStatus.needs_annotation: "Нужна разметка",
+    OcrJobStatus.ready: "Готово",
+    OcrJobStatus.committed: "Создан документ",
+    OcrJobStatus.failed: "Ошибка",
+    OcrJobStatus.discarded: "Отклонено",
+    OcrJobStatus.labeled: "Учебный пример",
+}
+
+OCR_INBOX_FOLDER = "_ocr_inbox"
+
+
+class OcrBatch(Base):
+    __tablename__ = "ocr_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # native_enum=False → VARCHAR, avoids fragile PostgreSQL ENUM create/sync
+    status = Column(
+        SAEnum(
+            OcrBatchStatus,
+            name="ocr_batch_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            native_enum=False,
+            length=32,
+        ),
+        default=OcrBatchStatus.open,
+        nullable=False,
+    )
+
+    created_by = relationship("User")
+    jobs = relationship(
+        "OcrJob",
+        back_populates="batch",
+        order_by="OcrJob.id",
+        cascade="all, delete-orphan",
+    )
+
+
+class OcrJob(Base):
+    __tablename__ = "ocr_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(Integer, ForeignKey("ocr_batches.id"), nullable=False, index=True)
+    original_filename = Column(String(512), nullable=False)
+    stored_path = Column(String(1024), nullable=False)
+    mime = Column(String(128), nullable=True)
+    page_count = Column(Integer, nullable=True)
+    status = Column(
+        SAEnum(
+            OcrJobStatus,
+            name="ocr_job_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            native_enum=False,
+            length=32,
+        ),
+        default=OcrJobStatus.queued,
+        nullable=False,
+    )
+    error_message = Column(Text, nullable=True)
+    pipeline_version = Column(String(64), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    batch = relationship("OcrBatch", back_populates="jobs")
+    document = relationship("BaseDocument")
+    extractions = relationship(
+        "OcrExtraction",
+        back_populates="job",
+        order_by="OcrExtraction.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
+    annotations = relationship(
+        "OcrAnnotation",
+        back_populates="job",
+        order_by="OcrAnnotation.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
+
+
+class OcrExtraction(Base):
+    __tablename__ = "ocr_extractions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ocr_jobs.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    source = Column(String(32), nullable=False, default="auto")
+    fields = Column(JSON, nullable=False, default=dict)
+    geometry = Column(JSON, nullable=False, default=dict)
+    stamp_crop_path = Column(String(1024), nullable=True)
+    page_preview_path = Column(String(1024), nullable=True)
+    person_suggestions = Column(JSON, nullable=True)
+
+    job = relationship("OcrJob", back_populates="extractions")
+
+
+class OcrAnnotation(Base):
+    """Human-corrected cell boxes on the stamp crop (phase 2)."""
+
+    __tablename__ = "ocr_annotations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ocr_jobs.id"), nullable=False, index=True)
+    annotator_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    # {cells:[{key,bbox_norm,text?,category?}], stamp_size:[w,h], notes?, document_format?}
+    labels = Column(JSON, nullable=False, default=dict)
+    exported_at = Column(DateTime, nullable=True)
+
+    job = relationship("OcrJob", back_populates="annotations")
+    annotator = relationship("User")
+
+
+class OcrFormatTemplate(Base):
+    """Reusable stamp cell ROI template bound to a paper format (A4, A3, …)."""
+
+    __tablename__ = "ocr_format_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_format = Column(String(32), unique=True, nullable=False, index=True)
+    # Same shape as OcrAnnotation.labels (cells + stamp_size)
+    labels = Column(JSON, nullable=False, default=dict)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    updated_by = relationship("User")
