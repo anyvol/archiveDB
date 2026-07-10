@@ -5,35 +5,24 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.25.0
 
-- **OCR — higher DPI:** default render DPI raised from 250 to **400** (`OCR_RENDER_DPI`); page preview max side **2800** for clearer stamp/cell text and annotation.
-- **OCR phase 3 — dataset export:** UI `/ocr/dataset` and `POST /api/ocr/dataset/export` build a ZIP of labeled/annotated jobs (stamp + page images, labels, format templates).
-- **OCR phase 3 — training toolkit:** `ocr/training/` converts the ZIP to YOLO format and trains an optional stamp detector (Ultralytics), with DVC/MLflow stubs. See `docs/ocr/PHASE3.md`.
-- **OCR phase 3 — optional detector:** if `OCR_STAMP_DETECTOR_PATH` points to a `.pt` model in the OCR container, stamp location uses the detector after format-template ROI and before format defaults.
-
-## 0.24.2
-
-- **OCR — stamp region per format:** annotate the title-block area on the page preview (not only cells). `stamp_roi_norm` is stored in `ocr_format_templates` and reused for later jobs of the same paper size (A4 vs A3).
-- **OCR — format-aware defaults:** starting stamp ROI guesses differ by format (A4/A3/…) until a learned template exists.
-- **OCR — review ROI previews:** the review page shows a crop thumbnail for each recognized cell ROI so you can see what OCR actually read.
+- **OCR phases 1–3:** isolated OCR sidecar, stamp/cell recognition, review/commit, annotation UI, format-bound ROI templates, signatures, training examples, dataset ZIP export, and optional stamp detector. See `docs/ocr/README.md` and `docs/ocr/PHASE3.md`.
+- **OCR — higher DPI:** default render DPI **400** (`OCR_RENDER_DPI`); page preview max side **2800**.
+- **OCR — stamp region per format:** annotate title-block area on the page preview; `stamp_roi_norm` stored in `ocr_format_templates` (A4 vs A3).
+- **OCR — format-bound cell ROI templates:** cell boxes reused per paper format; format dropdown coerced to ISO codes (Cyrillic «А» → Latin «A»).
+- **OCR — review UX:** org/FIO suggestion chips, date normalization (`YYYY-MM-DD` / `dd.mm.yy`), doc-kind from designation (incl. Latin aliases), signature ink detection, per-cell ROI thumbnails, «учебный пример», discard keeps markup.
+- **OCR phase 3 — dataset / detector:** `/ocr/dataset` ZIP export; `ocr/training/` YOLO + DVC/MLflow stubs; optional `OCR_STAMP_DETECTOR_PATH`.
 
 ## 0.24.1
 
-- **OCR — discard keeps markup:** rejecting a job on review still keeps cell annotations and upserts the format-bound ROI template.
-- **OCR — org code suggestions:** Latin/Cyrillic lookalikes and near-misses (РЕТР→ФЕТР) are suggested as chips on review.
-- **OCR — doc kind:** Latin OCR of kinds (e.g. `CB` → `СБ`) prefills the «Вид» dropdown.
-- **OCR — dates:** better `dd.mm.yy` / noisy OCR parsing; raw OCR shown under empty date fields with one-click apply.
-- **OCR — training example:** «Сохранить как учебный пример» stores corrected fields (`source=training`, status `labeled`) without creating an archive document — for dataset/ROI reuse (model training remains phase 3).
+- **Administration — containers:** ops-agent now discovers all services in the current Docker Compose project dynamically (no hard-coded whitelist). Service names are read from the `com.docker.compose.service` label instead of parsing container names. Container status on the dashboard and containers page auto-refreshes every 15 seconds.
 
 ## 0.24.0
 
-- **OCR — format-bound ROI templates:** cell boxes saved on the annotation page are stored per paper format (A4, A3, …) and reused for later jobs of the same format.
-- **OCR — format dropdown:** paper format is coerced to a valid ISO code (Cyrillic «А» → Latin «A»); when OCR text is invalid, dimensions (`format_from_dims`) are used so the review select is prefilled. Review shows the detection source.
-- **OCR — org code suggestions:** fuzzy chips from known organization codes (same UX as FIO).
-- **OCR — dates:** OCR dates are normalized to `YYYY-MM-DD` for HTML date inputs (including `dd.mm.yy`).
-- **OCR — signatures:** three stamp ROIs (developed / reviewed / approved); any ink in the ROI marks signature present. Boolean columns on `documents`: `has_developer_signature`, `has_reviewer_signature`, `has_approver_signature`.
-- **OCR — doc kind:** if the designation ends with a known kind (СБ, СП, …), the review «Вид» dropdown is prefilled.
-- **OCR — review:** creating a new project/product from the review page is removed; use the Projects section.
-- **Docs / help:** OCR workflow notes and help section updated for 0.24.0.
+- **Technical specifications (ТУ):** register ТУ by OKPO from the «Ещё» menu using the format OKPD2-product-serial-OKPO-year (e.g. `26.20.13-002-95979699-2024`). New «ТУ» tab on the main archive page with filters, column visibility in the profile, and record cards with preview/download.
+- **Projects — establishing TU:** administrators can attach a registered ТУ to a project (same pattern as establishing orders).
+- **Password recovery:** reset links in email always use HTTPS, even when the forgot-password form was submitted over HTTP.
+- **Profile — change password:** change password from the personal account with current password verification; optional «send link to email» reuses the forgot-password flow.
+- **Orders — metadata:** orders can be linked to a project and multiple products; editable on the order metadata edit page. Project and product columns added to the orders list.
 
 ## 0.23.2
 

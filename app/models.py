@@ -1,7 +1,7 @@
 # app/models.py
 
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as SAEnum, Boolean, Text, JSON, UniqueConstraint, Table
 import enum
 from datetime import datetime
 
@@ -87,6 +87,7 @@ GOVERNED_DOCUMENT_TYPES = ("DD", "TD")
 MISC_DOCS_FOLDER = "Прочие документы"
 II_FOLDER = "Извещения об изменении"
 ORDERS_FOLDER = "Приказы"
+TU_ARCHIVE_FOLDER = "Технические условия"
 VERSIONS_FOLDER = "versions"
 IMAGES_FOLDER = "изображения"
 
@@ -161,6 +162,12 @@ class Project(Base):
     )
     establishing_order_id = Column(Integer, ForeignKey("archive_orders.id", ondelete="SET NULL"), nullable=True)
     establishing_order = relationship("ArchiveOrder", foreign_keys=[establishing_order_id])
+    establishing_tu_id = Column(
+        Integer,
+        ForeignKey("archive_technical_specs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    establishing_tu = relationship("ArchiveTechnicalSpec", foreign_keys=[establishing_tu_id])
 
 
 class Product(Base):
@@ -438,6 +445,14 @@ class ArchiveNotification(Base):
     usages = relationship("ChangeNotification", back_populates="archive_notification")
 
 
+archive_order_products = Table(
+    "archive_order_products",
+    Base.metadata,
+    Column("order_id", Integer, ForeignKey("archive_orders.id", ondelete="CASCADE"), primary_key=True),
+    Column("product_id", Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class ArchiveOrder(Base):
     """Зарегистрированный в архиве приказ."""
 
@@ -447,6 +462,29 @@ class ArchiveOrder(Base):
     number = Column(String(64), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
     order_date = Column(DateTime, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    project = relationship("Project", foreign_keys=[project_id])
+    products = relationship("Product", secondary=archive_order_products)
+    created_by = relationship("User")
+
+
+class ArchiveTechnicalSpec(Base):
+    """Зарегистрированные в архиве технические условия (ТУ) по ОКПО."""
+
+    __tablename__ = "archive_technical_specs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    number = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    okpd2 = Column(String(32), nullable=False)
+    product_index = Column(String(8), nullable=False)
+    okpo = Column(String(8), nullable=False)
+    year = Column(Integer, nullable=False)
     file_name = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

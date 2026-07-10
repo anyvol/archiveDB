@@ -8,5 +8,7 @@
     {% if 'number' in visible_columns %}<td>{{ item.number }}</td>{% endif %}
     {% if 'name' in visible_columns %}<td>{{ item.name }}</td>{% endif %}
     {% if 'order_date' in visible_columns %}<td>{{ format_date(item.order_date, app_timezone) }}</td>{% endif %}
+    {% if 'project' in visible_columns %}<td>{% if item.project %}{{ item.project.name }}{% else %}—{% endif %}</td>{% endif %}
+    {% if 'product' in visible_columns %}<td>{% if item.products %}{% for p in item.products %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>{% endif %}
 </tr>
 {% endfor %}

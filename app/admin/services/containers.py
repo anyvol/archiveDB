@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.config import OPS_AGENT_TOKEN, OPS_AGENT_URL
+
+logger = logging.getLogger(__name__)
 
 
 def _headers() -> dict[str, str]:
@@ -21,7 +25,8 @@ async def fetch_containers() -> list[dict]:
             response = await client.get(f"{OPS_AGENT_URL}/containers", headers=_headers())
             response.raise_for_status()
             return response.json()
-    except Exception:
+    except Exception as exc:
+        logger.warning("ops-agent containers request failed: %s", exc)
         return []
 
 

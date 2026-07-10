@@ -1,7 +1,7 @@
-"""Ensure OCR tables exist (repair when m3n4 was stamped without DDL).
+"""Ensure OCR tables exist (repair when OCR head was stamped without DDL).
 
 Revision ID: n4o5p6q7r8s9
-Revises: m3n4o5p6q7r8
+Revises: q7r8s9t0u1v2
 Create Date: 2026-07-10 14:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy import inspect
 
 
 revision: str = "n4o5p6q7r8s9"
-down_revision: Union[str, Sequence[str], None] = "m3n4o5p6q7r8"
+down_revision: Union[str, Sequence[str], None] = "q7r8s9t0u1v2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

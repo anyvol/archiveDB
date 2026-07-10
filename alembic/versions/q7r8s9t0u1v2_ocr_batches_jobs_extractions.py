@@ -1,7 +1,7 @@
 """OCR tables for stamp recognition pipeline (phase 1A).
 
-Revision ID: m3n4o5p6q7r8
-Revises: l2m3n4o5p6q7
+Revision ID: q7r8s9t0u1v2
+Revises: m3n4o5p6q7r8
 Create Date: 2026-07-10 12:00:00.000000
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 
-revision: str = "m3n4o5p6q7r8"
-down_revision: Union[str, Sequence[str], None] = "l2m3n4o5p6q7"
+revision: str = "q7r8s9t0u1v2"
+down_revision: Union[str, Sequence[str], None] = "m3n4o5p6q7r8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

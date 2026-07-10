@@ -29,22 +29,35 @@ ORDER_COLUMNS = [
     ("number", "Номер"),
     ("name", "Название"),
     ("order_date", "Дата"),
+    ("project", "Проект"),
+    ("product", "Изделие"),
+]
+
+TU_COLUMNS = [
+    ("number", "Номер ТУ"),
+    ("name", "Наименование"),
+    ("okpo", "ОКПО"),
+    ("year", "Год"),
+    ("created_at", "Дата регистрации"),
 ]
 
 TAB_COLUMN_DEFINITIONS = {
     "documents": DOCUMENT_COLUMNS,
     "notifications": NOTIFICATION_COLUMNS,
     "orders": ORDER_COLUMNS,
+    "tu": TU_COLUMNS,
 }
 
 DEFAULT_VISIBLE_COLUMNS = [key for key, _ in DOCUMENT_COLUMNS]
 DEFAULT_NOTIFICATION_COLUMNS = [key for key, _ in NOTIFICATION_COLUMNS]
 DEFAULT_ORDER_COLUMNS = [key for key, _ in ORDER_COLUMNS]
+DEFAULT_TU_COLUMNS = [key for key, _ in TU_COLUMNS]
 
 DEFAULT_TAB_COLUMNS = {
     "documents": DEFAULT_VISIBLE_COLUMNS,
     "notifications": DEFAULT_NOTIFICATION_COLUMNS,
     "orders": DEFAULT_ORDER_COLUMNS,
+    "tu": DEFAULT_TU_COLUMNS,
 }
 
 
