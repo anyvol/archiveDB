@@ -19,15 +19,17 @@ Browser  →  proxy (:80/:8443)  →  api (:8000)  →  ocr (:9003, internal onl
 
 ```bash
 docker compose up -d --build
-docker compose exec api alembic upgrade head   # required: creates ocr_* tables
+docker compose exec api alembic upgrade head   # creates/repairs ocr_* tables
+# or restart api — entrypoint runs ensure_schema.py which also creates ocr_* if missing
 
-# Health (from inside the Docker network — NOT localhost:9003 on the host)
 docker compose exec api python -c "import urllib.request; print(urllib.request.urlopen('http://ocr:9003/health').read().decode())"
-# or:
-docker compose exec ocr python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9003/health').read().decode())"
 ```
 
-`curl http://localhost:9003/health` on the host returns nothing by design — port 9003 is not published.
+Verify tables:
+
+```bash
+docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt ocr_*'
+```
 
 ## Phase 1A scope
 

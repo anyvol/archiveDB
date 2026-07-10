@@ -602,7 +602,18 @@ class OcrBatch(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    status = Column(SAEnum(OcrBatchStatus), default=OcrBatchStatus.open, nullable=False)
+    # native_enum=False → VARCHAR, avoids fragile PostgreSQL ENUM create/sync
+    status = Column(
+        SAEnum(
+            OcrBatchStatus,
+            name="ocr_batch_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            native_enum=False,
+            length=32,
+        ),
+        default=OcrBatchStatus.open,
+        nullable=False,
+    )
 
     created_by = relationship("User")
     jobs = relationship(
@@ -622,7 +633,17 @@ class OcrJob(Base):
     stored_path = Column(String(1024), nullable=False)
     mime = Column(String(128), nullable=True)
     page_count = Column(Integer, nullable=True)
-    status = Column(SAEnum(OcrJobStatus), default=OcrJobStatus.queued, nullable=False)
+    status = Column(
+        SAEnum(
+            OcrJobStatus,
+            name="ocr_job_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            native_enum=False,
+            length=32,
+        ),
+        default=OcrJobStatus.queued,
+        nullable=False,
+    )
     error_message = Column(Text, nullable=True)
     pipeline_version = Column(String(64), nullable=True)
     started_at = Column(DateTime, nullable=True)

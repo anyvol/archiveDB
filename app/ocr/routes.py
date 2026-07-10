@@ -98,8 +98,10 @@ async def api_create_ocr_batch(
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "Таблицы OCR не найдены. Выполните миграцию: "
-                    "docker compose exec api alembic upgrade head"
+                    "Таблицы OCR не найдены. Выполните: "
+                    "docker compose exec api alembic upgrade head "
+                    "и перезапустите api (entrypoint также создаст ocr_* при старте). "
+                    f"Детали: {message[:300]}"
                 ),
             ) from exc
         raise HTTPException(

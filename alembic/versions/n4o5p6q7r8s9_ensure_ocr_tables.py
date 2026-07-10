@@ -1,8 +1,8 @@
-"""OCR tables for stamp recognition pipeline (phase 1A).
+"""Ensure OCR tables exist (repair when m3n4 was stamped without DDL).
 
-Revision ID: m3n4o5p6q7r8
-Revises: l2m3n4o5p6q7
-Create Date: 2026-07-10 12:00:00.000000
+Revision ID: n4o5p6q7r8s9
+Revises: m3n4o5p6q7r8
+Create Date: 2026-07-10 14:00:00.000000
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 
-revision: str = "m3n4o5p6q7r8"
-down_revision: Union[str, Sequence[str], None] = "l2m3n4o5p6q7"
+revision: str = "n4o5p6q7r8s9"
+down_revision: Union[str, Sequence[str], None] = "m3n4o5p6q7r8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -23,10 +23,10 @@ def _table_exists(inspector, table: str) -> bool:
 
 
 def upgrade() -> None:
+    """Idempotent create — safe when m3n4 already applied or only stamped."""
     bind = op.get_bind()
     inspector = inspect(bind)
 
-    # VARCHAR statuses (not PostgreSQL ENUM) — matches SQLAlchemy native_enum=False.
     if not _table_exists(inspector, "ocr_batches"):
         op.create_table(
             "ocr_batches",
@@ -70,12 +70,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    inspector = inspect(bind)
-
-    if _table_exists(inspector, "ocr_extractions"):
-        op.drop_table("ocr_extractions")
-    if _table_exists(inspector, "ocr_jobs"):
-        op.drop_table("ocr_jobs")
-    if _table_exists(inspector, "ocr_batches"):
-        op.drop_table("ocr_batches")
+    # Do not drop OCR tables on downgrade — they may have been created by m3n4.
+    pass

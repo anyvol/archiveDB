@@ -172,6 +172,85 @@ def _verify_schema(engine) -> None:
         raise RuntimeError(f"Schema verification failed, missing: {', '.join(missing)}")
 
 
+def _apply_ocr_schema(engine) -> list[str]:
+    """Create OCR tables if Alembic version advanced without DDL (phase 1A repair)."""
+    applied: list[str] = []
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    with engine.begin() as conn:
+        if "ocr_batches" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE ocr_batches (
+                        id SERIAL PRIMARY KEY,
+                        created_by_user_id INTEGER NOT NULL REFERENCES users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT now(),
+                        status VARCHAR(32) NOT NULL DEFAULT 'open'
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_batches_created_by_user_id ON ocr_batches (created_by_user_id)"))
+            applied.append("ocr_batches")
+
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+
+        if "ocr_jobs" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE ocr_jobs (
+                        id SERIAL PRIMARY KEY,
+                        batch_id INTEGER NOT NULL REFERENCES ocr_batches(id),
+                        original_filename VARCHAR(512) NOT NULL,
+                        stored_path VARCHAR(1024) NOT NULL,
+                        mime VARCHAR(128),
+                        page_count INTEGER,
+                        status VARCHAR(32) NOT NULL DEFAULT 'queued',
+                        error_message TEXT,
+                        pipeline_version VARCHAR(64),
+                        started_at TIMESTAMP,
+                        finished_at TIMESTAMP,
+                        document_id INTEGER REFERENCES documents(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_jobs_batch_id ON ocr_jobs (batch_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_jobs_document_id ON ocr_jobs (document_id)"))
+            applied.append("ocr_jobs")
+
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+
+        if "ocr_extractions" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE ocr_extractions (
+                        id SERIAL PRIMARY KEY,
+                        job_id INTEGER NOT NULL REFERENCES ocr_jobs(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT now(),
+                        source VARCHAR(32) NOT NULL DEFAULT 'auto',
+                        fields JSON NOT NULL DEFAULT '{}'::json,
+                        geometry JSON NOT NULL DEFAULT '{}'::json,
+                        stamp_crop_path VARCHAR(1024),
+                        page_preview_path VARCHAR(1024),
+                        person_suggestions JSON
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_extractions_job_id ON ocr_extractions (job_id)"))
+            applied.append("ocr_extractions")
+
+    return applied
+
+
 def main() -> int:
     engine = create_engine(_resolve_database_url())
     current = _alembic_version(engine)
@@ -182,6 +261,12 @@ def main() -> int:
         print("Schema repair applied:", ", ".join(applied))
     else:
         print("Schema repair: all 0.12.0 objects already present.")
+
+    ocr_applied = _apply_ocr_schema(engine)
+    if ocr_applied:
+        print("OCR schema repair applied:", ", ".join(ocr_applied))
+    else:
+        print("OCR schema repair: ocr_* tables already present.")
 
     _verify_schema(engine)
     print("Schema verification OK.")
