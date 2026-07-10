@@ -1,12 +1,12 @@
-"""Archive notifications (ИИ) and orders (приказы) registration and queries."""
+"""Archive notifications (ИИ), orders (приказы), and technical specs (ТУ) registration and queries."""
 
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -20,13 +20,19 @@ from app.document_helpers import (
 from app.models import (
     ArchiveNotification,
     ArchiveOrder,
+    ArchiveTechnicalSpec,
     BaseDocument,
     ChangeNotification,
     II_FOLDER,
     ORDERS_FOLDER,
     Product,
     Project,
+    TU_ARCHIVE_FOLDER,
     User,
+)
+
+TU_NUMBER_PATTERN = re.compile(
+    r"^(?P<okpd2>\d{2}\.\d{2}\.\d{2})-(?P<product_index>\d{1,3})-(?P<okpo>\d{8})-(?P<year>\d{4})$"
 )
 
 
@@ -40,6 +46,42 @@ def _orders_storage_dir() -> str:
     path = os.path.join(UPLOAD_DIR, ORDERS_FOLDER)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _tu_storage_dir() -> str:
+    path = os.path.join(UPLOAD_DIR, TU_ARCHIVE_FOLDER)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def build_tu_number(okpd2: str, product_index: str, okpo: str, year: int | str) -> str:
+    okpd2 = okpd2.strip()
+    product_index = product_index.strip()
+    okpo = okpo.strip()
+    year_str = str(year).strip()
+    if not TU_NUMBER_PATTERN.match(f"{okpd2}-{product_index}-{okpo}-{year_str}"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Номер ТУ должен соответствовать формату "
+                "ОКПД2-изделие-порядковый номер-ОКПО-год "
+                "(например, 26.20.13-002-95979699-2024)."
+            ),
+        )
+    normalized_index = str(int(product_index)).zfill(3)
+    return f"{okpd2}-{normalized_index}-{okpo}-{year_str}"
+
+
+def parse_tu_number(number: str) -> dict[str, str | int]:
+    match = TU_NUMBER_PATTERN.match(number.strip())
+    if not match:
+        raise HTTPException(status_code=400, detail="Некорректный номер ТУ.")
+    return {
+        "okpd2": match.group("okpd2"),
+        "product_index": str(int(match.group("product_index"))).zfill(3),
+        "okpo": match.group("okpo"),
+        "year": int(match.group("year")),
+    }
 
 
 async def _ensure_unique_notification_number(session: AsyncSession, number: str) -> None:
@@ -56,6 +98,14 @@ async def _ensure_unique_order_number(session: AsyncSession, number: str) -> Non
     )
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Номер приказа уже зарегистрирован в архиве.")
+
+
+async def _ensure_unique_tu_number(session: AsyncSession, number: str) -> None:
+    result = await session.execute(
+        select(ArchiveTechnicalSpec.id).where(ArchiveTechnicalSpec.number == number.strip())
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Номер ТУ уже зарегистрирован в архиве.")
 
 
 async def create_archive_notification(
@@ -168,6 +218,54 @@ async def create_archive_order(
     return record
 
 
+async def create_archive_technical_spec(
+    session: AsyncSession,
+    user: User,
+    *,
+    okpd2: str,
+    product_index: str,
+    okpo: str,
+    year: int,
+    name: str,
+    tu_file: UploadFile,
+) -> ArchiveTechnicalSpec:
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Укажите наименование изделия.")
+    number = build_tu_number(okpd2, product_index, okpo, year)
+    await _ensure_unique_tu_number(session, number)
+    validate_upload_file(tu_file)
+
+    parsed = parse_tu_number(number)
+    contents, original = await _read_upload_contents(tu_file)
+    stored_name = _sanitize_storage_name(original)
+    storage_dir = _tu_storage_dir()
+    file_path = os.path.join(storage_dir, stored_name)
+    if os.path.exists(file_path):
+        base, ext = os.path.splitext(stored_name)
+        counter = 1
+        while os.path.exists(file_path):
+            stored_name = _sanitize_storage_name(f"{base}_{counter}{ext}")
+            file_path = os.path.join(storage_dir, stored_name)
+            counter += 1
+    with open(file_path, "wb") as handle:
+        handle.write(contents)
+
+    record = ArchiveTechnicalSpec(
+        number=number,
+        name=name.strip(),
+        okpd2=str(parsed["okpd2"]),
+        product_index=str(parsed["product_index"]),
+        okpo=str(parsed["okpo"]),
+        year=int(parsed["year"]),
+        file_name=stored_name,
+        file_path=file_path,
+        created_by_user_id=user.id,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
 async def fetch_archive_notifications(
     session: AsyncSession,
     *,
@@ -228,14 +326,31 @@ async def fetch_archive_orders(
     offset: int = 0,
     number: str | None = None,
     name: str | None = None,
+    project_id: str | None = None,
+    product_id: str | None = None,
     sort: str = "created_at",
     order: str = "desc",
 ) -> tuple[list[ArchiveOrder], int]:
-    query = select(ArchiveOrder).options(joinedload(ArchiveOrder.created_by))
+    query = select(ArchiveOrder).options(
+        joinedload(ArchiveOrder.created_by),
+        joinedload(ArchiveOrder.project),
+        joinedload(ArchiveOrder.products),
+    )
     if number:
         query = query.where(ArchiveOrder.number.ilike(f"%{number}%"))
     if name:
         query = query.where(ArchiveOrder.name.ilike(f"%{name}%"))
+    if project_id:
+        try:
+            query = query.where(ArchiveOrder.project_id == int(project_id))
+        except ValueError:
+            pass
+    if product_id:
+        try:
+            pid = int(product_id)
+            query = query.where(ArchiveOrder.products.any(Product.id == pid))
+        except ValueError:
+            pass
 
     count_result = await session.execute(select(ArchiveOrder.id))
     total = len(count_result.all())
@@ -245,8 +360,48 @@ async def fetch_archive_orders(
         "name": ArchiveOrder.name,
         "order_date": ArchiveOrder.order_date,
         "created_at": ArchiveOrder.created_at,
+        "project": ArchiveOrder.project_id,
     }
     sort_col = sort_columns.get(sort, ArchiveOrder.created_at)
+    if order == "asc":
+        query = query.order_by(sort_col.asc())
+    else:
+        query = query.order_by(sort_col.desc())
+
+    result = await session.execute(query.offset(offset).limit(limit))
+    return list(result.scalars().unique().all()), total
+
+
+async def fetch_archive_technical_specs(
+    session: AsyncSession,
+    *,
+    limit: int = 20,
+    offset: int = 0,
+    number: str | None = None,
+    name: str | None = None,
+    okpo: str | None = None,
+    sort: str = "created_at",
+    order: str = "desc",
+) -> tuple[list[ArchiveTechnicalSpec], int]:
+    query = select(ArchiveTechnicalSpec).options(joinedload(ArchiveTechnicalSpec.created_by))
+    if number:
+        query = query.where(ArchiveTechnicalSpec.number.ilike(f"%{number}%"))
+    if name:
+        query = query.where(ArchiveTechnicalSpec.name.ilike(f"%{name}%"))
+    if okpo:
+        query = query.where(ArchiveTechnicalSpec.okpo.ilike(f"%{okpo}%"))
+
+    count_result = await session.execute(select(ArchiveTechnicalSpec.id))
+    total = len(count_result.all())
+
+    sort_columns = {
+        "number": ArchiveTechnicalSpec.number,
+        "name": ArchiveTechnicalSpec.name,
+        "year": ArchiveTechnicalSpec.year,
+        "okpo": ArchiveTechnicalSpec.okpo,
+        "created_at": ArchiveTechnicalSpec.created_at,
+    }
+    sort_col = sort_columns.get(sort, ArchiveTechnicalSpec.created_at)
     if order == "asc":
         query = query.order_by(sort_col.asc())
     else:
@@ -272,8 +427,21 @@ async def get_archive_notification(session: AsyncSession, record_id: int) -> Arc
 async def get_archive_order(session: AsyncSession, record_id: int) -> ArchiveOrder | None:
     result = await session.execute(
         select(ArchiveOrder)
-        .options(joinedload(ArchiveOrder.created_by))
+        .options(
+            joinedload(ArchiveOrder.created_by),
+            joinedload(ArchiveOrder.project),
+            joinedload(ArchiveOrder.products),
+        )
         .where(ArchiveOrder.id == record_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_archive_technical_spec(session: AsyncSession, record_id: int) -> ArchiveTechnicalSpec | None:
+    result = await session.execute(
+        select(ArchiveTechnicalSpec)
+        .options(joinedload(ArchiveTechnicalSpec.created_by))
+        .where(ArchiveTechnicalSpec.id == record_id)
     )
     return result.scalar_one_or_none()
 
@@ -295,6 +463,48 @@ async def list_available_archive_orders(session: AsyncSession) -> list[ArchiveOr
         select(ArchiveOrder).order_by(ArchiveOrder.number.asc())
     )
     return list(result.scalars().all())
+
+
+async def list_available_archive_technical_specs(session: AsyncSession) -> list[ArchiveTechnicalSpec]:
+    result = await session.execute(
+        select(ArchiveTechnicalSpec).order_by(ArchiveTechnicalSpec.number.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def update_archive_order_metadata(
+    session: AsyncSession,
+    record: ArchiveOrder,
+    *,
+    project_id: int | None,
+    product_ids: list[int],
+) -> None:
+    if project_id is not None:
+        project = await session.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Проект не найден.")
+        record.project_id = project_id
+    else:
+        record.project_id = None
+        record.products = []
+        await session.flush()
+        return
+
+    if not product_ids:
+        record.products = []
+        await session.flush()
+        return
+
+    products: list[Product] = []
+    for product_id in product_ids:
+        product = await session.get(Product, product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Изделие не найдено.")
+        if product.project_id != project_id:
+            raise HTTPException(status_code=400, detail="Изделие не относится к выбранному проекту.")
+        products.append(product)
+    record.products = products
+    await session.flush()
 
 
 async def get_notification_usage_places(
@@ -360,6 +570,20 @@ async def delete_archive_order(session: AsyncSession, record: ArchiveOrder) -> N
         raise HTTPException(
             status_code=400,
             detail="Нельзя удалить приказ: он назначен устанавливающим документом проекта.",
+        )
+    if record.file_path and os.path.exists(record.file_path):
+        os.remove(record.file_path)
+    await session.delete(record)
+
+
+async def delete_archive_technical_spec(session: AsyncSession, record: ArchiveTechnicalSpec) -> None:
+    project_using = await session.execute(
+        select(Project.id).where(Project.establishing_tu_id == record.id).limit(1)
+    )
+    if project_using.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить ТУ: оно назначено устанавливающим документом проекта.",
         )
     if record.file_path and os.path.exists(record.file_path):
         os.remove(record.file_path)

@@ -1,0 +1,14 @@
+{% for item in tu_records %}
+<tr class="doc-row archive-row"
+    data-doc-id="{{ item.id }}"
+    data-doc-label="{{ item.number|e }}"
+    data-action-open="{{ url_path('/documents/tu/' ~ item.id) }}"
+    data-action-download="{{ url_path('/documents/tu/' ~ item.id ~ '/download') }}"
+    {% if can_delete_document(user) %}data-action-delete="{{ item.id }}" data-delete-type="tu"{% endif %}>
+    {% if 'number' in visible_columns %}<td>{{ item.number }}</td>{% endif %}
+    {% if 'name' in visible_columns %}<td>{{ item.name }}</td>{% endif %}
+    {% if 'okpo' in visible_columns %}<td>{{ item.okpo }}</td>{% endif %}
+    {% if 'year' in visible_columns %}<td>{{ item.year }}</td>{% endif %}
+    {% if 'created_at' in visible_columns %}<td>{{ format_datetime(item.created_at, app_timezone) }}</td>{% endif %}
+</tr>
+{% endfor %}

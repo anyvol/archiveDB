@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактирование приказа {{ record.number }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; }
+        .container { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.35rem; font-weight: 500; }
+        .form-group select { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+        .products-grid label { display: flex; align-items: center; gap: 0.5rem; font-weight: normal; margin-bottom: 0.35rem; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .alert-error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    {% set page_title = 'Редактирование приказа' %}
+    {% include "_page_header.html" %}
+
+    <div class="container">
+        <p><a href="{{ url_path('/documents/orders/' ~ record.id) }}">← К карточке приказа</a></p>
+
+        <div class="card">
+            <h2>Метаданные приказа № {{ record.number }}</h2>
+            {% if error %}
+            <div class="alert-error">{{ error }}</div>
+            {% endif %}
+            <form method="post" action="{{ url_path('/documents/orders/' ~ record.id ~ '/edit') }}">
+                <div class="form-group">
+                    <label for="project_id">Проект</label>
+                    <select id="project_id" name="project_id">
+                        <option value="">— не выбран —</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}" {% if record.project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Изделия (можно выбрать несколько)</label>
+                    <div id="products-list" class="products-grid">
+                        {% for product in products %}
+                        <label>
+                            <input type="checkbox" name="product_ids" value="{{ product.id }}"
+                                {% if product.id in selected_product_ids %}checked{% endif %}>
+                            {{ product.name }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <small id="products-hint" style="color:#6c757d;">{% if not record.project_id %}Сначала выберите проект.{% endif %}</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <a class="btn btn-secondary" href="{{ url_path('/documents/orders/' ~ record.id) }}">Отмена</a>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const projectSelect = document.getElementById('project_id');
+        const productsList = document.getElementById('products-list');
+        const productsHint = document.getElementById('products-hint');
+        const productsApiBase = {{ url_path('/api/projects') | tojson }};
+        const selectedIds = {{ selected_product_ids | tojson }};
+
+        async function loadProducts(projectId) {
+            productsList.innerHTML = '';
+            if (!projectId) {
+                productsHint.textContent = 'Сначала выберите проект.';
+                return;
+            }
+            productsHint.textContent = 'Загрузка…';
+            try {
+                const resp = await fetch(productsApiBase + '/' + projectId + '/products');
+                if (!resp.ok) throw new Error('load failed');
+                const products = await resp.json();
+                if (!products.length) {
+                    productsHint.textContent = 'В проекте нет изделий.';
+                    return;
+                }
+                productsHint.textContent = '';
+                products.forEach(p => {
+                    const label = document.createElement('label');
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.name = 'product_ids';
+                    cb.value = p.id;
+                    if (selectedIds.includes(p.id)) cb.checked = true;
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(' ' + p.name));
+                    productsList.appendChild(label);
+                });
+            } catch (e) {
+                productsHint.textContent = 'Не удалось загрузить изделия.';
+            }
+        }
+
+        if (projectSelect) {
+            projectSelect.addEventListener('change', () => loadProducts(projectSelect.value));
+        }
+    </script>
+</body>
+</html>

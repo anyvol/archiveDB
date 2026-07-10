@@ -129,6 +129,7 @@ from app.column_preferences import (
     DOCUMENT_COLUMNS,
     NOTIFICATION_COLUMNS,
     ORDER_COLUMNS,
+    TU_COLUMNS,
     get_visible_columns,
     DEFAULT_VISIBLE_COLUMNS,
     merge_visible_columns,
@@ -136,15 +137,21 @@ from app.column_preferences import (
 from app.archive_records import (
     create_archive_notification,
     create_archive_order,
+    create_archive_technical_spec,
     fetch_archive_notifications,
     fetch_archive_orders,
+    fetch_archive_technical_specs,
     get_archive_notification,
     get_archive_order,
+    get_archive_technical_spec,
     list_available_archive_notifications,
     list_available_archive_orders,
+    list_available_archive_technical_specs,
     get_notification_usage_places,
     delete_archive_notification,
     delete_archive_order,
+    delete_archive_technical_spec,
+    update_archive_order_metadata,
 )
 from app.notifications import (
     count_unread,
@@ -176,7 +183,12 @@ from app.config import ALLOWED_EMAIL_DOMAINS
 from app.email_verification import issue_verification_code, normalize_email, verify_email_code
 from app.admin_access import verify_admin_access_code
 from app.mail.sender import smtp_configured
-from app.password_reset import request_password_reset, reset_password_with_token
+from app.password_reset import (
+    change_password,
+    request_password_reset,
+    request_password_reset_for_user,
+    reset_password_with_token,
+)
 from app.settings_store import get_app_timezone
 from app.timezone_utils import format_date, format_datetime, date_input_value
 from app.document_applicability import (
@@ -244,6 +256,7 @@ templates.env.globals["is_admin"] = is_admin
 templates.env.globals["DOCUMENT_COLUMNS"] = DOCUMENT_COLUMNS
 templates.env.globals["NOTIFICATION_COLUMNS"] = NOTIFICATION_COLUMNS
 templates.env.globals["ORDER_COLUMNS"] = ORDER_COLUMNS
+templates.env.globals["TU_COLUMNS"] = TU_COLUMNS
 templates.env.globals["DOCUMENT_FORMATS"] = DOCUMENT_FORMATS
 templates.env.globals["DOCUMENT_FORMAT_LABELS"] = DOCUMENT_FORMAT_LABELS
 templates.env.globals["format_date"] = format_date
@@ -402,9 +415,20 @@ def _filter_params(request: Request, tab: str = "documents") -> dict:
         return {
             "number": qp.get("number") or None,
             "name": qp.get("name") or None,
+            "project_id": qp.get("project_id") or None,
+            "product_id": qp.get("product_id") or None,
             "sort": qp.get("sort") or "created_at",
             "order": qp.get("order") or "desc",
             "tab": "orders",
+        }
+    if tab == "tu":
+        return {
+            "number": qp.get("number") or None,
+            "name": qp.get("name") or None,
+            "okpo": qp.get("okpo") or None,
+            "sort": qp.get("sort") or "created_at",
+            "order": qp.get("order") or "desc",
+            "tab": "tu",
         }
     return {
         "designation": qp.get("designation") or None,
@@ -816,7 +840,7 @@ async def forgot_password_submit(
             {"request": request, "sent": False, "error": True},
         )
     base = str(request.base_url).rstrip("/")
-    await request_password_reset(session, login_or_email, request_base=base)
+    await request_password_reset(session, login_or_email, request_base=base, request=request)
     return templates.TemplateResponse(
         "forgot_password.html",
         {"request": request, "sent": True, "error": False},
@@ -866,7 +890,7 @@ async def documents_page(
         return auth
     user = auth
     tab = request.query_params.get("tab") or "documents"
-    if tab not in ("documents", "notifications", "orders"):
+    if tab not in ("documents", "notifications", "orders", "tu"):
         tab = "documents"
     filters = _filter_params(request, tab)
     app_timezone = await get_app_timezone(session)
@@ -879,6 +903,7 @@ async def documents_page(
     documents_from_db: list = []
     notifications_from_db: list = []
     orders_from_db: list = []
+    tu_from_db: list = []
     total_count = 0
     has_more = False
 
@@ -903,11 +928,26 @@ async def documents_page(
             offset=0,
             number=filters.get("number"),
             name=filters.get("name"),
+            project_id=filters.get("project_id"),
+            product_id=filters.get("product_id"),
             sort=filters.get("sort") or "created_at",
             order=filters.get("order") or "desc",
         )
         has_more = total_count > len(orders_from_db)
         visible_columns = get_visible_columns(user, "orders")
+    elif tab == "tu":
+        tu_from_db, total_count = await fetch_archive_technical_specs(
+            session,
+            limit=DOCUMENTS_PAGE_SIZE,
+            offset=0,
+            number=filters.get("number"),
+            name=filters.get("name"),
+            okpo=filters.get("okpo"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        has_more = total_count > len(tu_from_db)
+        visible_columns = get_visible_columns(user, "tu")
     else:
         doc_filters = _document_query_filters(filters, timezone_name=app_timezone)
         documents_from_db, total_count = await fetch_documents(
@@ -927,6 +967,7 @@ async def documents_page(
             "documents": documents_from_db,
             "notifications": notifications_from_db,
             "orders": orders_from_db,
+            "tu_records": tu_from_db,
             "filters": filters,
             "projects": projects,
             "products": products,
@@ -989,6 +1030,8 @@ async def list_documents_api(
             offset=offset,
             number=filters.get("number"),
             name=filters.get("name"),
+            project_id=filters.get("project_id"),
+            product_id=filters.get("product_id"),
             sort=filters.get("sort") or "created_at",
             order=filters.get("order") or "desc",
         )
@@ -997,6 +1040,26 @@ async def list_documents_api(
                 "request": request,
                 "orders": items,
                 "visible_columns": get_visible_columns(user, "orders"),
+                "app_timezone": app_timezone,
+                **ctx,
+            }
+        )
+    elif tab == "tu":
+        items, total_count = await fetch_archive_technical_specs(
+            session,
+            limit=limit,
+            offset=offset,
+            number=filters.get("number"),
+            name=filters.get("name"),
+            okpo=filters.get("okpo"),
+            sort=filters.get("sort") or "created_at",
+            order=filters.get("order") or "desc",
+        )
+        rows_html = templates.get_template("_tu_rows.html").render(
+            {
+                "request": request,
+                "tu_records": items,
+                "visible_columns": get_visible_columns(user, "tu"),
                 "app_timezone": app_timezone,
                 **ctx,
             }
@@ -1044,7 +1107,7 @@ async def create_document_record(
     doc_type = form_data.get("doc_type")
     is_ajax = form_data.get("_ajax") == "1"
 
-    if doc_type in ("II", "ORDER"):
+    if doc_type in ("II", "ORDER", "TU"):
         if doc_type == "II":
             number = (form_data.get("ii_number") or "").strip()
             change_number = (form_data.get("ii_change_number") or "").strip()
@@ -1078,6 +1141,35 @@ async def create_document_record(
             )
             await session.commit()
             redirect_url = url_path(f"/documents/notifications/{record.id}")
+            if is_ajax:
+                return JSONResponse({"ok": True, "redirect": redirect_url})
+            return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
+        if doc_type == "TU":
+            okpd2 = (form_data.get("tu_okpd2") or "").strip()
+            product_index = (form_data.get("tu_product_index") or "").strip()
+            okpo = (form_data.get("tu_okpo") or "").strip()
+            year_raw = (form_data.get("tu_year") or "").strip()
+            tu_name = (form_data.get("tu_name") or "").strip()
+            tu_file = form_data.get("tu_file")
+            try:
+                year = int(year_raw)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Укажите корректный год выпуска ТУ.")
+            if not tu_file or not getattr(tu_file, "filename", None):
+                raise HTTPException(status_code=400, detail="Приложите файл ТУ.")
+            record = await create_archive_technical_spec(
+                session,
+                user,
+                okpd2=okpd2,
+                product_index=product_index,
+                okpo=okpo,
+                year=year,
+                name=tu_name,
+                tu_file=tu_file,
+            )
+            await session.commit()
+            redirect_url = url_path(f"/documents/tu/{record.id}")
             if is_ajax:
                 return JSONResponse({"ok": True, "redirect": redirect_url})
             return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
@@ -2345,12 +2437,14 @@ async def order_detail_page(
     record = await get_archive_order(session, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Приказ не найден.")
+    app_timezone = await get_app_timezone(session)
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
         "order_detail.html",
         {
             "request": request,
             "record": record,
+            "app_timezone": app_timezone,
             "service_version": SERVICE_VERSION,
             **ctx,
         },
@@ -2402,6 +2496,172 @@ async def delete_order_record(
         return RedirectResponse(url=url_path(f"/documents/orders/{record_id}?error={quote(detail)}"), status_code=303)
     await session.commit()
     return RedirectResponse(url=url_path("/documents?tab=orders&success=deleted"), status_code=303)
+
+
+@app.get("/documents/orders/{record_id}/edit", response_class=HTMLResponse)
+async def edit_order_page(
+    record_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования метаданных приказа.")
+    record = await get_archive_order(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Приказ не найден.")
+    projects_result = await session.execute(select(Project).order_by(Project.name))
+    projects = projects_result.scalars().all()
+    products = []
+    if record.project_id:
+        products = await get_products_for_project(session, record.project_id)
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "edit_order.html",
+        {
+            "request": request,
+            "record": record,
+            "projects": projects,
+            "products": products,
+            "selected_product_ids": [p.id for p in record.products],
+            "error": request.query_params.get("error"),
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.post("/documents/orders/{record_id}/edit", response_class=RedirectResponse)
+async def edit_order_metadata(
+    request: Request,
+    record_id: int,
+    project_id: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    record = await get_archive_order(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Приказ не найден.")
+
+    form_data = await request.form()
+    product_ids: list[int] = []
+    for key, value in form_data.multi_items():
+        if key == "product_ids" and value:
+            try:
+                product_ids.append(int(value))
+            except ValueError:
+                pass
+
+    parsed_project_id: int | None = None
+    if project_id.strip():
+        try:
+            parsed_project_id = int(project_id)
+        except ValueError:
+            return RedirectResponse(
+                url=url_path(f"/documents/orders/{record_id}/edit?error=project"),
+                status_code=303,
+            )
+
+    try:
+        await update_archive_order_metadata(
+            session,
+            record,
+            project_id=parsed_project_id,
+            product_ids=product_ids,
+        )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "error"
+        return RedirectResponse(
+            url=url_path(f"/documents/orders/{record_id}/edit?error={quote(detail)}"),
+            status_code=303,
+        )
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/documents/orders/{record_id}?success=updated"), status_code=303)
+
+
+@app.get("/documents/tu/{record_id}", response_class=HTMLResponse)
+async def tu_detail_page(
+    record_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    record = await get_archive_technical_spec(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="ТУ не найдено.")
+    app_timezone = await get_app_timezone(session)
+    ctx = await _page_context(session, user)
+    return templates.TemplateResponse(
+        "tu_detail.html",
+        {
+            "request": request,
+            "record": record,
+            "app_timezone": app_timezone,
+            "service_version": SERVICE_VERSION,
+            **ctx,
+        },
+    )
+
+
+@app.get("/documents/tu/{record_id}/preview")
+async def tu_preview(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_technical_spec(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    media = preview_media_type(record.file_path) or "application/octet-stream"
+    return FileResponse(path=record.file_path, media_type=media, content_disposition_type="inline")
+
+
+@app.get("/documents/tu/{record_id}/download")
+async def tu_download(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    record = await get_archive_technical_spec(session, record_id)
+    if not record or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Файл не найден.")
+    return FileResponse(path=record.file_path, filename=record.file_name)
+
+
+@app.post("/documents/tu/{record_id}/delete", response_class=RedirectResponse)
+async def delete_tu_record(
+    record_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    require_delete_permission(user)
+    record = await get_archive_technical_spec(session, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="ТУ не найдено.")
+    try:
+        await delete_archive_technical_spec(session, record)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "delete_failed"
+        return RedirectResponse(url=url_path(f"/documents/tu/{record_id}?error={quote(detail)}"), status_code=303)
+    await session.commit()
+    return RedirectResponse(url=url_path("/documents?tab=tu&success=deleted"), status_code=303)
 
 
 @app.post("/documents/{doc_id}/delete", response_class=RedirectResponse)
@@ -2555,6 +2815,7 @@ async def project_detail_page(
             joinedload(Project.documents),
             joinedload(Project.products),
             joinedload(Project.establishing_order),
+            joinedload(Project.establishing_tu),
         )
         .where(Project.id == project_id)
     )
@@ -2564,8 +2825,9 @@ async def project_detail_page(
 
     await sync_project_misc_files(session, project, user)
     await session.commit()
-    await session.refresh(project, ["project_files", "project_images", "documents", "products", "establishing_order"])
+    await session.refresh(project, ["project_files", "project_images", "documents", "products", "establishing_order", "establishing_tu"])
     available_orders = await list_available_archive_orders(session)
+    available_tu = await list_available_archive_technical_specs(session)
 
     ctx = await _page_context(session, user)
     return templates.TemplateResponse(
@@ -2576,6 +2838,7 @@ async def project_detail_page(
             "can_manage": can_manage_project(user),
             "can_set_establishing_order": is_admin(user),
             "available_orders": available_orders,
+            "available_tu": available_tu,
             "error": request.query_params.get("error"),
             "success": request.query_params.get("success"),
             "service_version": SERVICE_VERSION,
@@ -2676,6 +2939,32 @@ async def set_project_establishing_order(
         project.establishing_order_id = None
     await session.commit()
     return RedirectResponse(url=url_path(f"/projects/{project_id}?success=order"), status_code=303)
+
+
+@app.post("/projects/{project_id}/establishing-tu", response_class=RedirectResponse)
+async def set_project_establishing_tu(
+    project_id: int,
+    establishing_tu_id: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    user = await _require_user(access_token, session)
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав.")
+    project = await get_project_by_id(session, project_id)
+    if establishing_tu_id.strip():
+        try:
+            tu_id = int(establishing_tu_id)
+        except ValueError:
+            return RedirectResponse(url=url_path(f"/projects/{project_id}?error=tu"), status_code=303)
+        tu_record = await get_archive_technical_spec(session, tu_id)
+        if not tu_record:
+            return RedirectResponse(url=url_path(f"/projects/{project_id}?error=tu"), status_code=303)
+        project.establishing_tu_id = tu_record.id
+    else:
+        project.establishing_tu_id = None
+    await session.commit()
+    return RedirectResponse(url=url_path(f"/projects/{project_id}?success=tu"), status_code=303)
 
 
 @app.post("/projects/{project_id}/upload-file", response_class=RedirectResponse)
@@ -2866,7 +3155,7 @@ async def profile_page(
         {
             "request": request,
             "org_display_name": org_display_name,
-            "success": request.query_params.get("success") == "true",
+            "success": request.query_params.get("success"),
             "error": request.query_params.get("error"),
             "last_name": last_name,
             "first_name": first_name,
@@ -2874,6 +3163,7 @@ async def profile_page(
             "visible_columns": get_visible_columns(user, "documents"),
             "visible_notification_columns": get_visible_columns(user, "notifications"),
             "visible_order_columns": get_visible_columns(user, "orders"),
+            "visible_tu_columns": get_visible_columns(user, "tu"),
             "service_version": SERVICE_VERSION,
             "nav_context": "profile",
             "push_preferences": normalize_push_preferences(user.push_preferences),
@@ -2956,6 +3246,47 @@ async def handle_profile(
 
     await session.commit()
     return RedirectResponse(url=url_path("/profile?success=true"), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/profile/change-password", response_class=RedirectResponse)
+async def profile_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    if password != password_confirm:
+        return RedirectResponse(url=url_path("/profile?error=password_mismatch"), status_code=303)
+    try:
+        await change_password(session, user, current_password, password)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "password_error"
+        return RedirectResponse(url=url_path(f"/profile?error={quote(detail)}"), status_code=303)
+    return RedirectResponse(url=url_path("/profile?success=password"), status_code=303)
+
+
+@app.post("/profile/request-password-reset", response_class=RedirectResponse)
+async def profile_request_password_reset(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    auth = await resolve_authenticated_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    user = auth
+    try:
+        await request_password_reset_for_user(session, user, request=request)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "reset_error"
+        return RedirectResponse(url=url_path(f"/profile?error={quote(detail)}"), status_code=303)
+    return RedirectResponse(url=url_path("/profile?success=reset_sent"), status_code=303)
 
 
 @app.get("/notifications", response_class=HTMLResponse)

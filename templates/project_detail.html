@@ -147,6 +147,31 @@
         </div>
 
         <div class="card">
+            <h2>Технические условия (ТУ)</h2>
+            {% if project.establishing_tu %}
+            <p><a href="{{ url_path('/documents/tu/' ~ project.establishing_tu.id) }}">ТУ {{ project.establishing_tu.number }} — {{ project.establishing_tu.name }}</a></p>
+            {% elif can_set_establishing_order %}
+            <p class="hint" style="color:#6c757d;">ТУ не выбрано</p>
+            {% else %}
+            <p class="hint" style="color:#6c757d;">ТУ не выбрано</p>
+            {% endif %}
+            {% if can_set_establishing_order %}
+            <form method="post" action="{{ url_path('/projects/' ~ project.id ~ '/establishing-tu') }}" style="margin-top: 1rem;">
+                <div class="form-group">
+                    <label for="establishing_tu_id">ТУ из архива</label>
+                    <select id="establishing_tu_id" name="establishing_tu_id" style="width:100%; max-width:480px; padding:0.5rem; box-sizing:border-box;">
+                        <option value="">— не выбрано —</option>
+                        {% for tu in available_tu %}
+                        <option value="{{ tu.id }}" {% if project.establishing_tu_id == tu.id %}selected{% endif %}>{{ tu.number }} — {{ tu.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="card">
             <h2>Документы проекта</h2>
             <p class="hint">Документы хранятся в папке «Прочие документы» проекта на сервере.</p>
             {% if project.project_files %}
