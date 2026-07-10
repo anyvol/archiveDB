@@ -66,6 +66,7 @@
                     {% endif %}
                 </div>
                 <div class="actions">
+                    <a class="btn" href="{{ annotate_url }}">Разметить ячейки</a>
                     <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/retry') }}" style="display:inline;">
                         <button type="submit" class="btn btn-secondary">Повторить OCR</button>
                     </form>

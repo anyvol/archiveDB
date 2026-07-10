@@ -86,12 +86,13 @@ def run_extract(
 
     for spec, cell_img, local_bbox in iter_cells(stamp):
         result = ocr_cell(cell_img, category=spec.whitelist or spec.key)
-        # bbox in stamp-crop coordinates
+        # bbox in stamp-crop coordinates + normalized for annotation UI
         fields[spec.key] = {
             "raw": result.get("raw"),
             "value": result.get("value"),
             "conf": result.get("conf"),
             "bbox": list(local_bbox),
+            "bbox_norm": list(spec.box),
             "page": 0,
         }
 
@@ -118,6 +119,7 @@ def run_extract(
         "page_count": page_count or len(pages),
         "stamp_roi": stamp_meta,
         "stamp_bbox_px": list(stamp_bbox),
+        "stamp_size": [int(stamp.shape[1]), int(stamp.shape[0])],
         "deskew_angle_deg": angle,
         "job_id": job_id,
         "engine": engine_name(),

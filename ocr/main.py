@@ -10,7 +10,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from pipeline.extract import PIPELINE_VERSION, run_extract
+from pipeline.extract_cells import default_template_cells, run_extract_cells
 from pipeline.ocr_engine import engine_name
+from pipeline.stamp import CELL_TEMPLATE_FORM1
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ocr-service")
@@ -59,6 +61,19 @@ class ExtractRequest(BaseModel):
     original_filename: str | None = None
 
 
+class CellBox(BaseModel):
+    key: str
+    bbox_norm: list[float]
+    category: str | None = None
+    text: str | None = None
+
+
+class ExtractCellsRequest(BaseModel):
+    job_id: int
+    stamp_crop_path: str
+    cells: list[CellBox]
+
+
 class ExtractResponse(BaseModel):
     pipeline_version: str = PIPELINE_VERSION
     fields: dict = Field(default_factory=dict)
@@ -82,6 +97,17 @@ def version(_: None = Depends(_auth)) -> dict[str, str]:
     return {"pipeline_version": PIPELINE_VERSION, "engine": engine_name()}
 
 
+@app.get("/v1/field-keys")
+def field_keys(_: None = Depends(_auth)) -> dict:
+    return {
+        "keys": [
+            {"key": spec.key, "category": spec.whitelist or spec.key, "bbox_norm": list(spec.box)}
+            for spec in CELL_TEMPLATE_FORM1
+        ],
+        "default_cells": default_template_cells(),
+    }
+
+
 @app.post("/v1/extract", response_model=ExtractResponse)
 def extract(body: ExtractRequest, _: None = Depends(_auth)) -> ExtractResponse:
     full_path = _resolve_path(body.file_path)
@@ -95,4 +121,20 @@ def extract(body: ExtractRequest, _: None = Depends(_auth)) -> ExtractResponse:
     except Exception as exc:
         logger.exception("extract failed job_id=%s", body.job_id)
         raise HTTPException(status_code=500, detail=f"extract failed: {exc}") from exc
+    return ExtractResponse(**result)
+
+
+@app.post("/v1/extract-cells", response_model=ExtractResponse)
+def extract_cells(body: ExtractCellsRequest, _: None = Depends(_auth)) -> ExtractResponse:
+    stamp_path = _resolve_path(body.stamp_crop_path)
+    try:
+        result = run_extract_cells(
+            job_id=body.job_id,
+            stamp_path=stamp_path,
+            cells=[c.model_dump() for c in body.cells],
+            pipeline_version=PIPELINE_VERSION,
+        )
+    except Exception as exc:
+        logger.exception("extract-cells failed job_id=%s", body.job_id)
+        raise HTTPException(status_code=500, detail=f"extract-cells failed: {exc}") from exc
     return ExtractResponse(**result)

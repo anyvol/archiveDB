@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.15rem; }
+        .container { max-width: 1200px; margin: 1.25rem auto; padding: 0 1rem 2rem; }
+        .layout { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 1rem; }
+        @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+        .panel { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .hint { color: #6c757d; font-size: 0.88rem; line-height: 1.45; margin-bottom: 0.75rem; }
+        .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+        .success { background: #d1e7dd; color: #0f5132; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+        .canvas-wrap { position: relative; overflow: auto; background: #111; border-radius: 6px; max-height: 70vh; }
+        #stamp-canvas { display: block; cursor: crosshair; max-width: 100%; height: auto; }
+        .btn { display: inline-block; padding: 0.5rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.88rem; background: #007bff; color: white; }
+        .btn:disabled { background: #6c757d; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .btn-danger { background: #dc3545; }
+        .btn-success { background: #198754; }
+        .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+        .form-group { margin-bottom: 0.7rem; }
+        .form-group label { display: block; font-size: 0.82rem; margin-bottom: 0.2rem; }
+        .form-group select, .form-group input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+        .cell-list { list-style: none; padding: 0; margin: 0; max-height: 280px; overflow: auto; border: 1px solid #eee; border-radius: 4px; }
+        .cell-list li { padding: 0.45rem 0.55rem; border-bottom: 1px solid #f0f0f0; cursor: pointer; font-size: 0.85rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+        .cell-list li:hover, .cell-list li.active { background: #e7f1ff; }
+        .meta { font-size: 0.85rem; margin-bottom: 0.5rem; }
+        .legend { font-size: 0.78rem; color: #6c757d; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    {% include "_page_header.html" %}
+    <div class="container">
+        <p class="hint">
+            Перетащите рамки ячеек на crop штампа: клик по рамке — выбор, перетаскивание — перемещение,
+            углы — изменение размера. Назначьте тип поля, при необходимости введите эталонный текст
+            (тогда OCR для ячейки не вызывается). Затем «Сохранить» и «Перераспознать по разметке».
+        </p>
+        {% if not stamp_crop_url %}
+        <div class="warning">Crop штампа отсутствует. Вернитесь на сверку и нажмите «Повторить OCR».</div>
+        {% endif %}
+        <div id="msg-error" class="error"></div>
+        <div id="msg-ok" class="success"></div>
+
+        <div class="layout">
+            <div class="panel">
+                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}</div>
+                <div class="canvas-wrap">
+                    <canvas id="stamp-canvas" width="800" height="400"></canvas>
+                </div>
+                <p class="legend">Режим: перетаскивание существующих блоков. «Добавить блок» создаёт новую рамку в центре.</p>
+                <div class="actions">
+                    <button type="button" class="btn btn-secondary" id="btn-add">Добавить блок</button>
+                    <button type="button" class="btn btn-danger" id="btn-delete">Удалить выбранный</button>
+                    <button type="button" class="btn" id="btn-save">Сохранить разметку</button>
+                    <button type="button" class="btn btn-success" id="btn-reocr" {% if not stamp_crop_url %}disabled{% endif %}>Перераспознать по разметке</button>
+                    <a class="btn btn-secondary" href="{{ review_url }}">К сверке</a>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="form-group">
+                    <label for="field-key">Тип поля (выбранный блок)</label>
+                    <select id="field-key">
+                        {% for key, label in field_key_labels.items() %}
+                        <option value="{{ key }}">{{ label }} ({{ key }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="field-text">Эталонный текст (необязательно)</label>
+                    <input type="text" id="field-text" placeholder="Если заполнено — OCR ячейки пропускается">
+                </div>
+                <div class="form-group">
+                    <label>Ячейки</label>
+                    <ul class="cell-list" id="cell-list"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const BOOTSTRAP = {{ bootstrap | tojson }};
+        const STAMP_URL = {{ (stamp_crop_url or '') | tojson }};
+        const SAVE_URL = {{ url_path('/api/ocr/jobs/' ~ job.id ~ '/annotations') | tojson }};
+        const REOCR_URL = {{ url_path('/api/ocr/jobs/' ~ job.id ~ '/reocr') | tojson }};
+        const FIELD_LABELS = {{ field_key_labels | tojson }};
+
+        const canvas = document.getElementById('stamp-canvas');
+        const ctx = canvas.getContext('2d');
+        const keySelect = document.getElementById('field-key');
+        const textInput = document.getElementById('field-text');
+        const cellList = document.getElementById('cell-list');
+        const errBox = document.getElementById('msg-error');
+        const okBox = document.getElementById('msg-ok');
+
+        let img = new Image();
+        let cells = (BOOTSTRAP.cells || []).map(c => ({
+            key: c.key,
+            bbox_norm: c.bbox_norm.slice(),
+            category: c.category || c.key,
+            text: c.text || '',
+        }));
+        let selected = cells.length ? 0 : -1;
+        let drag = null; // {mode:'move'|'resize', corner, startX, startY, orig}
+
+        function showError(msg) {
+            errBox.style.display = 'block';
+            errBox.textContent = msg;
+            okBox.style.display = 'none';
+        }
+        function showOk(msg) {
+            okBox.style.display = 'block';
+            okBox.textContent = msg;
+            errBox.style.display = 'none';
+        }
+
+        function labelOf(key) { return FIELD_LABELS[key] || key; }
+
+        function toCanvasBox(norm) {
+            const x0 = norm[0] * canvas.width;
+            const y0 = norm[1] * canvas.height;
+            const x1 = norm[2] * canvas.width;
+            const y1 = norm[3] * canvas.height;
+            return { x0, y0, x1, y1 };
+        }
+        function fromCanvasBox(box) {
+            return [
+                Math.max(0, Math.min(1, box.x0 / canvas.width)),
+                Math.max(0, Math.min(1, box.y0 / canvas.height)),
+                Math.max(0, Math.min(1, box.x1 / canvas.width)),
+                Math.max(0, Math.min(1, box.y1 / canvas.height)),
+            ];
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (img.complete && img.naturalWidth) {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            }
+            cells.forEach((cell, idx) => {
+                const b = toCanvasBox(cell.bbox_norm);
+                const active = idx === selected;
+                ctx.lineWidth = active ? 3 : 2;
+                ctx.strokeStyle = active ? '#ffc107' : '#00bcd4';
+                ctx.fillStyle = active ? 'rgba(255,193,7,0.15)' : 'rgba(0,188,212,0.12)';
+                ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+                ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+                ctx.fillStyle = active ? '#ffc107' : '#00bcd4';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(labelOf(cell.key), b.x0 + 4, Math.max(12, b.y0 - 4));
+                if (active) {
+                    const hs = 6;
+                    [[b.x0,b.y0],[b.x1,b.y0],[b.x0,b.y1],[b.x1,b.y1]].forEach(([x,y]) => {
+                        ctx.fillRect(x - hs/2, y - hs/2, hs, hs);
+                    });
+                }
+            });
+            renderList();
+            syncEditor();
+        }
+
+        function renderList() {
+            cellList.innerHTML = '';
+            cells.forEach((cell, idx) => {
+                const li = document.createElement('li');
+                if (idx === selected) li.classList.add('active');
+                li.innerHTML = '<span>' + labelOf(cell.key) + '</span><span style="opacity:.7">' +
+                    cell.bbox_norm.map(v => v.toFixed(2)).join(', ') + '</span>';
+                li.addEventListener('click', () => { selected = idx; draw(); });
+                cellList.appendChild(li);
+            });
+        }
+
+        function syncEditor() {
+            if (selected < 0 || !cells[selected]) return;
+            keySelect.value = cells[selected].key;
+            textInput.value = cells[selected].text || '';
+        }
+
+        keySelect.addEventListener('change', () => {
+            if (selected < 0) return;
+            cells[selected].key = keySelect.value;
+            cells[selected].category = keySelect.value;
+            draw();
+        });
+        textInput.addEventListener('input', () => {
+            if (selected < 0) return;
+            cells[selected].text = textInput.value;
+        });
+
+        function canvasPos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (evt.clientX - rect.left) * scaleX,
+                y: (evt.clientY - rect.top) * scaleY,
+            };
+        }
+
+        function hitTest(x, y) {
+            for (let i = cells.length - 1; i >= 0; i--) {
+                const b = toCanvasBox(cells[i].bbox_norm);
+                const hs = 8;
+                const corners = [
+                    {name:'nw', x:b.x0, y:b.y0},
+                    {name:'ne', x:b.x1, y:b.y0},
+                    {name:'sw', x:b.x0, y:b.y1},
+                    {name:'se', x:b.x1, y:b.y1},
+                ];
+                for (const c of corners) {
+                    if (Math.abs(x - c.x) <= hs && Math.abs(y - c.y) <= hs) {
+                        return { index: i, mode: 'resize', corner: c.name };
+                    }
+                }
+                if (x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1) {
+                    return { index: i, mode: 'move' };
+                }
+            }
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', (evt) => {
+            const p = canvasPos(evt);
+            const hit = hitTest(p.x, p.y);
+            if (!hit) return;
+            selected = hit.index;
+            drag = {
+                mode: hit.mode,
+                corner: hit.corner,
+                startX: p.x,
+                startY: p.y,
+                orig: cells[selected].bbox_norm.slice(),
+            };
+            draw();
+        });
+        window.addEventListener('mousemove', (evt) => {
+            if (!drag || selected < 0) return;
+            const p = canvasPos(evt);
+            const dx = (p.x - drag.startX) / canvas.width;
+            const dy = (p.y - drag.startY) / canvas.height;
+            let [x0,y0,x1,y1] = drag.orig;
+            if (drag.mode === 'move') {
+                const w = x1 - x0, h = y1 - y0;
+                x0 = Math.max(0, Math.min(1 - w, x0 + dx));
+                y0 = Math.max(0, Math.min(1 - h, y0 + dy));
+                x1 = x0 + w; y1 = y0 + h;
+            } else {
+                if (drag.corner.includes('n')) y0 = Math.min(y1 - 0.01, Math.max(0, y0 + dy));
+                if (drag.corner.includes('s')) y1 = Math.max(y0 + 0.01, Math.min(1, y1 + dy));
+                if (drag.corner.includes('w')) x0 = Math.min(x1 - 0.01, Math.max(0, x0 + dx));
+                if (drag.corner.includes('e')) x1 = Math.max(x0 + 0.01, Math.min(1, x1 + dx));
+            }
+            cells[selected].bbox_norm = [x0,y0,x1,y1];
+            draw();
+        });
+        window.addEventListener('mouseup', () => { drag = null; });
+
+        document.getElementById('btn-add').addEventListener('click', () => {
+            cells.push({
+                key: 'doc_name',
+                bbox_norm: [0.35, 0.35, 0.65, 0.55],
+                category: 'text',
+                text: '',
+            });
+            selected = cells.length - 1;
+            draw();
+        });
+        document.getElementById('btn-delete').addEventListener('click', () => {
+            if (selected < 0) return;
+            cells.splice(selected, 1);
+            selected = cells.length ? Math.min(selected, cells.length - 1) : -1;
+            draw();
+        });
+
+        function payload() {
+            return {
+                cells: cells.map(c => ({
+                    key: c.key,
+                    bbox_norm: c.bbox_norm,
+                    category: c.category || c.key,
+                    text: c.text || '',
+                })),
+                stamp_size: [img.naturalWidth || canvas.width, img.naturalHeight || canvas.height],
+            };
+        }
+
+        async function postJson(url, body) {
+            const resp = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                let detail = data.detail;
+                if (Array.isArray(detail)) detail = detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+                throw new Error(detail || ('Ошибка ' + resp.status));
+            }
+            return data;
+        }
+
+        document.getElementById('btn-save').addEventListener('click', async () => {
+            try {
+                await postJson(SAVE_URL, payload());
+                showOk('Разметка сохранена.');
+            } catch (e) {
+                showError(e.message || 'Не удалось сохранить.');
+            }
+        });
+        document.getElementById('btn-reocr').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-reocr');
+            btn.disabled = true;
+            btn.textContent = 'Распознавание…';
+            try {
+                const data = await postJson(REOCR_URL, payload());
+                showOk('Готово, переход к сверке…');
+                window.location.href = data.redirect;
+            } catch (e) {
+                showError(e.message || 'Не удалось перераспознать.');
+                btn.disabled = false;
+                btn.textContent = 'Перераспознать по разметке';
+            }
+        });
+
+        function initCanvas() {
+            if (!STAMP_URL) {
+                draw();
+                return;
+            }
+            img.onload = () => {
+                const maxW = 900;
+                const scale = Math.min(1, maxW / img.naturalWidth);
+                canvas.width = Math.round(img.naturalWidth * scale);
+                canvas.height = Math.round(img.naturalHeight * scale);
+                draw();
+            };
+            img.onerror = () => showError('Не удалось загрузить crop штампа.');
+            img.src = STAMP_URL;
+        }
+        initCanvas();
+    </script>
+    {% include "_session_auth.html" %}
+</body>
+</html>

@@ -51,10 +51,29 @@ async def call_extract(
         "mime": mime,
         "original_filename": original_filename,
     }
+    return await _post_json("/v1/extract", payload)
+
+
+async def call_extract_cells(
+    *,
+    job_id: int,
+    stamp_crop_path: str,
+    cells: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Call POST /v1/extract-cells with manual/annotated cell boxes."""
+    payload = {
+        "job_id": job_id,
+        "stamp_crop_path": stamp_crop_path,
+        "cells": cells,
+    }
+    return await _post_json("/v1/extract-cells", payload)
+
+
+async def _post_json(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=OCR_SERVICE_TIMEOUT_SEC) as client:
             response = await client.post(
-                f"{OCR_SERVICE_URL}/v1/extract",
+                f"{OCR_SERVICE_URL}{path}",
                 json=payload,
                 headers=_headers(),
             )

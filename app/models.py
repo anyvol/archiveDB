@@ -659,6 +659,12 @@ class OcrJob(Base):
         order_by="OcrExtraction.created_at.desc()",
         cascade="all, delete-orphan",
     )
+    annotations = relationship(
+        "OcrAnnotation",
+        back_populates="job",
+        order_by="OcrAnnotation.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
 
 
 class OcrExtraction(Base):
@@ -675,3 +681,21 @@ class OcrExtraction(Base):
     person_suggestions = Column(JSON, nullable=True)
 
     job = relationship("OcrJob", back_populates="extractions")
+
+
+class OcrAnnotation(Base):
+    """Human-corrected cell boxes on the stamp crop (phase 2)."""
+
+    __tablename__ = "ocr_annotations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ocr_jobs.id"), nullable=False, index=True)
+    annotator_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    # {cells:[{key,bbox_norm,text?,category?}], stamp_size:[w,h], notes?}
+    labels = Column(JSON, nullable=False, default=dict)
+    exported_at = Column(DateTime, nullable=True)
+
+    job = relationship("OcrJob", back_populates="annotations")
+    annotator = relationship("User")

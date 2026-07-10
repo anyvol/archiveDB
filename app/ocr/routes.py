@@ -16,6 +16,13 @@ from app.database import get_session
 from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS
 from app.models import DOC_KIND_CODES, OCR_JOB_STATUS_LABELS, OcrJobStatus, Project
 from app.name_helpers import fetch_known_person_names
+from app.ocr.annotate import (
+    FIELD_KEY_LABELS,
+    annotation_bootstrap,
+    latest_annotation,
+    reocr_from_annotation,
+    save_annotation,
+)
 from app.ocr.commit import commit_ocr_job, discard_job, prefill_from_extraction
 from app.ocr.service import (
     create_batch_with_files,
@@ -234,6 +241,7 @@ async def ocr_review_page(
                 if extraction and extraction.stamp_crop_path
                 else None
             ),
+            "annotate_url": url_path(f"/ocr/jobs/{job.id}/annotate"),
             "ocr_available": await ocr_service_available(),
             "error": error,
             "default_developed_by": prefill.get("developed_by") or auth.full_name or "",
@@ -241,6 +249,111 @@ async def ocr_review_page(
             "service_version": SERVICE_VERSION,
             "unread_count": 0,
         },
+    )
+
+
+@router.get("/ocr/jobs/{job_id}/annotate", response_class=HTMLResponse)
+async def ocr_annotate_page(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    if job.status == OcrJobStatus.discarded:
+        raise HTTPException(status_code=400, detail="Задача отклонена.")
+    if job.status == OcrJobStatus.committed and job.document_id:
+        return RedirectResponse(url=url_path(f"/documents/{job.document_id}"), status_code=303)
+
+    extraction = latest_extraction(job)
+    annotation = await latest_annotation(session, job_id)
+    bootstrap = annotation_bootstrap(job, extraction, annotation)
+
+    return templates.TemplateResponse(
+        "ocr_annotate.html",
+        {
+            "request": request,
+            "user": auth,
+            "job": job,
+            "extraction": extraction,
+            "bootstrap": bootstrap,
+            "field_key_labels": FIELD_KEY_LABELS,
+            "stamp_crop_url": (
+                url_path(f"/api/ocr/jobs/{job.id}/stamp-crop")
+                if bootstrap.get("has_stamp_crop")
+                else None
+            ),
+            "review_url": url_path(f"/ocr/jobs/{job.id}/review"),
+            "page_title": f"Разметка штампа — {job.original_filename}",
+            "service_version": SERVICE_VERSION,
+            "unread_count": 0,
+        },
+    )
+
+
+@router.get("/api/ocr/jobs/{job_id}/annotations")
+async def api_get_annotation(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    extraction = latest_extraction(job)
+    annotation = await latest_annotation(session, job_id)
+    return annotation_bootstrap(job, extraction, annotation)
+
+
+@router.post("/api/ocr/jobs/{job_id}/annotations")
+async def api_save_annotation(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    body = await request.json()
+    annotation = await save_annotation(session, job, auth, body)
+    return {"ok": True, "annotation_id": annotation.id, "labels": annotation.labels}
+
+
+@router.post("/api/ocr/jobs/{job_id}/reocr")
+async def api_reocr_annotated(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    body = await request.json()
+    labels = body if body.get("cells") else None
+    await reocr_from_annotation(session, job, auth, labels_raw=labels)
+    return JSONResponse(
+        {
+            "ok": True,
+            "redirect": url_path(f"/ocr/jobs/{job_id}/review"),
+        }
     )
 
 

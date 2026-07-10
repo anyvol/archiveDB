@@ -248,6 +248,31 @@ def _apply_ocr_schema(engine) -> list[str]:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_extractions_job_id ON ocr_extractions (job_id)"))
             applied.append("ocr_extractions")
 
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+
+        if "ocr_annotations" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE ocr_annotations (
+                        id SERIAL PRIMARY KEY,
+                        job_id INTEGER NOT NULL REFERENCES ocr_jobs(id),
+                        annotator_user_id INTEGER NOT NULL REFERENCES users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMP NOT NULL DEFAULT now(),
+                        labels JSON NOT NULL DEFAULT '{}'::json,
+                        exported_at TIMESTAMP
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ocr_annotations_job_id ON ocr_annotations (job_id)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_ocr_annotations_annotator_user_id ON ocr_annotations (annotator_user_id)")
+            )
+            applied.append("ocr_annotations")
+
     return applied
 
 

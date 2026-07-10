@@ -3,48 +3,38 @@
 ## Architecture
 
 ```text
-Browser  →  proxy (:80/:8443)  →  api (:8000)  →  ocr (:9003, internal only)
-                                      ↓
-                                   Postgres
-                                      ↓
-                         uploaded_files/  (shared volume)
+Browser  →  proxy → api → ocr (:9003, internal)
+                 ↘ Postgres
+                 ↘ uploaded_files/ (shared volume)
 ```
 
-- Migrations run on **api container start** (`scripts/docker-entrypoint.sh`: `alembic upgrade head` + `ensure_schema.py`), not during image build.
-- Browser never talks to OCR directly. Main `api` uses `OCR_SERVICE_URL=http://ocr:9003`.
-- Staging: `uploaded_files/_ocr_inbox/{batch_id}/` (+ `crops/`).
+Migrations run on **api start** (`alembic upgrade head` + `ensure_schema.py`), not on image build.
 
-## Phase 1B (current)
+## Phase 1B — auto extract
 
-Pipeline inside `ocr` service:
+Render → deskew → stamp ROI → cell template OCR (Tesseract rus+eng by default).
 
-1. Render PDF/image (PyMuPDF / Pillow), DPI default 250  
-2. Light deskew (OpenCV)  
-3. Stamp ROI (bottom-right, ГОСТ 2.104 approx)  
-4. Cell template OCR (Tesseract `rus+eng` by default; optional `OCR_ENGINE=paddle` if PaddleOCR installed)  
-5. Prefill designation / name / FIO / dates / format  
-6. API adds fuzzy FIO suggestions (`rapidfuzz`) — chips on review, no silent replace  
-7. Low-confidence fields highlighted; weak extract → `needs_annotation`
+## Phase 2 — annotation (current)
+
+When auto cell boxes miss the real stamp layout:
+
+1. On review click **«Разметить ячейки»** → `/ocr/jobs/{id}/annotate`
+2. Drag/resize boxes on the stamp crop, assign field types
+3. Optional: enter ground-truth text for a cell (skips OCR for that cell)
+4. **Сохранить разметку** and/or **Перераспознать по разметке**
+5. Back to review with updated fields (`source=annotated`)
+
+Stored in `ocr_annotations.labels` (JSON cells + bbox_norm). Sidecar endpoint: `POST /v1/extract-cells`.
 
 ## Deploy
 
 ```bash
+git pull
 docker compose up -d --build
-docker compose exec api alembic upgrade head   # also runs automatically on api start
-docker compose exec api python -c "import urllib.request; print(urllib.request.urlopen('http://ocr:9003/health').read().decode())"
+docker compose exec api alembic upgrade head   # → o5p6q7r8s9t0
 docker compose exec db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\dt ocr_*'
 ```
 
-Recommended `.env`:
+## Next (phase 3)
 
-```env
-OCR_SERVICE_TIMEOUT_SEC=120
-OCR_LOW_CONF_THRESHOLD=0.5
-```
-
-First OCR call may be slower (model/warmup). Rebuild **ocr** image after pulling 1B (tesseract + OpenCV deps).
-
-## Next
-
-- Phase 2: annotation UI + re-OCR by manual bboxes  
-- Phase 3: dataset ZIP export / DVC / MLflow / trained detector  
+Dataset ZIP export from annotations / corrected extractions, DVC/MLflow, trained detector.
