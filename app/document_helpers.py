@@ -209,6 +209,33 @@ def remove_file_if_exists(file_path: Optional[str]) -> None:
         os.remove(file_path)
 
 
+def save_document_file_from_path(
+    source_path: str,
+    original_filename: str,
+    project_slug: str,
+    *,
+    product_slug: Optional[str] = None,
+    doc_kind_code: Optional[str] = None,
+    designation: Optional[str] = None,
+    doc_name: Optional[str] = None,
+) -> tuple[str, str]:
+    """Copy a staged file into the document storage tree. Returns (file_path, stored_name)."""
+    if not source_path or not os.path.isfile(source_path):
+        raise HTTPException(status_code=400, detail="Исходный файл не найден.")
+
+    stored_name = compute_stored_file_name(designation, original_filename, doc_name)
+    disk_name = _sanitize_storage_name(stored_name)
+    upload_dir = _resolve_upload_subdirectory(
+        project_slug,
+        product_slug=product_slug,
+        doc_kind_code=doc_kind_code,
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, disk_name)
+    shutil.copy2(source_path, file_path)
+    return file_path, stored_name
+
+
 def rename_document_file_for_doc_name(
     doc,
     new_doc_name: Optional[str],

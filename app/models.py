@@ -562,3 +562,95 @@ class BackupRecord(Base):
     checksum_sha256 = Column(String(64), nullable=True)
     triggered_by = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OcrBatchStatus(str, enum.Enum):
+    open = "open"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+
+
+class OcrJobStatus(str, enum.Enum):
+    queued = "queued"
+    processing = "processing"
+    needs_review = "needs_review"
+    needs_annotation = "needs_annotation"
+    ready = "ready"
+    committed = "committed"
+    failed = "failed"
+    discarded = "discarded"
+
+
+OCR_JOB_STATUS_LABELS = {
+    OcrJobStatus.queued: "В очереди",
+    OcrJobStatus.processing: "Обработка",
+    OcrJobStatus.needs_review: "На проверке",
+    OcrJobStatus.needs_annotation: "Нужна разметка",
+    OcrJobStatus.ready: "Готово",
+    OcrJobStatus.committed: "Создан документ",
+    OcrJobStatus.failed: "Ошибка",
+    OcrJobStatus.discarded: "Отклонено",
+}
+
+OCR_INBOX_FOLDER = "_ocr_inbox"
+
+
+class OcrBatch(Base):
+    __tablename__ = "ocr_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(SAEnum(OcrBatchStatus), default=OcrBatchStatus.open, nullable=False)
+
+    created_by = relationship("User")
+    jobs = relationship(
+        "OcrJob",
+        back_populates="batch",
+        order_by="OcrJob.id",
+        cascade="all, delete-orphan",
+    )
+
+
+class OcrJob(Base):
+    __tablename__ = "ocr_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_id = Column(Integer, ForeignKey("ocr_batches.id"), nullable=False, index=True)
+    original_filename = Column(String(512), nullable=False)
+    stored_path = Column(String(1024), nullable=False)
+    mime = Column(String(128), nullable=True)
+    page_count = Column(Integer, nullable=True)
+    status = Column(SAEnum(OcrJobStatus), default=OcrJobStatus.queued, nullable=False)
+    error_message = Column(Text, nullable=True)
+    pipeline_version = Column(String(64), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    batch = relationship("OcrBatch", back_populates="jobs")
+    document = relationship("BaseDocument")
+    extractions = relationship(
+        "OcrExtraction",
+        back_populates="job",
+        order_by="OcrExtraction.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
+
+
+class OcrExtraction(Base):
+    __tablename__ = "ocr_extractions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("ocr_jobs.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    source = Column(String(32), nullable=False, default="auto")
+    fields = Column(JSON, nullable=False, default=dict)
+    geometry = Column(JSON, nullable=False, default=dict)
+    stamp_crop_path = Column(String(1024), nullable=True)
+    page_preview_path = Column(String(1024), nullable=True)
+    person_suggestions = Column(JSON, nullable=True)
+
+    job = relationship("OcrJob", back_populates="extractions")

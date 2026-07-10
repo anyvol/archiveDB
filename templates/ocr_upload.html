@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.25rem; }
+        .container { max-width: 640px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .drop-zone { border: 2px dashed #ccc; padding: 3rem 1.5rem; min-height: 180px; text-align: center; border-radius: 8px; cursor: pointer; background: #fafafa; margin: 1rem 0; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .drop-zone.ready { border-color: #28a745; background: #d4edda; }
+        .drop-zone.dragover { border-color: #007bff; background: #f0f8ff; }
+        input[type="file"] { display: none; }
+        .btn { background: #007bff; color: white; border: none; padding: 0.7rem 1.5rem; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+        .btn:disabled { background: #6c757d; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; }
+        .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
+        .hint { color: #6c757d; font-size: 0.9rem; line-height: 1.45; }
+        .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-top: 1rem; }
+        .file-list { text-align: left; margin-top: 0.75rem; font-size: 0.9rem; width: 100%; }
+        .file-list li { margin: 0.25rem 0; }
+    </style>
+</head>
+<body>
+    {% set page_title = page_title %}
+    {% include "_page_header.html" %}
+    <div class="container">
+        <p class="hint">Загрузите PDF или изображения чертежей. Система подготовит черновики карточек для проверки. Ручная регистрация документа по-прежнему доступна на странице «Документы».</p>
+        {% if not ocr_available %}
+        <div class="warning">Сервис распознавания сейчас недоступен. Файлы всё равно можно загрузить — формат листа определится локально, остальные поля заполните вручную на экране сверки.</div>
+        {% endif %}
+        <form id="ocr-upload-form">
+            <div class="drop-zone" id="drop-zone">
+                <p>Перетащите файлы сюда или нажмите для выбора</p>
+                <p class="hint">Допустимо: {{ allowed_extensions|join(', ') }}</p>
+                <ul class="file-list" id="file-list"></ul>
+            </div>
+            <input type="file" id="file-input" name="files" multiple accept="{{ allowed_extensions|join(',') }}">
+            <div class="actions">
+                <button type="submit" class="btn" id="submit-btn" disabled>Отправить на распознавание</button>
+                <a class="btn btn-secondary" href="{{ url_path('/documents') }}">Отмена</a>
+            </div>
+            <div id="form-error" class="error" style="display:none;"></div>
+        </form>
+    </div>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const submitBtn = document.getElementById('submit-btn');
+        const formError = document.getElementById('form-error');
+        const form = document.getElementById('ocr-upload-form');
+        let selectedFiles = [];
+
+        function renderFiles() {
+            fileList.innerHTML = '';
+            selectedFiles.forEach(f => {
+                const li = document.createElement('li');
+                li.textContent = f.name + ' (' + Math.round(f.size / 1024) + ' КБ)';
+                fileList.appendChild(li);
+            });
+            dropZone.classList.toggle('ready', selectedFiles.length > 0);
+            submitBtn.disabled = selectedFiles.length === 0;
+        }
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            selectedFiles = Array.from(e.dataTransfer.files || []);
+            renderFiles();
+        });
+        fileInput.addEventListener('change', () => {
+            selectedFiles = Array.from(fileInput.files || []);
+            renderFiles();
+        });
+
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (!selectedFiles.length) return;
+            formError.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Загрузка…';
+            const fd = new FormData();
+            selectedFiles.forEach(f => fd.append('files', f));
+            try {
+                const resp = await fetch('{{ url_path("/api/ocr/batches") }}', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(data.detail || ('Ошибка ' + resp.status));
+                }
+                window.location.href = data.redirect;
+            } catch (err) {
+                formError.textContent = err.message || 'Не удалось загрузить файлы.';
+                formError.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Отправить на распознавание';
+            }
+        });
+    </script>
+    {% include "_session_auth.html" %}
+</body>
+</html>

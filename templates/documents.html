@@ -103,7 +103,7 @@
         .doc-type-more { position: relative; display: inline-block; }
         .doc-type-more-menu { display: none; position: absolute; top: calc(100% + 0.35rem); left: 0; min-width: 220px; background: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 20; text-align: left; }
         .doc-type-more.open .doc-type-more-menu { display: block; }
-        .doc-type-more-item { display: block; width: 100%; padding: 0.55rem 0.85rem; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.9rem; }
+        .doc-type-more-item { display: block; width: 100%; padding: 0.55rem 0.85rem; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.9rem; color: inherit; text-decoration: none; box-sizing: border-box; }
         .doc-type-more-item:hover { background: #f0f7ff; }
         .archive-create-fields { display: none; }
         .tabs { display: flex; gap: 0.5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
@@ -170,6 +170,7 @@
                         <div class="doc-type-more-menu">
                             <button type="button" class="doc-type-more-item" data-type="II">Извещение об изменении</button>
                             <button type="button" class="doc-type-more-item" data-type="ORDER">Приказ</button>
+                            <a class="doc-type-more-item" href="{{ url_path('/ocr') }}">Распознать из файла</a>
                         </div>
                     </div>
                 </div>
@@ -949,7 +950,7 @@
             document.querySelectorAll('.doc-type-btn').forEach(btn => {
                 btn.addEventListener('click', () => selectDocType(btn.dataset.type, btn));
             });
-            document.querySelectorAll('.doc-type-more-item').forEach(btn => {
+            document.querySelectorAll('.doc-type-more-item[data-type]').forEach(btn => {
                 btn.addEventListener('click', () => selectDocType(btn.dataset.type, btn));
             });
             const moreToggle = document.getElementById('doc-type-more-toggle');

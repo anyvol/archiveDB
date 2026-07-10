@@ -29,6 +29,7 @@ services:
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
       BACKUP_AGENT_URL: http://backup:9002
       OPS_AGENT_URL: http://ops-agent:9001
+      OCR_SERVICE_URL: http://ocr:9003
     volumes:
       - .:/app
       - ${UPLOAD_HOST_PATH:-./uploaded_files}:/app/uploaded_files
@@ -85,6 +86,19 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "9001"
+
+  # Optional sidecar: API starts without waiting for OCR health.
+  ocr:
+    build: ./ocr
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      UPLOADS_DIR: /uploads
+      OCR_SERVICE_TOKEN: ${OCR_SERVICE_TOKEN:-}
+    volumes:
+      - ${UPLOAD_HOST_PATH:-./uploaded_files}:/uploads
+    expose:
+      - "9003"
 
 volumes:
   pgdata:

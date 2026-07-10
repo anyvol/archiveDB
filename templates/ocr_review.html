@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f4f4f9; min-height: 100vh; }
+        .header { background-color: #007bff; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.15rem; }
+        .container { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
+        .layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.25rem; }
+        @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+        .panel { background: white; padding: 1.25rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+        .preview-box { min-height: 220px; background: #f8f9fa; border: 1px dashed #ccc; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #6c757d; text-align: center; padding: 1rem; }
+        .form-group { margin-bottom: 0.85rem; }
+        .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; }
+        .form-group input, .form-group select { width: 100%; padding: 0.45rem; box-sizing: border-box; }
+        .designation-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.5rem; }
+        .btn { display: inline-block; padding: 0.55rem 1rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.9rem; background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; }
+        .btn-danger { background: #dc3545; }
+        .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+        .error { background: #f8d7da; color: #721c24; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; }
+        .warning { background: #fff3cd; color: #856404; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .hint { color: #6c757d; font-size: 0.85rem; }
+        .meta { font-size: 0.85rem; margin-bottom: 0.75rem; }
+        .checkbox-group label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; }
+        .project-subgroup { margin-bottom: 0.5rem; }
+        .section-label { font-weight: 600; margin-bottom: 0.35rem; display: block; }
+    </style>
+</head>
+<body>
+    {% include "_page_header.html" %}
+    <div class="container">
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        {% if job.status.value == 'failed' %}
+        <div class="warning">Автораспознавание не удалось{% if job.error_message %}: {{ job.error_message }}{% endif %}. Заполните поля вручную или нажмите «Повторить OCR».</div>
+        {% elif not ocr_available %}
+        <div class="warning">Сервис OCR сейчас недоступен. Можно заполнить карточку вручную и создать документ.</div>
+        {% else %}
+        <p class="hint">Этап 1A: поля штампа пока не извлекаются автоматически (кроме формата листа по размерам). Проверьте данные и создайте карточку.</p>
+        {% endif %}
+
+        <div class="layout">
+            <div class="panel">
+                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}</div>
+                <div class="meta"><strong>Статус:</strong> {{ OCR_JOB_STATUS_LABELS.get(job.status, job.status.value) }}</div>
+                {% if job.pipeline_version %}<div class="meta"><strong>Пайплайн:</strong> {{ job.pipeline_version }}</div>{% endif %}
+                <div class="preview-box">
+                    {% if extraction and extraction.stamp_crop_path %}
+                    <span>Превью штампа будет здесь (этап 1B+).</span>
+                    {% else %}
+                    <span>Превью штампа появится после внедрения OCR по ячейкам (этап 1B).<br>Исходный файл сохранён в staging.</span>
+                    {% endif %}
+                </div>
+                <div class="actions">
+                    <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/retry') }}" style="display:inline;">
+                        <button type="submit" class="btn btn-secondary">Повторить OCR</button>
+                    </form>
+                    <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/discard') }}" style="display:inline;" onsubmit="return confirm('Отклонить задачу?');">
+                        <button type="submit" class="btn btn-danger">Отклонить</button>
+                    </form>
+                    <a class="btn btn-secondary" href="{{ url_path('/ocr/batches/' ~ job.batch_id) }}">К пакету</a>
+                </div>
+            </div>
+
+            <div class="panel">
+                <form method="post" action="{{ url_path('/api/ocr/jobs/' ~ job.id ~ '/commit') }}" id="ocr-commit-form">
+                    <div class="form-group">
+                        <label>Тип документа *</label>
+                        <select name="doc_type" id="doc_type" required>
+                            <option value="DD" selected>КД</option>
+                            <option value="TD">ТД</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="section-label">Проект *</label>
+                        <div class="project-subgroup">
+                            <label for="existing_project_id">Существующий проект</label>
+                            <select id="existing_project_id" name="existing_project_id">
+                                <option value="">— не выбран —</option>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="project-subgroup">
+                            <label for="existing_product_id">Изделие</label>
+                            <select id="existing_product_id" name="existing_product_id">
+                                <option value="">— выберите проект —</option>
+                            </select>
+                        </div>
+                        <div class="project-subgroup">
+                            <label for="new_project_name">Или новый проект</label>
+                            <input type="text" id="new_project_name" name="new_project_name" placeholder="Название">
+                        </div>
+                        <div class="project-subgroup">
+                            <label for="new_project_cipher">Шифр нового проекта</label>
+                            <input type="text" id="new_project_cipher" name="new_project_cipher">
+                        </div>
+                        <div class="project-subgroup">
+                            <label for="new_product_name">Первое изделие (для нового проекта)</label>
+                            <input type="text" id="new_product_name" name="new_product_name">
+                        </div>
+                    </div>
+
+                    <div class="designation-row">
+                        <div class="form-group">
+                            <label for="org_code">Код орг. *</label>
+                            <input type="text" id="org_code" name="org_code" maxlength="8" value="{{ prefill.org_code }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="class_code">Класс *</label>
+                            <input type="text" id="class_code" name="class_code" value="{{ prefill.class_code }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg_number">Порядк. №</label>
+                            <input type="text" id="reg_number" name="reg_number" maxlength="4" value="{{ prefill.reg_number }}">
+                        </div>
+                        <div class="form-group" id="execution-group">
+                            <label for="execution">Исп.</label>
+                            <input type="text" id="execution" name="execution" maxlength="2" value="{{ prefill.execution }}">
+                        </div>
+                        <div class="form-group" id="doc-kind-group">
+                            <label for="doc_kind_code">Вид</label>
+                            <select id="doc_kind_code" name="doc_kind_code">
+                                <option value="">—</option>
+                                {% for code in DOC_KIND_CODES %}
+                                <option value="{{ code }}" {% if prefill.doc_kind_code == code %}selected{% endif %}>{{ code }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="checkbox-group form-group">
+                        <label><input type="checkbox" name="is_okpo" value="true"> Код ОКПО</label>
+                    </div>
+                    <div class="form-group">
+                        <label for="org_name">Название организации (если новая)</label>
+                        <input type="text" id="org_name" name="org_name">
+                    </div>
+                    <div class="form-group">
+                        <label for="doc_name">Наименование</label>
+                        <input type="text" id="doc_name" name="doc_name" value="{{ prefill.doc_name }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="document_format">Формат листа *</label>
+                        <select id="document_format" name="document_format" required>
+                            <option value="">— выберите —</option>
+                            {% for fmt in DOCUMENT_FORMATS %}
+                            <option value="{{ fmt.code }}" {% if prefill.document_format == fmt.code %}selected{% endif %}>{{ fmt.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="developed_by">Разработал *</label>
+                        <input type="text" id="developed_by" name="developed_by" list="known-names" value="{{ default_developed_by }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="developer_signed_date">Дата (разраб.)</label>
+                        <input type="date" id="developer_signed_date" name="developer_signed_date" value="{{ prefill.developer_signed_date }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="reviewed_by">Проверил</label>
+                        <input type="text" id="reviewed_by" name="reviewed_by" list="known-names" value="{{ prefill.reviewed_by }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="reviewer_signed_date">Дата (пров.)</label>
+                        <input type="date" id="reviewer_signed_date" name="reviewer_signed_date" value="{{ prefill.reviewer_signed_date }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="approved_by">Утвердил</label>
+                        <input type="text" id="approved_by" name="approved_by" list="known-names" value="{{ prefill.approved_by }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="approver_signed_date">Дата (утв.)</label>
+                        <input type="date" id="approver_signed_date" name="approver_signed_date" value="{{ prefill.approver_signed_date }}">
+                    </div>
+                    <datalist id="known-names">
+                        {% for name in known_person_names %}
+                        <option value="{{ name }}"></option>
+                        {% endfor %}
+                    </datalist>
+                    <div class="actions">
+                        <button type="submit" class="btn">Принять и создать документ</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script>
+        const docType = document.getElementById('doc_type');
+        const executionGroup = document.getElementById('execution-group');
+        const kindGroup = document.getElementById('doc-kind-group');
+        const projectSelect = document.getElementById('existing_project_id');
+        const productSelect = document.getElementById('existing_product_id');
+
+        function syncType() {
+            const isKd = docType.value === 'DD';
+            executionGroup.style.display = isKd ? '' : 'none';
+            kindGroup.style.display = isKd ? '' : 'none';
+            if (!isKd) {
+                document.getElementById('execution').value = '';
+                document.getElementById('doc_kind_code').value = '';
+            }
+        }
+        docType.addEventListener('change', syncType);
+        syncType();
+
+        async function loadProducts(projectId) {
+            productSelect.innerHTML = '<option value="">— выберите —</option>';
+            if (!projectId) return;
+            const resp = await fetch('{{ url_path("/api/projects/") }}' + projectId + '/products', {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const products = Array.isArray(data) ? data : (data.products || []);
+            products.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                productSelect.appendChild(opt);
+            });
+        }
+        projectSelect.addEventListener('change', () => loadProducts(projectSelect.value));
+    </script>
+    {% include "_session_auth.html" %}
+</body>
+</html>

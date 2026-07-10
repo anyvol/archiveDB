@@ -8,7 +8,7 @@ import subprocess
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-ALLOWED_CONTAINERS = {"db", "api", "proxy", "backup", "ops-agent"}
+ALLOWED_CONTAINERS = {"db", "api", "proxy", "backup", "ops-agent", "ocr"}
 TOKEN = os.getenv("OPS_AGENT_TOKEN", "").strip()
 
 app = FastAPI(title="archiveDB ops-agent")
