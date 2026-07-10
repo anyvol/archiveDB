@@ -42,13 +42,17 @@ def _try_paddle() -> bool:
 
 _WHITELISTS = {
     "designation": "ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ0123456789.-",
-    "format": "Aa0123456789×xХх*",
+    "format": "AaАа0123456789×xХх*",
     "scale": "0123456789:.,",
     "digits": "0123456789",
     "date": "0123456789.-/",
     "fio": None,
     "text": None,
+    "signature": None,
 }
+
+# Dark-pixel ratio above this → treat signature ROI as filled.
+_SIGNATURE_INK_RATIO = float(os.getenv("OCR_SIGNATURE_INK_RATIO", "0.02"))
 
 
 def ocr_cell(image: np.ndarray, *, category: str | None = None) -> dict[str, Any]:
@@ -56,9 +60,31 @@ def ocr_cell(image: np.ndarray, *, category: str | None = None) -> dict[str, Any
     if image.size == 0 or image.shape[0] < 2 or image.shape[1] < 2:
         return {"raw": None, "value": None, "conf": 0.0}
 
+    if category == "signature":
+        return detect_signature_present(image)
+
     if engine_name() == "paddleocr":
-        return _ocr_paddle(image)
+        result = _ocr_paddle(image)
+        result["value"] = _normalize_value(result.get("raw"), category)
+        return result
     return _ocr_tesseract(image, category=category)
+
+
+def detect_signature_present(image: np.ndarray) -> dict[str, Any]:
+    """If the ROI has any meaningful ink/content, assume a signature is present."""
+    if image.ndim == 3:
+        gray = image.mean(axis=2)
+    else:
+        gray = image.astype(float)
+    # Ignore near-white background; count darker strokes
+    dark = float(np.count_nonzero(gray < 200))
+    ratio = dark / float(gray.size) if gray.size else 0.0
+    present = ratio >= _SIGNATURE_INK_RATIO
+    return {
+        "raw": f"{ratio:.4f}",
+        "value": "true" if present else "false",
+        "conf": round(min(0.95, 0.5 + ratio * 5), 3),
+    }
 
 
 def _ocr_tesseract(image: np.ndarray, *, category: str | None) -> dict[str, Any]:
@@ -139,26 +165,43 @@ def _normalize_value(raw: str | None, category: str | None) -> str | None:
     elif category == "date":
         text = _normalize_date(text)
     elif category == "format":
-        text = text.replace(" ", "").upper().replace("Х", "X").replace("*", "x")
-        text = text.replace("×", "x")
+        # Cyrillic А/а → Latin A so dropdown codes (A4, A3x3, …) match
+        text = (
+            text.replace(" ", "")
+            .replace("А", "A")
+            .replace("а", "A")
+            .upper()
+            .replace("Х", "X")
+            .replace("*", "x")
+            .replace("×", "x")
+        )
         m = re.search(r"A[0-5](?:X[0-9]+)?", text, re.I)
         if m:
             code = m.group(0).upper().replace("X", "x")
-            # map A3x3 style
             if "x" in code:
                 parts = code.split("x")
                 text = f"{parts[0]}x{parts[1]}" if len(parts) == 2 else code
             else:
                 text = code
+        else:
+            return None
     elif category == "fio":
         text = text.title() if text.isupper() else text
+    elif category == "signature":
+        low = text.casefold()
+        if low in {"1", "true", "yes", "да", "y"}:
+            return "true"
+        if low in {"0", "false", "no", "нет", "n"}:
+            return "false"
+        return "true" if text.strip() else "false"
     elif category in {"digits", "scale", "sheet", "sheets_total"}:
         text = re.sub(r"[^\d:.,]", "", text)
     return text or None
 
 
 def _normalize_date(text: str) -> str | None:
-    digits = re.findall(r"\d+", text)
+    """Return YYYY-MM-DD for HTML date inputs, or None if unparseable."""
+    digits = re.findall(r"\d+", text or "")
     if len(digits) >= 3:
         d, m, y = digits[0], digits[1], digits[2]
         if len(y) == 2:
@@ -167,6 +210,14 @@ def _normalize_date(text: str) -> str | None:
             d = "0" + d
         if len(m) == 1:
             m = "0" + m
-        if len(y) == 4:
-            return f"{y}-{m}-{d}"  # HTML date input
-    return text.strip() or None
+        try:
+            di, mi, yi = int(d), int(m), int(y)
+        except ValueError:
+            return None
+        if len(y) == 4 and 1 <= mi <= 12 and 1 <= di <= 31:
+            return f"{yi:04d}-{mi:02d}-{di:02d}"
+    # Already ISO
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", (text or "").strip())
+    if m:
+        return m.group(0)
+    return None

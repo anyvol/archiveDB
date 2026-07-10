@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from typing import Any
 
@@ -23,6 +24,9 @@ _EMPTY_KEYS = (
     "developed_by",
     "reviewed_by",
     "approved_by",
+    "developer_signature",
+    "reviewer_signature",
+    "approver_signature",
     "developer_signed_date",
     "reviewer_signed_date",
     "approver_signed_date",
@@ -96,15 +100,18 @@ def run_extract(
             "page": 0,
         }
 
-    # Prefer geometry format when OCR format is weak
+    # Prefer geometry format when OCR format is weak or not a known A-series code
     ocr_format = fields.get("document_format", {}).get("value")
     format_from_ocr = ocr_format if ocr_format else None
-    if format_code and (not format_from_ocr or (fields["document_format"].get("conf") or 0) < 0.45):
+    ocr_conf = fields["document_format"].get("conf") or 0
+    ocr_looks_valid = bool(format_from_ocr and re.match(r"^A[0-5](?:x[0-9]+)?$", str(format_from_ocr), re.I))
+    if format_code and (not ocr_looks_valid or ocr_conf < 0.45):
         fields["document_format"] = {
             "raw": fields["document_format"].get("raw"),
             "value": format_code,
             "conf": 0.9,
             "bbox": fields["document_format"].get("bbox"),
+            "bbox_norm": fields["document_format"].get("bbox_norm"),
             "page": 0,
         }
 

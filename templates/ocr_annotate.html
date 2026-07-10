@@ -41,6 +41,10 @@
             Перетащите рамки ячеек на crop штампа: клик по рамке — выбор, перетаскивание — перемещение,
             углы — изменение размера. Назначьте тип поля, при необходимости введите эталонный текст
             (тогда OCR для ячейки не вызывается). Затем «Сохранить» и «Перераспознать по разметке».
+            Разметка сохраняется с привязкой к формату листа
+            {% if bootstrap.document_format %}(<strong>{{ bootstrap.document_format }}</strong>){% else %}(определяется по размеру/OCR){% endif %}
+            и будет подставляться для следующих документов того же формата.
+            {% if bootstrap.template_source == 'format_template' %}Сейчас загружен шаблон формата из БД.{% endif %}
         </p>
         {% if not stamp_crop_url %}
         <div class="warning">Crop штампа отсутствует. Вернитесь на сверку и нажмите «Повторить OCR».</div>
@@ -279,7 +283,7 @@
         });
 
         function payload() {
-            return {
+            const body = {
                 cells: cells.map(c => ({
                     key: c.key,
                     bbox_norm: c.bbox_norm,
@@ -288,6 +292,10 @@
                 })),
                 stamp_size: [img.naturalWidth || canvas.width, img.naturalHeight || canvas.height],
             };
+            if (BOOTSTRAP.document_format) {
+                body.document_format = BOOTSTRAP.document_format;
+            }
+            return body;
         }
 
         async function postJson(url, body) {

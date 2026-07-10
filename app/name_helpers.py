@@ -136,3 +136,65 @@ def suggest_person_names(
                 merged[name] = entry
 
     return sorted(merged.values(), key=lambda x: (-x["score"], x["name"].casefold()))[:limit]
+
+
+async def fetch_known_org_codes(session: AsyncSession) -> list[str]:
+    """Return sorted unique organization codes from organizations and documents."""
+    from app.models import DesignDocument, Organization, TechDocument
+
+    codes: set[str] = set()
+    org_rows = await session.execute(
+        select(Organization.code, Organization.num_code, Organization.num_code_okpo)
+    )
+    for code, num_code, num_okpo in org_rows:
+        if code:
+            codes.add(str(code).strip())
+        if num_code is not None:
+            codes.add(f"{int(num_code):08d}" if int(num_code) < 10_000_000 else str(int(num_code)))
+            codes.add(str(int(num_code)))
+        if num_okpo is not None:
+            codes.add(f"{int(num_okpo):08d}")
+            codes.add(str(int(num_okpo)))
+
+    for model in (DesignDocument, TechDocument):
+        rows = await session.execute(select(model.org_code_str).where(model.org_code_str.isnot(None)))
+        for (org_code,) in rows:
+            if org_code and str(org_code).strip():
+                codes.add(str(org_code).strip())
+
+    return sorted(codes, key=lambda item: item.casefold())
+
+
+def suggest_org_codes(
+    query: str,
+    known_codes: list[str],
+    *,
+    limit: int = 5,
+    min_score: float = 60.0,
+) -> list[dict]:
+    """Fuzzy-match OCR org code against known codes. Suggestions only."""
+    needle = (query or "").strip().replace(" ", "").upper()
+    if not needle or not known_codes:
+        return []
+
+    exact = [c for c in known_codes if c.casefold() == needle.casefold()]
+    if exact:
+        return [{"name": c, "score": 100.0, "reason": "exact"} for c in exact[:limit]]
+
+    prefix = [c for c in known_codes if c.casefold().startswith(needle.casefold())]
+    if prefix:
+        return [{"name": c, "score": 90.0, "reason": "prefix"} for c in prefix[:limit]]
+
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return []
+
+    scored = process.extract(needle, known_codes, scorer=fuzz.WRatio, limit=limit * 2)
+    out: list[dict] = []
+    for code, score, _ in scored:
+        if score < min_score:
+            continue
+        out.append({"name": code, "score": float(score), "reason": "fuzzy"})
+    return out[:limit]
+

@@ -273,6 +273,38 @@ def _apply_ocr_schema(engine) -> list[str]:
             )
             applied.append("ocr_annotations")
 
+        inspector = inspect(engine)
+        tables = set(inspector.get_table_names())
+
+        if "ocr_format_templates" not in tables:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE ocr_format_templates (
+                        id SERIAL PRIMARY KEY,
+                        document_format VARCHAR(32) NOT NULL UNIQUE,
+                        labels JSON NOT NULL DEFAULT '{}'::json,
+                        updated_by_user_id INTEGER REFERENCES users(id),
+                        created_at TIMESTAMP NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMP NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            applied.append("ocr_format_templates")
+
+        if "documents" in tables:
+            doc_columns = _column_names(inspector, "documents")
+            for col in (
+                "has_developer_signature",
+                "has_reviewer_signature",
+                "has_approver_signature",
+            ):
+                if col not in doc_columns:
+                    conn.execute(text(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {col} BOOLEAN"))
+                    applied.append(f"documents.{col}")
+            inspector = inspect(engine)
+
     return applied
 
 

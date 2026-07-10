@@ -14,6 +14,9 @@ def test_default_template_has_core_fields():
     assert "designation" in keys
     assert "approved_by" in keys
     assert "doc_name" in keys
+    assert "developer_signature" in keys
+    assert "reviewer_signature" in keys
+    assert "approver_signature" in keys
 
 
 def test_cells_from_extraction_uses_bbox_norm():

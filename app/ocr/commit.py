@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any
 
@@ -35,13 +34,29 @@ from app.models import (
 )
 from app.name_helpers import normalize_person_name
 from app.notifications import get_document_designation, notify_file_upload
-from app.ocr.service import field_value, latest_extraction
-from app.product_helpers import create_product, validate_product_belongs_to_project
-from app.project_helpers import create_new_project, get_project_by_id
-
-_DESIGNATION_SERIAL = re.compile(
-    r"^(\d{1,4})(?:-(\d{1,2}))?([A-Za-zА-Яа-яЁё0-9]{0,3})?$"
+from app.ocr.normalize import (
+    coerce_document_format,
+    normalize_ocr_date,
+    parse_bool_flag,
+    parse_designation_parts,
 )
+from app.ocr.service import field_value, latest_extraction
+from app.product_helpers import validate_product_belongs_to_project
+from app.project_helpers import get_project_by_id
+
+
+def _form_bool(form: dict[str, Any], key: str) -> bool | None:
+    """Checkbox: present → True; explicit false string → False; missing → None."""
+    if key not in form:
+        return None
+    raw = form.get(key)
+    if isinstance(raw, list):
+        raw = raw[-1] if raw else None
+    parsed = parse_bool_flag(raw)
+    if parsed is not None:
+        return parsed
+    # HTML checkbox sends "true" when checked; absent when unchecked — caller may pass ""
+    return bool(raw) if raw not in (None, "") else False
 
 
 async def commit_ocr_job(
@@ -63,19 +78,27 @@ async def commit_ocr_job(
     developed_by = normalize_person_name(form.get("developed_by") or "")
     reviewed_by = normalize_person_name(form.get("reviewed_by") or "") or None
     approved_by = normalize_person_name(form.get("approved_by") or "") or None
-    developer_signed_date = (form.get("developer_signed_date") or "").strip() or None
-    reviewer_signed_date = (form.get("reviewer_signed_date") or "").strip() or None
-    approver_signed_date = (form.get("approver_signed_date") or "").strip() or None
+    developer_signed_date = normalize_ocr_date(form.get("developer_signed_date") or "") or None
+    reviewer_signed_date = normalize_ocr_date(form.get("reviewer_signed_date") or "") or None
+    approver_signed_date = normalize_ocr_date(form.get("approver_signed_date") or "") or None
     is_okpo = form.get("is_okpo") == "true"
     org_name = (form.get("org_name") or "").strip() or None
     doc_kind_code = (form.get("doc_kind_code") or "").strip()
     execution_raw = (form.get("execution") or "").strip()
-    document_format = (form.get("document_format") or "").strip()
+    document_format = coerce_document_format(form.get("document_format") or "")
     existing_project_id = (form.get("existing_project_id") or "").strip()
     existing_product_id = (form.get("existing_product_id") or "").strip()
-    new_project_name = (form.get("new_project_name") or "").strip()
-    new_project_cipher = (form.get("new_project_cipher") or "").strip()
-    new_product_name = (form.get("new_product_name") or "").strip()
+
+    has_developer_signature = _form_bool(form, "has_developer_signature")
+    has_reviewer_signature = _form_bool(form, "has_reviewer_signature")
+    has_approver_signature = _form_bool(form, "has_approver_signature")
+    # Unchecked checkboxes are omitted from form posts — treat as False when key missing
+    if "has_developer_signature" not in form:
+        has_developer_signature = False
+    if "has_reviewer_signature" not in form:
+        has_reviewer_signature = False
+    if "has_approver_signature" not in form:
+        has_approver_signature = False
 
     if not developed_by:
         raise HTTPException(status_code=400, detail="Необходимо указать ФИО разработчика.")
@@ -93,24 +116,15 @@ async def commit_ocr_job(
     if not is_kd and execution_raw:
         raise HTTPException(status_code=400, detail="Исполнение доступно только для конструкторской документации.")
 
-    if existing_project_id and new_project_name:
-        raise HTTPException(status_code=400, detail="Выберите существующий проект или укажите новый, но не оба сразу.")
-    product = None
-    if existing_project_id:
-        project = await get_project_by_id(session, int(existing_project_id))
-        if not existing_product_id:
-            raise HTTPException(status_code=400, detail="Необходимо выбрать изделие.")
-        product = await validate_product_belongs_to_project(session, int(existing_product_id), project.id)
-    elif new_project_name:
-        project = await create_new_project(session, new_project_name, new_project_cipher)
-        if not new_product_name:
-            raise HTTPException(
-                status_code=400,
-                detail="При создании нового проекта укажите наименование первого изделия.",
-            )
-        product = await create_product(session, project, new_product_name)
-    else:
-        raise HTTPException(status_code=400, detail="Необходимо выбрать или указать проект.")
+    if not existing_project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Выберите существующий проект. Новый проект создаётся в разделе «Проекты».",
+        )
+    if not existing_product_id:
+        raise HTTPException(status_code=400, detail="Необходимо выбрать изделие.")
+    project = await get_project_by_id(session, int(existing_project_id))
+    product = await validate_product_belongs_to_project(session, int(existing_product_id), project.id)
 
     base_doc = BaseDocument(
         type=doc_type,
@@ -121,6 +135,9 @@ async def commit_ocr_job(
         developer_signed_date=developer_signed_date,
         reviewer_signed_date=reviewer_signed_date,
         approver_signed_date=approver_signed_date,
+        has_developer_signature=has_developer_signature,
+        has_reviewer_signature=has_reviewer_signature,
+        has_approver_signature=has_approver_signature,
         created_by=user.full_name,
         uploaded_by=user.id,
         position=user.position,
@@ -327,35 +344,33 @@ async def discard_job(session: AsyncSession, job: OcrJob) -> None:
 def prefill_from_extraction(extraction: OcrExtraction | None) -> dict[str, str]:
     fields = extraction.fields if extraction else {}
     geometry = extraction.geometry if extraction else {}
-    fmt = field_value(fields, "document_format") or (geometry or {}).get("format_from_dims") or ""
+    fmt = (
+        coerce_document_format(field_value(fields, "document_format"))
+        or coerce_document_format((geometry or {}).get("format_from_dims"))
+        or ""
+    )
     designation = field_value(fields, "designation")
-    org_code = class_code = reg_number = execution = doc_kind_code = ""
-    if designation:
-        parts = designation.replace(" ", "").split(".")
-        if len(parts) >= 3:
-            org_code = parts[0]
-            class_code = parts[1]
-            m = _DESIGNATION_SERIAL.match(parts[2])
-            if m:
-                reg_number = m.group(1)
-                execution = m.group(2) or ""
-                doc_kind_code = m.group(3) or ""
-        elif len(parts) == 2:
-            org_code = parts[0]
-            class_code = parts[1]
+    parts = parse_designation_parts(designation)
+
+    def _sig(key: str) -> str:
+        flag = parse_bool_flag(field_value(fields, key))
+        return "true" if flag else ""
 
     return {
-        "org_code": org_code,
-        "class_code": class_code,
-        "reg_number": reg_number,
-        "execution": execution,
-        "doc_kind_code": doc_kind_code,
+        "org_code": parts["org_code"],
+        "class_code": parts["class_code"],
+        "reg_number": parts["reg_number"],
+        "execution": parts["execution"],
+        "doc_kind_code": parts["doc_kind_code"],
         "doc_name": field_value(fields, "doc_name"),
         "developed_by": field_value(fields, "developed_by"),
         "reviewed_by": field_value(fields, "reviewed_by"),
         "approved_by": field_value(fields, "approved_by"),
-        "developer_signed_date": field_value(fields, "developer_signed_date"),
-        "reviewer_signed_date": field_value(fields, "reviewer_signed_date"),
-        "approver_signed_date": field_value(fields, "approver_signed_date"),
-        "document_format": fmt if isinstance(fmt, str) else "",
+        "developer_signed_date": normalize_ocr_date(field_value(fields, "developer_signed_date")),
+        "reviewer_signed_date": normalize_ocr_date(field_value(fields, "reviewer_signed_date")),
+        "approver_signed_date": normalize_ocr_date(field_value(fields, "approver_signed_date")),
+        "document_format": fmt,
+        "has_developer_signature": _sig("developer_signature"),
+        "has_reviewer_signature": _sig("reviewer_signature"),
+        "has_approver_signature": _sig("approver_signature"),
     }

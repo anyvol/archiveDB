@@ -23,7 +23,7 @@ STAMP_ROI_PAGE = (0.55, 0.72, 0.995, 0.995)  # x0,y0,x1,y1
 # Cells inside the stamp crop (relative). Layout approximates форма 1:
 # top: designation | format/scale/sheets
 # mid: doc_name
-# bottom rows: developed / reviewed / approved + dates
+# bottom rows: FIO | signature | date for developed / reviewed / approved
 CELL_TEMPLATE_FORM1: tuple[CellSpec, ...] = (
     CellSpec("designation", (0.02, 0.02, 0.62, 0.18), "designation"),
     CellSpec("document_format", (0.64, 0.02, 0.78, 0.18), "format"),
@@ -31,12 +31,15 @@ CELL_TEMPLATE_FORM1: tuple[CellSpec, ...] = (
     CellSpec("sheets_total", (0.89, 0.02, 0.98, 0.18), "digits"),
     CellSpec("doc_name", (0.02, 0.18, 0.62, 0.42), "text"),
     CellSpec("sheet", (0.89, 0.18, 0.98, 0.30), "digits"),
-    CellSpec("developed_by", (0.18, 0.55, 0.45, 0.68), "fio"),
-    CellSpec("developer_signed_date", (0.46, 0.55, 0.62, 0.68), "date"),
-    CellSpec("reviewed_by", (0.18, 0.68, 0.45, 0.81), "fio"),
-    CellSpec("reviewer_signed_date", (0.46, 0.68, 0.62, 0.81), "date"),
-    CellSpec("approved_by", (0.18, 0.81, 0.45, 0.96), "fio"),
-    CellSpec("approver_signed_date", (0.46, 0.81, 0.62, 0.96), "date"),
+    CellSpec("developed_by", (0.18, 0.55, 0.40, 0.68), "fio"),
+    CellSpec("developer_signature", (0.40, 0.55, 0.52, 0.68), "signature"),
+    CellSpec("developer_signed_date", (0.52, 0.55, 0.68, 0.68), "date"),
+    CellSpec("reviewed_by", (0.18, 0.68, 0.40, 0.81), "fio"),
+    CellSpec("reviewer_signature", (0.40, 0.68, 0.52, 0.81), "signature"),
+    CellSpec("reviewer_signed_date", (0.52, 0.68, 0.68, 0.81), "date"),
+    CellSpec("approved_by", (0.18, 0.81, 0.40, 0.96), "fio"),
+    CellSpec("approver_signature", (0.40, 0.81, 0.52, 0.96), "signature"),
+    CellSpec("approver_signed_date", (0.52, 0.81, 0.68, 0.96), "date"),
 )
 
 

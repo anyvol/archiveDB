@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.24.0
+
+- **OCR — format-bound ROI templates:** cell boxes saved on the annotation page are stored per paper format (A4, A3, …) and reused for later jobs of the same format.
+- **OCR — format dropdown:** paper format is coerced to a valid ISO code (Cyrillic «А» → Latin «A»); when OCR text is invalid, dimensions (`format_from_dims`) are used so the review select is prefilled. Review shows the detection source.
+- **OCR — org code suggestions:** fuzzy chips from known organization codes (same UX as FIO).
+- **OCR — dates:** OCR dates are normalized to `YYYY-MM-DD` for HTML date inputs (including `dd.mm.yy`).
+- **OCR — signatures:** three stamp ROIs (developed / reviewed / approved); any ink in the ROI marks signature present. Boolean columns on `documents`: `has_developer_signature`, `has_reviewer_signature`, `has_approver_signature`.
+- **OCR — doc kind:** if the designation ends with a known kind (СБ, СП, …), the review «Вид» dropdown is prefilled.
+- **OCR — review:** creating a new project/product from the review page is removed; use the Projects section.
+- **Docs / help:** OCR workflow notes and help section updated for 0.24.0.
+
 ## 0.23.2
 
 - **Profile — column visibility:** saving column checkboxes in the personal account now persists correctly (SQLAlchemy JSON column change detection).

@@ -273,7 +273,7 @@ async def ocr_annotate_page(
 
     extraction = latest_extraction(job)
     annotation = await latest_annotation(session, job_id)
-    bootstrap = annotation_bootstrap(job, extraction, annotation)
+    bootstrap = await annotation_bootstrap(session, job, extraction, annotation)
 
     return templates.TemplateResponse(
         "ocr_annotate.html",
@@ -312,7 +312,7 @@ async def api_get_annotation(
         raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
     extraction = latest_extraction(job)
     annotation = await latest_annotation(session, job_id)
-    return annotation_bootstrap(job, extraction, annotation)
+    return await annotation_bootstrap(session, job, extraction, annotation)
 
 
 @router.post("/api/ocr/jobs/{job_id}/annotations")

@@ -298,6 +298,9 @@ class BaseDocument(Base):
     department = Column(String, nullable=True)
     doc_name = Column(String, nullable=True)
     document_format = Column(String(32), nullable=True)
+    has_developer_signature = Column(Boolean, nullable=True)
+    has_reviewer_signature = Column(Boolean, nullable=True)
+    has_approver_signature = Column(Boolean, nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     status = Column(
@@ -693,9 +696,25 @@ class OcrAnnotation(Base):
     annotator_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    # {cells:[{key,bbox_norm,text?,category?}], stamp_size:[w,h], notes?}
+    # {cells:[{key,bbox_norm,text?,category?}], stamp_size:[w,h], notes?, document_format?}
     labels = Column(JSON, nullable=False, default=dict)
     exported_at = Column(DateTime, nullable=True)
 
     job = relationship("OcrJob", back_populates="annotations")
     annotator = relationship("User")
+
+
+class OcrFormatTemplate(Base):
+    """Reusable stamp cell ROI template bound to a paper format (A4, A3, …)."""
+
+    __tablename__ = "ocr_format_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_format = Column(String(32), unique=True, nullable=False, index=True)
+    # Same shape as OcrAnnotation.labels (cells + stamp_size)
+    labels = Column(JSON, nullable=False, default=dict)
+    updated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    updated_by = relationship("User")

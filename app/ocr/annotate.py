@@ -10,11 +10,13 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.config import OCR_LOW_CONF_THRESHOLD, UPLOAD_DIR
-from app.models import OcrAnnotation, OcrExtraction, OcrJob, OcrJobStatus, User
+from app.config import OCR_LOW_CONF_THRESHOLD
+from app.models import OcrAnnotation, OcrExtraction, OcrFormatTemplate, OcrJob, OcrJobStatus, User
 from app.ocr.client import OcrServiceError, call_extract_cells
+from app.ocr.normalize import coerce_document_format
 from app.ocr.service import (
-    _build_person_suggestions,
+    _build_field_suggestions,
+    field_value,
     latest_extraction,
     path_for_ocr_service,
 )
@@ -27,12 +29,15 @@ DEFAULT_CELL_TEMPLATE: list[dict[str, Any]] = [
     {"key": "sheets_total", "bbox_norm": [0.89, 0.02, 0.98, 0.18], "category": "digits", "text": ""},
     {"key": "doc_name", "bbox_norm": [0.02, 0.18, 0.62, 0.42], "category": "text", "text": ""},
     {"key": "sheet", "bbox_norm": [0.89, 0.18, 0.98, 0.30], "category": "digits", "text": ""},
-    {"key": "developed_by", "bbox_norm": [0.18, 0.55, 0.45, 0.68], "category": "fio", "text": ""},
-    {"key": "developer_signed_date", "bbox_norm": [0.46, 0.55, 0.62, 0.68], "category": "date", "text": ""},
-    {"key": "reviewed_by", "bbox_norm": [0.18, 0.68, 0.45, 0.81], "category": "fio", "text": ""},
-    {"key": "reviewer_signed_date", "bbox_norm": [0.46, 0.68, 0.62, 0.81], "category": "date", "text": ""},
-    {"key": "approved_by", "bbox_norm": [0.18, 0.81, 0.45, 0.96], "category": "fio", "text": ""},
-    {"key": "approver_signed_date", "bbox_norm": [0.46, 0.81, 0.62, 0.96], "category": "date", "text": ""},
+    {"key": "developed_by", "bbox_norm": [0.18, 0.55, 0.40, 0.68], "category": "fio", "text": ""},
+    {"key": "developer_signature", "bbox_norm": [0.40, 0.55, 0.52, 0.68], "category": "signature", "text": ""},
+    {"key": "developer_signed_date", "bbox_norm": [0.52, 0.55, 0.68, 0.68], "category": "date", "text": ""},
+    {"key": "reviewed_by", "bbox_norm": [0.18, 0.68, 0.40, 0.81], "category": "fio", "text": ""},
+    {"key": "reviewer_signature", "bbox_norm": [0.40, 0.68, 0.52, 0.81], "category": "signature", "text": ""},
+    {"key": "reviewer_signed_date", "bbox_norm": [0.52, 0.68, 0.68, 0.81], "category": "date", "text": ""},
+    {"key": "approved_by", "bbox_norm": [0.18, 0.81, 0.40, 0.96], "category": "fio", "text": ""},
+    {"key": "approver_signature", "bbox_norm": [0.40, 0.81, 0.52, 0.96], "category": "signature", "text": ""},
+    {"key": "approver_signed_date", "bbox_norm": [0.52, 0.81, 0.68, 0.96], "category": "date", "text": ""},
 ]
 
 FIELD_KEY_LABELS = {
@@ -43,10 +48,13 @@ FIELD_KEY_LABELS = {
     "sheet": "Лист",
     "sheets_total": "Листов",
     "developed_by": "Разработал",
+    "developer_signature": "Подпись (разраб.)",
     "developer_signed_date": "Дата (разраб.)",
     "reviewed_by": "Проверил",
+    "reviewer_signature": "Подпись (пров.)",
     "reviewer_signed_date": "Дата (пров.)",
     "approved_by": "Утвердил",
+    "approver_signature": "Подпись (утв.)",
     "approver_signed_date": "Дата (утв.)",
 }
 
@@ -59,6 +67,69 @@ async def latest_annotation(session: AsyncSession, job_id: int) -> OcrAnnotation
         .limit(1)
     )
     return result.scalars().first()
+
+
+async def get_format_template(session: AsyncSession, document_format: str | None) -> OcrFormatTemplate | None:
+    fmt = coerce_document_format(document_format)
+    if not fmt:
+        return None
+    result = await session.execute(
+        select(OcrFormatTemplate).where(OcrFormatTemplate.document_format == fmt).limit(1)
+    )
+    return result.scalars().first()
+
+
+def resolve_document_format(extraction: OcrExtraction | None, labels: dict | None = None) -> str:
+    if labels:
+        fmt = coerce_document_format(labels.get("document_format"))
+        if fmt:
+            return fmt
+    if not extraction:
+        return ""
+    fields = extraction.fields or {}
+    geometry = extraction.geometry or {}
+    return (
+        coerce_document_format(field_value(fields, "document_format"))
+        or coerce_document_format(geometry.get("format_from_dims"))
+        or ""
+    )
+
+
+async def upsert_format_template(
+    session: AsyncSession,
+    *,
+    document_format: str,
+    labels: dict[str, Any],
+    user: User,
+) -> OcrFormatTemplate | None:
+    fmt = coerce_document_format(document_format)
+    if not fmt:
+        return None
+    cells = labels.get("cells") or []
+    if not cells:
+        return None
+    payload = {
+        "cells": cells,
+        "document_format": fmt,
+    }
+    if isinstance(labels.get("stamp_size"), (list, tuple)) and len(labels["stamp_size"]) == 2:
+        payload["stamp_size"] = [int(labels["stamp_size"][0]), int(labels["stamp_size"][1])]
+    now = datetime.utcnow()
+    existing = await get_format_template(session, fmt)
+    if existing:
+        existing.labels = payload
+        existing.updated_by_user_id = user.id
+        existing.updated_at = now
+        return existing
+    row = OcrFormatTemplate(
+        document_format=fmt,
+        labels=payload,
+        updated_by_user_id=user.id,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(row)
+    return row
 
 
 def cells_from_extraction(extraction: OcrExtraction | None) -> list[dict[str, Any]]:
@@ -96,11 +167,12 @@ def cells_from_extraction(extraction: OcrExtraction | None) -> list[dict[str, An
         ]
         if norm[2] <= norm[0] or norm[3] <= norm[1]:
             continue
+        category = "signature" if key.endswith("_signature") else key
         cells.append(
             {
                 "key": key,
                 "bbox_norm": norm,
-                "category": key,
+                "category": category,
                 "text": "",
             }
         )
@@ -140,11 +212,14 @@ def normalize_labels_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
             continue
         if norm[2] <= norm[0] or norm[3] <= norm[1]:
             continue
+        category = (item.get("category") or key)
+        if key.endswith("_signature"):
+            category = "signature"
         cells.append(
             {
                 "key": key,
                 "bbox_norm": norm,
-                "category": (item.get("category") or key),
+                "category": category,
                 "text": (item.get("text") or "").strip(),
             }
         )
@@ -157,6 +232,9 @@ def normalize_labels_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
     notes = (raw.get("notes") or "").strip()
     if notes:
         labels["notes"] = notes
+    fmt = coerce_document_format(raw.get("document_format"))
+    if fmt:
+        labels["document_format"] = fmt
     return labels
 
 
@@ -174,6 +252,11 @@ async def save_annotation(
         raise HTTPException(status_code=400, detail="Задача отклонена.")
 
     labels = normalize_labels_payload(labels_raw)
+    extraction = latest_extraction(job)
+    fmt = labels.get("document_format") or resolve_document_format(extraction)
+    if fmt:
+        labels["document_format"] = fmt
+
     existing = await latest_annotation(session, job.id)
     now = datetime.utcnow()
     if existing:
@@ -190,6 +273,9 @@ async def save_annotation(
             updated_at=now,
         )
         session.add(annotation)
+
+    if fmt:
+        await upsert_format_template(session, document_format=fmt, labels=labels, user=user)
 
     if job.status in {OcrJobStatus.failed, OcrJobStatus.needs_annotation, OcrJobStatus.queued}:
         job.status = OcrJobStatus.needs_review
@@ -256,10 +342,26 @@ async def reocr_from_annotation(
 
     fields = result.get("fields") or {}
     geometry = dict(result.get("geometry") or {})
+    # Preserve paper format from prior auto-extract / dims
+    prev_geo = extraction.geometry or {}
+    if prev_geo.get("format_from_dims") and not geometry.get("format_from_dims"):
+        geometry["format_from_dims"] = prev_geo["format_from_dims"]
+    fmt = resolve_document_format(extraction, labels)
+    if fmt and not coerce_document_format(field_value(fields, "document_format")):
+        fields = dict(fields)
+        fields["document_format"] = {
+            "raw": fmt,
+            "value": fmt,
+            "conf": 0.9,
+            "bbox": None,
+            "page": 0,
+        }
     geometry["low_conf_threshold"] = OCR_LOW_CONF_THRESHOLD
     geometry["annotation_id"] = annotation.id
+    if fmt:
+        geometry["format_template"] = fmt
 
-    person_suggestions = await _build_person_suggestions(session, fields)
+    suggestions = await _build_field_suggestions(session, fields)
 
     new_extraction = OcrExtraction(
         job_id=job.id,
@@ -268,7 +370,7 @@ async def reocr_from_annotation(
         geometry=geometry,
         stamp_crop_path=extraction.stamp_crop_path,
         page_preview_path=extraction.page_preview_path,
-        person_suggestions=person_suggestions,
+        person_suggestions=suggestions,
         created_at=datetime.utcnow(),
     )
     session.add(new_extraction)
@@ -283,18 +385,37 @@ async def reocr_from_annotation(
     return new_extraction
 
 
-def annotation_bootstrap(job: OcrJob, extraction: OcrExtraction | None, annotation: OcrAnnotation | None) -> dict:
+async def annotation_bootstrap(
+    session: AsyncSession,
+    job: OcrJob,
+    extraction: OcrExtraction | None,
+    annotation: OcrAnnotation | None,
+) -> dict:
+    fmt = resolve_document_format(extraction, (annotation.labels if annotation else None))
+    format_template = await get_format_template(session, fmt) if fmt else None
+
     if annotation and annotation.labels and annotation.labels.get("cells"):
         labels = annotation.labels
         cells = labels.get("cells") or []
         stamp_size = labels.get("stamp_size")
+        source = "job_annotation"
+    elif format_template and format_template.labels and format_template.labels.get("cells"):
+        labels = format_template.labels
+        cells = labels.get("cells") or []
+        stamp_size = labels.get("stamp_size") or (
+            (extraction.geometry or {}).get("stamp_size") if extraction else None
+        )
+        source = "format_template"
     else:
         cells = cells_from_extraction(extraction)
         stamp_size = (extraction.geometry or {}).get("stamp_size") if extraction else None
+        source = "extraction_or_default"
 
     return {
         "cells": cells,
         "stamp_size": stamp_size,
+        "document_format": fmt,
+        "template_source": source,
         "field_keys": [
             {"key": k, "label": FIELD_KEY_LABELS.get(k, k)} for k in FIELD_KEY_LABELS
         ],

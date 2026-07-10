@@ -26,8 +26,14 @@ from app.models import (
     OcrJobStatus,
     User,
 )
-from app.name_helpers import fetch_known_person_names, suggest_person_names
-from app.ocr.client import OcrServiceError, call_extract, check_ocr_health
+from app.name_helpers import (
+    fetch_known_org_codes,
+    fetch_known_person_names,
+    suggest_org_codes,
+    suggest_person_names,
+)
+from app.ocr.client import OcrServiceError, call_extract, call_extract_cells, check_ocr_health
+from app.ocr.normalize import coerce_document_format
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,9 @@ def _empty_fields() -> dict:
         "developed_by",
         "reviewed_by",
         "approved_by",
+        "developer_signature",
+        "reviewer_signature",
+        "approver_signature",
         "developer_signed_date",
         "reviewer_signed_date",
         "approver_signed_date",
@@ -192,15 +201,24 @@ async def process_job(
         geometry = dict(result.get("geometry") or {})
         if local_format and not geometry.get("format_from_dims"):
             geometry["format_from_dims"] = local_format
-        if local_format and not field_value(fields, "document_format"):
+
+        # Normalize format to a valid dropdown code; prefer dims when OCR is invalid
+        fmt = (
+            coerce_document_format(field_value(fields, "document_format"))
+            or coerce_document_format(geometry.get("format_from_dims"))
+            or coerce_document_format(local_format)
+        )
+        if fmt:
+            geometry["format_from_dims"] = geometry.get("format_from_dims") or fmt
             fields = dict(fields)
-            fields["document_format"] = {
-                "raw": local_format,
-                "value": local_format,
-                "conf": 0.9,
-                "bbox": None,
-                "page": 0,
-            }
+            if coerce_document_format(field_value(fields, "document_format")) != fmt:
+                fields["document_format"] = {
+                    "raw": fields.get("document_format", {}).get("raw") or fmt,
+                    "value": fmt,
+                    "conf": 0.9,
+                    "bbox": (fields.get("document_format") or {}).get("bbox"),
+                    "page": 0,
+                }
 
         job.pipeline_version = result.get("pipeline_version")
         job.page_count = geometry.get("page_count")
@@ -212,7 +230,45 @@ async def process_job(
         stamp_path = _abs_upload_path(stamp_rel) if stamp_rel else None
         preview_path = _abs_upload_path(preview_rel) if preview_rel else None
 
-        person_suggestions = await _build_person_suggestions(session, fields)
+        # Re-OCR with saved ROI template for this paper format when available
+        if fmt and stamp_path and os.path.isfile(stamp_path):
+            from app.ocr.annotate import get_format_template
+
+            template = await get_format_template(session, fmt)
+            cells = (template.labels or {}).get("cells") if template else None
+            if cells:
+                try:
+                    cell_result = await call_extract_cells(
+                        job_id=job.id,
+                        stamp_crop_path=path_for_ocr_service(stamp_path),
+                        cells=cells,
+                    )
+                    cell_fields = cell_result.get("fields") or {}
+                    if cell_fields:
+                        fields = {**fields, **cell_fields}
+                        # Keep valid format code after cell OCR
+                        if not coerce_document_format(field_value(fields, "document_format")):
+                            fields["document_format"] = {
+                                "raw": fmt,
+                                "value": fmt,
+                                "conf": 0.9,
+                                "bbox": None,
+                                "page": 0,
+                            }
+                        cell_geo = cell_result.get("geometry") or {}
+                        geometry = {
+                            **geometry,
+                            **{k: v for k, v in cell_geo.items() if k not in {"format_from_dims"}},
+                            "format_from_dims": geometry.get("format_from_dims") or fmt,
+                            "format_template": fmt,
+                            "source": "auto+format_template",
+                        }
+                        if cell_result.get("pipeline_version"):
+                            job.pipeline_version = cell_result.get("pipeline_version")
+                except OcrServiceError as exc:
+                    logger.warning("format-template re-OCR skipped for job %s: %s", job.id, exc)
+
+        suggestions = await _build_field_suggestions(session, fields)
 
         low_conf = geometry.get("low_conf_fields") or []
         critical_empty = not field_value(fields, "designation") and not field_value(fields, "doc_name")
@@ -245,7 +301,7 @@ async def process_job(
                 },
                 stamp_crop_path=stamp_path,
                 page_preview_path=preview_path,
-                person_suggestions=person_suggestions,
+                person_suggestions=suggestions,
                 created_at=datetime.utcnow(),
             )
         )
@@ -341,7 +397,8 @@ def _abs_upload_path(rel_or_abs: str) -> str:
     return os.path.normpath(os.path.join(UPLOAD_DIR, rel_or_abs))
 
 
-async def _build_person_suggestions(session: AsyncSession, fields: dict) -> dict:
+async def _build_field_suggestions(session: AsyncSession, fields: dict) -> dict:
+    """Build FIO + org_code suggestion chips (never auto-applied)."""
     known = await fetch_known_person_names(session)
     suggestions: dict = {}
     for key in ("developed_by", "reviewed_by", "approved_by"):
@@ -350,7 +407,19 @@ async def _build_person_suggestions(session: AsyncSession, fields: dict) -> dict
             suggestions[key] = []
             continue
         suggestions[key] = suggest_person_names(raw, known, limit=5)
+
+    org_raw = ""
+    designation = field_value(fields, "designation")
+    if designation:
+        org_raw = designation.replace(" ", "").split(".")[0]
+    known_orgs = await fetch_known_org_codes(session)
+    suggestions["org_code"] = suggest_org_codes(org_raw, known_orgs, limit=5) if org_raw else []
     return suggestions
+
+
+# Back-compat alias
+async def _build_person_suggestions(session: AsyncSession, fields: dict) -> dict:
+    return await _build_field_suggestions(session, fields)
 
 
 def field_confidence(fields: dict | None, key: str) -> float | None:
