@@ -57,6 +57,7 @@ services:
       SSL_CERT_DAYS: ${SSL_CERT_DAYS:-825}
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-8443}
       MAX_CLIENT_BODY_MB: ${MAX_CLIENT_BODY_MB:-12}
+      PROXY_READ_TIMEOUT_SEC: ${PROXY_READ_TIMEOUT_SEC:-600}
     volumes:
       - ./nginx/certs:/etc/nginx/certs
 

@@ -13,6 +13,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **OCR review — file and pages:** open the uploaded source file from the review screen; browse all pages of multi-page PDFs with prev/next navigation.
 - **OCR review — selection UX:** selected applicability products and document links are highlighted in green; all project products are shown in applicability cards including the primary product.
 - **Document card — applicability:** the applicability section lists the primary product plus additional applicability entries.
+- **OCR upload — 504 fix:** file upload returns immediately; OCR runs in the background per batch. Nginx `proxy_read_timeout` defaults to 600s. Batch page auto-refreshes while processing.
 
 ## 0.25.0
 

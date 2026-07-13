@@ -17,6 +17,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import update
 
 from app.config import MAX_UPLOAD_SIZE_MB, OCR_ALLOWED_EXTENSIONS, OCR_LOW_CONF_THRESHOLD, UPLOAD_DIR
+from app.database import async_session
 from app.metadata_helpers import detect_document_format_from_bytes
 from app.models import (
     OCR_INBOX_FOLDER,
@@ -151,12 +152,41 @@ async def create_batch_with_files(
         )
         session.add(job)
         await session.flush()
-        await process_job(session, job, contents=contents)
 
     await _refresh_batch_status(session, batch)
     await session.commit()
     await session.refresh(batch)
     return batch
+
+
+async def process_batch_jobs(batch_id: int) -> None:
+    """Run OCR for all queued jobs in a batch (background task after upload)."""
+    logger.info("Background OCR started for batch %s", batch_id)
+    async with async_session() as session:
+        try:
+            result = await session.execute(
+                select(OcrJob)
+                .where(OcrJob.batch_id == batch_id, OcrJob.status == OcrJobStatus.queued)
+                .order_by(OcrJob.id)
+            )
+            jobs = list(result.scalars().all())
+            for job in jobs:
+                try:
+                    await process_job(session, job)
+                    await session.flush()
+                except Exception as exc:
+                    logger.exception("OCR job %s failed in background: %s", job.id, exc)
+                    job.status = OcrJobStatus.failed
+                    job.error_message = f"Ошибка распознавания: {exc}"[:500]
+                    job.finished_at = datetime.utcnow()
+            batch = await session.get(OcrBatch, batch_id)
+            if batch:
+                await _refresh_batch_status(session, batch)
+            await session.commit()
+        except Exception:
+            logger.exception("Background OCR batch %s failed", batch_id)
+            await session.rollback()
+    logger.info("Background OCR finished for batch %s", batch_id)
 
 
 async def process_job(

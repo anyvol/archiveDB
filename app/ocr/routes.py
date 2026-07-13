@@ -6,7 +6,7 @@ import io
 import os
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,7 @@ from app.ocr.service import (
     get_job,
     latest_extraction,
     ocr_service_available,
+    process_batch_jobs,
     retry_job,
 )
 from app.permissions import can_add_document_links, can_create_document, is_admin, is_master_admin
@@ -189,6 +190,7 @@ async def api_ocr_dataset_export(
 @router.post("/api/ocr/batches")
 async def api_create_ocr_batch(
     request: Request,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     access_token: str | None = Cookie(None),
     session: AsyncSession = Depends(get_session),
@@ -219,6 +221,8 @@ async def api_create_ocr_batch(
             status_code=500,
             detail=f"Не удалось создать пакет OCR: {message[:400]}",
         ) from exc
+
+    background_tasks.add_task(process_batch_jobs, batch.id)
 
     return JSONResponse(
         {
