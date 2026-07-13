@@ -1,10 +1,15 @@
 """Tests for multi-page specification detection in OCR pipeline."""
 
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 
-from pipeline.spec_detect import detect_specification_pages
+OCR_DIR = Path(__file__).resolve().parents[1] / "ocr"
+sys.path.insert(0, str(OCR_DIR))
+
+from pipeline.spec_detect import detect_specification_pages  # noqa: E402
 
 
 def _blank_page() -> np.ndarray:
