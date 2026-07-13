@@ -41,15 +41,20 @@
         .roi-card .roi-label { font-size: 0.72rem; color: #495057; margin-top: 0.3rem; font-weight: 600; }
         .roi-card .roi-value { font-size: 0.7rem; color: #6c757d; word-break: break-all; margin-top: 0.15rem; }
         .roi-card.low-conf { border-color: #e0a800; background: #fffbeb; }
-        .product-checkboxes { display: grid; gap: 0.35rem; max-height: 180px; overflow: auto; margin-top: 0.35rem; }
-        .product-check-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; }
+        .product-checkboxes { display: grid; gap: 0.35rem; max-height: 220px; overflow: auto; margin-top: 0.35rem; }
+        .product-check-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; padding: 0.35rem 0.5rem; border-radius: 4px; border: 1px solid transparent; cursor: pointer; user-select: none; }
+        .product-check-label:hover { background: #f0f7ff; }
+        .product-check-label.selected { background: #d4edda; border-color: #b8dfc4; color: #155724; font-weight: 500; }
+        .product-check-label.primary-product { cursor: default; }
+        .product-check-label.primary-product .product-role { font-size: 0.72rem; color: #155724; margin-left: auto; }
         .links-section { margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid #e9ecef; }
         .search-results { border: 1px solid #dee2e6; border-radius: 4px; max-height: 180px; overflow: auto; margin-top: 0.35rem; }
-        .search-result-item { display: flex; align-items: flex-start; gap: 0.45rem; padding: 0.4rem 0.55rem; border-bottom: 1px solid #f1f3f5; font-size: 0.85rem; }
+        .search-result-item { display: flex; align-items: flex-start; gap: 0.45rem; padding: 0.4rem 0.55rem; border-bottom: 1px solid #f1f3f5; font-size: 0.85rem; border-radius: 4px; }
+        .search-result-item.selected { background: #d4edda; border-color: #b8dfc4; }
         .search-result-item:last-child { border-bottom: none; }
         .search-empty { padding: 0.55rem; color: #6c757d; font-size: 0.85rem; }
         .selected-links { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
-        .selected-link-chip { background: #e7f1ff; border: 1px solid #cfe2ff; border-radius: 999px; padding: 0.15rem 0.55rem; font-size: 0.78rem; }
+        .selected-link-chip { background: #d4edda; border: 1px solid #b8dfc4; color: #155724; border-radius: 999px; padding: 0.15rem 0.55rem; font-size: 0.78rem; font-weight: 500; }
         .spec-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
         .page-nav { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
         .page-nav button { padding: 0.35rem 0.7rem; border: 1px solid #ced4da; background: #fff; border-radius: 4px; cursor: pointer; }
@@ -157,9 +162,9 @@
                             </select>
                         </div>
                         <div class="project-subgroup" id="additional-products-block" hidden>
-                            <span class="section-label">Дополнительная применяемость (изделия этого проекта)</span>
+                            <span class="section-label">Применяемость (изделия проекта)</span>
                             <div class="product-checkboxes" id="additional-products"></div>
-                            <p class="hint">Отметьте изделия, для которых этот документ также применим (ГОСТ 2.501).</p>
+                            <p class="hint">Основное изделие выбирается выше. Отметьте дополнительные изделия, для которых документ также применим (ГОСТ 2.501).</p>
                         </div>
                         <p class="hint">Создать проект или изделие можно в разделе «Проекты».</p>
                     </div>
@@ -352,22 +357,47 @@
         function renderAdditionalProducts(products, primaryId) {
             if (!additionalProducts || !additionalProductsBlock) return;
             additionalProducts.innerHTML = '';
-            const extras = products.filter(p => String(p.id) !== String(primaryId));
-            if (!extras.length) {
+            if (!products.length) {
                 additionalProductsBlock.hidden = true;
                 return;
             }
             additionalProductsBlock.hidden = false;
-            extras.forEach(p => {
+            products.forEach(p => {
+                const isPrimary = primaryId && String(p.id) === String(primaryId);
                 const label = document.createElement('label');
-                label.className = 'product-check-label';
+                label.className = 'product-check-label' + (isPrimary ? ' selected primary-product' : '');
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
-                cb.name = 'additional_product_ids';
-                cb.value = String(p.id);
+                if (isPrimary) {
+                    cb.checked = true;
+                    cb.disabled = true;
+                    cb.title = 'Основное изделие (задаётся в поле выше)';
+                } else {
+                    cb.name = 'additional_product_ids';
+                    cb.value = String(p.id);
+                    cb.addEventListener('change', () => {
+                        label.classList.toggle('selected', cb.checked);
+                    });
+                }
                 label.appendChild(cb);
-                label.appendChild(document.createTextNode(p.name));
+                const name = document.createElement('span');
+                name.textContent = p.name;
+                label.appendChild(name);
+                if (isPrimary) {
+                    const role = document.createElement('span');
+                    role.className = 'product-role';
+                    role.textContent = 'основное';
+                    label.appendChild(role);
+                }
                 additionalProducts.appendChild(label);
+            });
+        }
+
+        function syncLinkSelectionStyles() {
+            if (!linksResults) return;
+            linksResults.querySelectorAll('.search-result-item').forEach(row => {
+                const cb = row.querySelector('input[type="checkbox"]');
+                if (cb) row.classList.toggle('selected', cb.checked);
             });
         }
 
@@ -383,13 +413,14 @@
             });
             if (linksSelectedChips) {
                 linksSelectedChips.innerHTML = '';
-                selectedLinks.forEach((label, id) => {
+                selectedLinks.forEach((label) => {
                     const chip = document.createElement('span');
                     chip.className = 'selected-link-chip';
                     chip.textContent = label;
                     linksSelectedChips.appendChild(chip);
                 });
             }
+            syncLinkSelectionStyles();
         }
 
         function renderSearchResults(items) {
@@ -401,13 +432,14 @@
             linksResults.innerHTML = '';
             items.forEach(item => {
                 const row = document.createElement('div');
-                row.className = 'search-result-item';
+                const isSelected = selectedLinks.has(item.id);
+                row.className = 'search-result-item' + (isSelected ? ' selected' : '');
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = selectedLinks.has(item.id);
+                checkbox.checked = isSelected;
                 checkbox.addEventListener('change', () => {
-                    const label = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
-                    if (checkbox.checked) selectedLinks.set(item.id, label);
+                    const itemLabel = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
+                    if (checkbox.checked) selectedLinks.set(item.id, itemLabel);
                     else selectedLinks.delete(item.id);
                     renderSelectedLinkInputs();
                 });
