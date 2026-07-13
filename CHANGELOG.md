@@ -8,6 +8,9 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
 - **OCR review — multiple products:** on the verification screen you can assign additional products from the same project (applicability) alongside the primary product.
 - **OCR — multi-page SB / specification:** multi-page PDFs are scanned for specification sheets; recognized designations are suggested on the review screen with a link picker to attach referenced archive records at commit time.
+- **Document delete:** clearing `ocr_jobs.document_id` before delete fixes FK violation when removing a record created from OCR.
+- **OCR documents — `auto_recognized`:** documents committed from OCR are stored with `auto_recognized = true`; manually registered records remain `false`.
+- **OCR review — file and pages:** open the uploaded source file from the review screen; browse all pages of multi-page PDFs with prev/next navigation.
 
 ## 0.25.0
 

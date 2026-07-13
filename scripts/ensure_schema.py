@@ -299,9 +299,11 @@ def _apply_ocr_schema(engine) -> list[str]:
                 "has_developer_signature",
                 "has_reviewer_signature",
                 "has_approver_signature",
+                "auto_recognized",
             ):
                 if col not in doc_columns:
-                    conn.execute(text(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {col} BOOLEAN"))
+                    col_type = "BOOLEAN NOT NULL DEFAULT false" if col == "auto_recognized" else "BOOLEAN"
+                    conn.execute(text(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {col} {col_type}"))
                     applied.append(f"documents.{col}")
             inspector = inspect(engine)
 

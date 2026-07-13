@@ -177,6 +177,7 @@ async def commit_ocr_job(
         product_id=product.id,
         status=DocumentStatus.pending_review,
         document_format=document_format,
+        auto_recognized=True,
     )
     session.add(base_doc)
     await session.flush()

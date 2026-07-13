@@ -51,6 +51,11 @@
         .selected-links { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
         .selected-link-chip { background: #e7f1ff; border: 1px solid #cfe2ff; border-radius: 999px; padding: 0.15rem 0.55rem; font-size: 0.78rem; }
         .spec-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+        .page-nav { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+        .page-nav button { padding: 0.35rem 0.7rem; border: 1px solid #ced4da; background: #fff; border-radius: 4px; cursor: pointer; }
+        .page-sheet-preview { margin-top: 0.75rem; }
+        .page-sheet-preview img { max-width: 100%; height: auto; display: block; border: 1px solid #dee2e6; border-radius: 4px; }
+        .file-actions { margin-top: 0.35rem; }
     </style>
 </head>
 <body>
@@ -71,7 +76,11 @@
 
         <div class="layout">
             <div class="panel">
-                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}</div>
+                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}
+                    <div class="file-actions">
+                        <a class="btn btn-secondary" href="{{ source_file_url }}" target="_blank" rel="noopener">Открыть исходный файл</a>
+                    </div>
+                </div>
                 <div class="meta"><strong>Статус:</strong> {{ OCR_JOB_STATUS_LABELS.get(job.status, job.status.value) }}</div>
                 {% if job.pipeline_version %}<div class="meta"><strong>Пайплайн:</strong> {{ job.pipeline_version }}{% if geometry.get('engine') %} ({{ geometry.get('engine') }}){% endif %}</div>{% endif %}
                 {% if geometry.get('latency_ms') %}<div class="meta"><strong>Время OCR:</strong> {{ geometry.get('latency_ms') }} мс</div>{% endif %}
@@ -93,6 +102,19 @@
                         <div class="roi-value">{% if roi.value %}{{ roi.value }}{% else %}—{% endif %}{% if roi.conf is not none %} ({{ '%.0f'|format(roi.conf * 100) }}%){% endif %}</div>
                     </div>
                     {% endfor %}
+                </div>
+                {% endif %}
+                {% if page_count and page_count > 0 %}
+                <div class="page-sheet-preview">
+                    <p class="hint">Лист документа{% if page_count > 1 %} ({{ page_count }} стр.){% endif %}:</p>
+                    <img id="sheet-preview" src="{{ page_preview_base_url }}0" alt="Превью листа">
+                    {% if page_count > 1 %}
+                    <div class="page-nav">
+                        <button type="button" id="page-prev">← Пред.</button>
+                        <span id="page-indicator">Стр. 1 / {{ page_count }}</span>
+                        <button type="button" id="page-next">След. →</button>
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
                 <div class="actions">
@@ -502,6 +524,27 @@
                 if (input) input.value = btn.getAttribute('data-value') || '';
             });
         });
+
+        (function initPageViewer() {
+            const pageCount = {{ page_count or 1 }};
+            const sheetPreview = document.getElementById('sheet-preview');
+            const pageIndicator = document.getElementById('page-indicator');
+            const prevBtn = document.getElementById('page-prev');
+            const nextBtn = document.getElementById('page-next');
+            if (!sheetPreview || pageCount < 1) return;
+            let currentPage = 0;
+            const baseUrl = '{{ page_preview_base_url }}';
+            function showPage(index) {
+                currentPage = Math.max(0, Math.min(pageCount - 1, index));
+                sheetPreview.src = baseUrl + currentPage + '?t=' + Date.now();
+                if (pageIndicator) pageIndicator.textContent = 'Стр. ' + (currentPage + 1) + ' / ' + pageCount;
+                if (prevBtn) prevBtn.disabled = currentPage <= 0;
+                if (nextBtn) nextBtn.disabled = currentPage >= pageCount - 1;
+            }
+            if (prevBtn) prevBtn.addEventListener('click', () => showPage(currentPage - 1));
+            if (nextBtn) nextBtn.addEventListener('click', () => showPage(currentPage + 1));
+            showPage(0);
+        })();
 
         // Draw per-ROI crops from the stamp image
         (function renderRoiCrops() {

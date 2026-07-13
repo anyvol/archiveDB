@@ -58,8 +58,10 @@ def run_extract(
     fmt_hint = document_format_hint or format_code
     fields = {key: _empty_field() for key in _EMPTY_KEYS}
 
-    pages = render_pages(full_path, dpi=RENDER_DPI, max_pages=1)
-    if not pages:
+    total_pages = page_count or 1
+    max_render = min(total_pages, 8)
+    all_pages_raw = render_pages(full_path, dpi=RENDER_DPI, max_pages=max_render)
+    if not all_pages_raw:
         elapsed = int((time.perf_counter() - started) * 1000)
         return {
             "pipeline_version": PIPELINE_VERSION,
@@ -79,7 +81,7 @@ def run_extract(
             "person_suggestions": {},
         }
 
-    page, angle = deskew(pages[0])
+    page, angle = deskew(all_pages_raw[0])
     stamp, stamp_bbox, stamp_meta = extract_stamp(
         page,
         stamp_roi_norm,
@@ -91,12 +93,17 @@ def run_extract(
     abs_dir = os.path.join(uploads_dir, rel_dir)
     os.makedirs(abs_dir, exist_ok=True)
     stamp_name = f"job_{job_id}_stamp.png"
-    preview_name = f"job_{job_id}_page.png"
     stamp_abs = os.path.join(abs_dir, stamp_name)
-    preview_abs = os.path.join(abs_dir, preview_name)
     save_rgb(stamp_abs, stamp)
-    # higher-res page preview for stamp-ROI annotation UI
-    save_rgb(preview_abs, _downscale(page, max_side=PAGE_PREVIEW_MAX_SIDE))
+
+    page_preview_paths: list[str] = []
+    for index, raw_page in enumerate(all_pages_raw):
+        preview_name = f"job_{job_id}_page_{index}.png"
+        preview_abs = os.path.join(abs_dir, preview_name)
+        page_img = page if index == 0 else raw_page
+        save_rgb(preview_abs, _downscale(page_img, max_side=PAGE_PREVIEW_MAX_SIDE))
+        page_preview_paths.append(f"{rel_dir}/{preview_name}".replace("\\", "/"))
+    preview_name = page_preview_paths[0] if page_preview_paths else None
 
     for spec, cell_img, local_bbox in iter_cells(stamp, cells):
         category = spec.whitelist or spec.key
@@ -130,12 +137,10 @@ def run_extract(
     mean_conf = round(sum(confs) / len(confs), 3) if confs else 0.0
     low_conf_fields = [k for k, f in fields.items() if f.get("value") and (f.get("conf") or 0) < 0.5]
 
-    total_pages = page_count or len(pages)
     spec_analysis: dict[str, Any] = {}
     if total_pages > 1:
         try:
-            all_pages = render_pages(full_path, dpi=RENDER_DPI, max_pages=min(total_pages, 8))
-            spec_analysis = detect_specification_pages(all_pages)
+            spec_analysis = detect_specification_pages(all_pages_raw)
         except Exception as exc:
             logger.warning("spec page detection failed job=%s: %s", job_id, exc)
 
@@ -143,6 +148,7 @@ def run_extract(
         "format_from_dims": format_code,
         "format_from_ocr": format_from_ocr,
         "page_count": total_pages,
+        "page_preview_paths": page_preview_paths,
         "has_specification": spec_analysis.get("has_specification", False),
         "spec_page_indices": spec_analysis.get("spec_page_indices", []),
         "spec_designations": spec_analysis.get("designations", []),
@@ -172,7 +178,7 @@ def run_extract(
         "fields": fields,
         "geometry": geometry,
         "stamp_crop_path": f"{rel_dir}/{stamp_name}".replace("\\", "/"),
-        "page_preview_path": f"{rel_dir}/{preview_name}".replace("\\", "/"),
+        "page_preview_path": preview_name,
         "person_suggestions": {},
     }
 

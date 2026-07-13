@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
+from sqlalchemy import update
 
 from app.config import MAX_UPLOAD_SIZE_MB, OCR_ALLOWED_EXTENSIONS, OCR_LOW_CONF_THRESHOLD, UPLOAD_DIR
 from app.metadata_helpers import detect_document_format_from_bytes
@@ -454,3 +455,10 @@ def field_confidence(fields: dict | None, key: str) -> float | None:
         return float(conf) if conf is not None else None
     except (TypeError, ValueError):
         return None
+
+
+async def clear_ocr_job_document_references(session: AsyncSession, document_id: int) -> None:
+    """Detach OCR jobs before deleting a document (FK ocr_jobs.document_id)."""
+    await session.execute(
+        update(OcrJob).where(OcrJob.document_id == document_id).values(document_id=None)
+    )

@@ -318,6 +318,7 @@ class BaseDocument(Base):
     review_comment = Column(Text, nullable=True)
     correction_request_comment = Column(Text, nullable=True)
     registration_notified_at = Column(DateTime, nullable=True)
+    auto_recognized = Column(Boolean, default=False, nullable=False)
 
     project = relationship("Project", back_populates="documents")
     product = relationship("Product", back_populates="documents")
