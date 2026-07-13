@@ -697,10 +697,10 @@ OCR_JOB_STATUS_LABELS = {
     OcrJobStatus.needs_review: "На проверке",
     OcrJobStatus.needs_annotation: "Нужна разметка",
     OcrJobStatus.ready: "Готово",
-    OcrJobStatus.committed: "Создан документ",
+    OcrJobStatus.committed: "Принят",
     OcrJobStatus.failed: "Ошибка",
     OcrJobStatus.discarded: "Отклонено",
-    OcrJobStatus.labeled: "Учебный пример",
+    OcrJobStatus.labeled: "Принят (учебный)",
 }
 
 OCR_INBOX_FOLDER = "_ocr_inbox"

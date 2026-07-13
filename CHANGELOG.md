@@ -12,6 +12,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Permissions:** `link_specification` in role matrix (defaults mirror document links).
 - **Dataset export:** `spec_ground_truth` in labels JSON for future ML on specifications.
 - **Doc kind cleanup:** removed `СП` from KD kind codes; electronic specifications use `is_specification` only.
+- **OCR batch workflow:** after «Принять и создать документ» or «Сохранить как учебный пример» you return to the batch page; accepted jobs show status «Принят» / «Принят (учебный)».
 
 ## 0.25.1
 

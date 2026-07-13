@@ -311,7 +311,9 @@ async def ocr_review_page(
     if job.status == OcrJobStatus.discarded:
         raise HTTPException(status_code=400, detail="Задача отклонена.")
     if job.status == OcrJobStatus.committed and job.document_id:
-        return RedirectResponse(url=url_path(f"/documents/{job.document_id}"), status_code=303)
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
+    if job.status == OcrJobStatus.labeled:
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
 
     extraction = latest_extraction(job)
     prefill = prefill_from_extraction(extraction)
@@ -403,7 +405,7 @@ async def ocr_annotate_page(
     if job.status == OcrJobStatus.discarded:
         raise HTTPException(status_code=400, detail="Задача отклонена.")
     if job.status == OcrJobStatus.committed and job.document_id:
-        return RedirectResponse(url=url_path(f"/documents/{job.document_id}"), status_code=303)
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
 
     extraction = latest_extraction(job)
     annotation = await latest_annotation(session, job_id)
@@ -525,9 +527,10 @@ async def api_commit_ocr_job(
             )
         raise
 
-    redirect = url_path(f"/documents/{doc.id}")
+    batch_id = job.batch_id
+    redirect = url_path(f"/ocr/batches/{batch_id}")
     commit_extra = getattr(doc, "_ocr_commit_result", None)
-    payload = {"ok": True, "document_id": doc.id, "redirect": redirect}
+    payload = {"ok": True, "document_id": doc.id, "redirect": redirect, "batch_id": batch_id}
     if commit_extra:
         payload["message"] = commit_extra.message
         if commit_extra.secondary:
