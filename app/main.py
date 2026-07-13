@@ -1239,12 +1239,13 @@ async def create_document_record(
         raise HTTPException(status_code=400, detail="Код организации и код классификации обязательны.")
     if doc_kind_code and doc_kind_code not in DOC_KIND_CODES:
         raise HTTPException(status_code=400, detail="Неверный код вида документа.")
+
+    is_kd = doc_type == "DD"
     if is_specification and not is_kd:
         raise HTTPException(status_code=400, detail="Спецификация поддерживается только для КД.")
     if is_specification:
         doc_kind_code = ""
 
-    is_kd = doc_type == "DD"
     execution = parse_execution_input(execution_raw) if is_kd else None
     if not is_kd and execution_raw:
         raise HTTPException(status_code=400, detail="Исполнение доступно только для конструкторской документации.")
