@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.25.1
+
+- **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
+- **OCR review — multiple products:** on the verification screen you can assign additional products from the same project (applicability) alongside the primary product.
+- **OCR — multi-page SB / specification:** multi-page PDFs are scanned for specification sheets; recognized designations are suggested on the review screen with a link picker to attach referenced archive records at commit time.
+
 ## 0.25.0
 
 - **OCR phases 1–3:** isolated OCR sidecar, stamp/cell recognition, review/commit, annotation UI, format-bound ROI templates, signatures, training examples, dataset ZIP export, and optional stamp detector. See `docs/ocr/README.md` and `docs/ocr/PHASE3.md`.

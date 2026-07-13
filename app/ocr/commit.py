@@ -18,8 +18,10 @@ from app.database import (
     get_or_create_org_id,
 )
 from app.designation_helpers import build_designation, parse_execution_input
+from app.document_applicability import add_document_applicability_many
 from app.document_format import is_valid_document_format
 from app.document_helpers import resolve_document_storage_slugs, save_document_file_from_path
+from app.document_links import add_document_links
 from app.models import (
     DOC_KIND_CODES,
     BaseDocument,
@@ -44,6 +46,19 @@ from app.ocr.normalize import (
 from app.ocr.service import field_value, latest_extraction
 from app.product_helpers import validate_product_belongs_to_project
 from app.project_helpers import get_project_by_id
+
+
+def _form_int_list(form: dict[str, Any], key: str) -> list[int]:
+    raw = form.get(key)
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    ids: list[int] = []
+    for item in items:
+        text = str(item).strip()
+        if text.isdigit():
+            ids.append(int(text))
+    return ids
 
 
 def _form_bool(form: dict[str, Any], key: str) -> bool | None:
@@ -89,6 +104,8 @@ async def commit_ocr_job(
     document_format = coerce_document_format(form.get("document_format") or "")
     existing_project_id = (form.get("existing_project_id") or "").strip()
     existing_product_id = (form.get("existing_product_id") or "").strip()
+    additional_product_ids = _form_int_list(form, "additional_product_ids")
+    link_target_ids = _form_int_list(form, "link_target_ids")
 
     has_developer_signature = _form_bool(form, "has_developer_signature")
     has_reviewer_signature = _form_bool(form, "has_reviewer_signature")
@@ -126,6 +143,19 @@ async def commit_ocr_job(
         raise HTTPException(status_code=400, detail="Необходимо выбрать изделие.")
     project = await get_project_by_id(session, int(existing_project_id))
     product = await validate_product_belongs_to_project(session, int(existing_product_id), project.id)
+
+    extra_product_ids = [pid for pid in additional_product_ids if pid != product.id]
+    if extra_product_ids:
+        for product_id in extra_product_ids:
+            await validate_product_belongs_to_project(session, product_id, project.id)
+
+    unique_link_ids: list[int] = []
+    seen_links: set[int] = set()
+    for target_id in link_target_ids:
+        if target_id in seen_links:
+            continue
+        seen_links.add(target_id)
+        unique_link_ids.append(target_id)
 
     base_doc = BaseDocument(
         type=doc_type,
@@ -261,6 +291,13 @@ async def commit_ocr_job(
         base_doc.registration_notified_at = datetime.utcnow()
 
     await log_file_upload(session, base_doc, user, stored_name, replacement=False)
+
+    if extra_product_ids:
+        await add_document_applicability_many(session, base_doc, extra_product_ids, user)
+
+    if unique_link_ids:
+        await add_document_links(session, base_doc, unique_link_ids, user)
+
     await notify_file_upload(
         session,
         base_doc,

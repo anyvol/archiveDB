@@ -42,7 +42,7 @@ from app.ocr.service import (
     ocr_service_available,
     retry_job,
 )
-from app.permissions import can_create_document, is_admin, is_master_admin
+from app.permissions import can_add_document_links, can_create_document, is_admin, is_master_admin
 from app.session_helpers import resolve_authenticated_user, wants_json_response
 
 router = APIRouter(tags=["ocr"])
@@ -76,6 +76,7 @@ def _field_rois_for_review(fields: dict) -> list[dict]:
 
 templates.env.globals["is_admin"] = is_admin
 templates.env.globals["is_master_admin"] = is_master_admin
+templates.env.globals["can_add_document_links"] = can_add_document_links
 
 
 async def _auth_create_user(
@@ -355,6 +356,11 @@ async def ocr_review_page(
             "ocr_available": await ocr_service_available(),
             "error": error,
             "default_developed_by": prefill.get("developed_by") or auth.full_name or "",
+            "page_count": geometry.get("page_count") or job.page_count,
+            "has_specification": bool(geometry.get("has_specification")),
+            "spec_page_indices": geometry.get("spec_page_indices") or [],
+            "spec_designations": geometry.get("spec_designations") or [],
+            "search_designations_url": url_path("/api/documents/search-designations"),
             "page_title": f"Сверка OCR — {job.original_filename}",
             "service_version": SERVICE_VERSION,
             "unread_count": 0,
@@ -487,7 +493,10 @@ async def api_commit_ocr_job(
     if not job:
         raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
 
-    form = dict(await request.form())
+    form_data = await request.form()
+    form = dict(form_data)
+    form["additional_product_ids"] = form_data.getlist("additional_product_ids")
+    form["link_target_ids"] = form_data.getlist("link_target_ids")
     try:
         doc = await commit_ocr_job(session, job, auth, form)
     except HTTPException as exc:

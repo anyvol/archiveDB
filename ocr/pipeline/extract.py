@@ -11,6 +11,7 @@ from typing import Any
 from format_detect import detect_format_from_file
 from pipeline.ocr_engine import engine_name, ocr_cell
 from pipeline.render import deskew, render_pages, save_rgb
+from pipeline.spec_detect import detect_specification_pages
 from pipeline.stamp import extract_stamp, iter_cells
 
 logger = logging.getLogger(__name__)
@@ -129,10 +130,22 @@ def run_extract(
     mean_conf = round(sum(confs) / len(confs), 3) if confs else 0.0
     low_conf_fields = [k for k, f in fields.items() if f.get("value") and (f.get("conf") or 0) < 0.5]
 
+    total_pages = page_count or len(pages)
+    spec_analysis: dict[str, Any] = {}
+    if total_pages > 1:
+        try:
+            all_pages = render_pages(full_path, dpi=RENDER_DPI, max_pages=min(total_pages, 8))
+            spec_analysis = detect_specification_pages(all_pages)
+        except Exception as exc:
+            logger.warning("spec page detection failed job=%s: %s", job_id, exc)
+
     geometry = {
         "format_from_dims": format_code,
         "format_from_ocr": format_from_ocr,
-        "page_count": page_count or len(pages),
+        "page_count": total_pages,
+        "has_specification": spec_analysis.get("has_specification", False),
+        "spec_page_indices": spec_analysis.get("spec_page_indices", []),
+        "spec_designations": spec_analysis.get("designations", []),
         "stamp_roi": stamp_meta,
         "stamp_bbox_px": list(stamp_bbox),
         "stamp_size": [int(stamp.shape[1]), int(stamp.shape[0])],
