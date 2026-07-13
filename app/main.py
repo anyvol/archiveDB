@@ -2698,6 +2698,9 @@ async def delete_document(
     push_info = await notify_document_delete(session, doc, user, comment.strip())
     await cleanup_document_applicability_files(session, doc_id)
     await clear_document_references(session, doc_id)
+    from app.ocr.service import clear_ocr_job_document_references
+
+    await clear_ocr_job_document_references(session, doc_id)
     remove_file_if_exists(doc.file_path)
     await session.delete(doc)
     await session.commit()

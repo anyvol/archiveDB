@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.25.1
+
+- **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
+- **OCR review — multiple products:** on the verification screen you can assign additional products from the same project (applicability) alongside the primary product.
+- **OCR — multi-page SB / specification:** multi-page PDFs are scanned for specification sheets; recognized designations are suggested on the review screen with a link picker to attach referenced archive records at commit time.
+- **Document delete:** clearing `ocr_jobs.document_id` before delete fixes FK violation when removing a record created from OCR.
+- **OCR documents — `auto_recognized`:** documents committed from OCR are stored with `auto_recognized = true`; manually registered records remain `false`.
+- **OCR review — file and pages:** open the uploaded source file from the review screen; browse all pages of multi-page PDFs with prev/next navigation.
+- **OCR review — selection UX:** selected applicability products and document links are highlighted in green; all project products are shown in applicability cards including the primary product.
+- **Document card — applicability:** the applicability section lists the primary product plus additional applicability entries.
+- **OCR upload — 504 fix:** file upload returns immediately; OCR runs in the background per batch. Nginx `proxy_read_timeout` defaults to 600s. Batch page auto-refreshes while processing.
+
 ## 0.25.0
 
 - **OCR phases 1–3:** isolated OCR sidecar, stamp/cell recognition, review/commit, annotation UI, format-bound ROI templates, signatures, training examples, dataset ZIP export, and optional stamp detector. See `docs/ocr/README.md` and `docs/ocr/PHASE3.md`.

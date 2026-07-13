@@ -72,6 +72,8 @@
         .record-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
         .record-list li { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
         .applicability-item { align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #f1f3f5; }
+        .applicability-item.primary-applicability { background: #f8fff9; border-radius: 4px; padding: 0.35rem 0.45rem; }
+        .applicability-badge { display: inline-block; font-size: 0.72rem; color: #155724; background: #d4edda; border: 1px solid #b8dfc4; border-radius: 999px; padding: 0.05rem 0.45rem; margin-top: 0.2rem; }
         .applicability-item:last-child { border-bottom: none; }
         .applicability-target { display: grid; gap: 0.15rem; flex: 1; min-width: 0; }
         .applicability-section-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
@@ -221,14 +223,31 @@
                 <div class="applicability-section-header">
                     <div class="record-label">Применяемость</div>
                     {% if can_add_applicability(user) %}
-                    <button type="button" class="btn btn-secondary btn-compact" id="verify-child-applicability"{% if not applicability_entries %} disabled title="Сначала добавьте применяемость к этой записи"{% endif %}>Проверить применяемость дочерних записей</button>
+                    <button type="button" class="btn btn-secondary btn-compact" id="verify-child-applicability"{% if not applicability_entries and not doc.product %} disabled title="Сначала добавьте применяемость к этой записи"{% endif %}>Проверить применяемость дочерних записей</button>
                     {% endif %}
                 </div>
-                {% if applicability_entries %}
-                <details class="applicability-collapse"{% if applicability_entries|length > 0 %} style="margin-top:0.35rem;"{% endif %}>
-                    <summary>Показать применяемость ({{ applicability_entries|length }})</summary>
+                {% set extra_applicability = applicability_entries|rejectattr('product_id', 'equalto', doc.product_id)|list if doc.product_id else applicability_entries %}
+                {% set applicability_count = (1 if doc.product else 0) + (extra_applicability|length) %}
+                {% if applicability_count > 0 %}
+                <details class="applicability-collapse" style="margin-top:0.35rem;">
+                    <summary>Показать применяемость ({{ applicability_count }})</summary>
                 <ul class="record-list">
-                    {% for entry in applicability_entries %}
+                    {% if doc.product %}
+                    <li class="applicability-item primary-applicability">
+                        <div class="applicability-target">
+                            <div class="record-line">
+                                <span class="record-label">Проект</span><br>
+                                <a href="{{ url_path('/projects/' ~ doc.project.id) }}">{{ doc.project.name if doc.project else '—' }}</a>
+                            </div>
+                            <div class="record-line">
+                                <span class="record-label">Изделие</span><br>
+                                {{ doc.product.name }}
+                                <div><span class="applicability-badge">основное изделие</span></div>
+                            </div>
+                        </div>
+                    </li>
+                    {% endif %}
+                    {% for entry in extra_applicability %}
                     <li class="applicability-item">
                         <div class="applicability-target">
                             <div class="record-line">

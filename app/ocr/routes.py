@@ -6,7 +6,7 @@ import io
 import os
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,12 @@ from app.ocr.commit import (
     save_training_example,
 )
 from app.ocr.dataset import build_dataset_zip, dataset_stats
+from app.ocr.page_preview import (
+    guess_media_type,
+    render_page_png_bytes,
+    resolve_job_source_path,
+    resolve_preview_path,
+)
 from app.ocr.service import (
     _build_field_suggestions,
     create_batch_with_files,
@@ -40,9 +46,10 @@ from app.ocr.service import (
     get_job,
     latest_extraction,
     ocr_service_available,
+    process_batch_jobs,
     retry_job,
 )
-from app.permissions import can_create_document, is_admin, is_master_admin
+from app.permissions import can_add_document_links, can_create_document, is_admin, is_master_admin
 from app.session_helpers import resolve_authenticated_user, wants_json_response
 
 router = APIRouter(tags=["ocr"])
@@ -76,6 +83,7 @@ def _field_rois_for_review(fields: dict) -> list[dict]:
 
 templates.env.globals["is_admin"] = is_admin
 templates.env.globals["is_master_admin"] = is_master_admin
+templates.env.globals["can_add_document_links"] = can_add_document_links
 
 
 async def _auth_create_user(
@@ -182,6 +190,7 @@ async def api_ocr_dataset_export(
 @router.post("/api/ocr/batches")
 async def api_create_ocr_batch(
     request: Request,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     access_token: str | None = Cookie(None),
     session: AsyncSession = Depends(get_session),
@@ -212,6 +221,8 @@ async def api_create_ocr_batch(
             status_code=500,
             detail=f"Не удалось создать пакет OCR: {message[:400]}",
         ) from exc
+
+    background_tasks.add_task(process_batch_jobs, batch.id)
 
     return JSONResponse(
         {
@@ -355,6 +366,13 @@ async def ocr_review_page(
             "ocr_available": await ocr_service_available(),
             "error": error,
             "default_developed_by": prefill.get("developed_by") or auth.full_name or "",
+            "page_count": geometry.get("page_count") or job.page_count,
+            "has_specification": bool(geometry.get("has_specification")),
+            "spec_page_indices": geometry.get("spec_page_indices") or [],
+            "spec_designations": geometry.get("spec_designations") or [],
+            "search_designations_url": url_path("/api/documents/search-designations"),
+            "source_file_url": url_path(f"/api/ocr/jobs/{job.id}/source"),
+            "page_preview_base_url": url_path(f"/api/ocr/jobs/{job.id}/pages/"),
             "page_title": f"Сверка OCR — {job.original_filename}",
             "service_version": SERVICE_VERSION,
             "unread_count": 0,
@@ -487,7 +505,10 @@ async def api_commit_ocr_job(
     if not job:
         raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
 
-    form = dict(await request.form())
+    form_data = await request.form()
+    form = dict(form_data)
+    form["additional_product_ids"] = form_data.getlist("additional_product_ids")
+    form["link_target_ids"] = form_data.getlist("link_target_ids")
     try:
         doc = await commit_ocr_job(session, job, auth, form)
     except HTTPException as exc:
@@ -590,6 +611,65 @@ async def api_save_training_example(
     return RedirectResponse(url=url_path(f"/ocr/batches/{batch_id}"), status_code=303)
 
 
+def _page_preview_paths(extraction) -> list[str]:
+    geometry = (extraction.geometry if extraction else {}) or {}
+    paths = geometry.get("page_preview_paths") or []
+    if paths:
+        return list(paths)
+    if extraction and extraction.page_preview_path:
+        return [extraction.page_preview_path]
+    return []
+
+
+@router.get("/api/ocr/jobs/{job_id}/source")
+async def api_ocr_source_file(
+    job_id: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+    path = resolve_job_source_path(UPLOAD_DIR, job.stored_path)
+    return FileResponse(
+        path,
+        media_type=guess_media_type(path, job.mime),
+        filename=job.original_filename,
+    )
+
+
+@router.get("/api/ocr/jobs/{job_id}/pages/{page_index}")
+async def api_ocr_job_page(
+    job_id: int,
+    page_index: int,
+    request: Request,
+    access_token: str | None = Cookie(None),
+    session: AsyncSession = Depends(get_session),
+):
+    auth = await _auth_create_user(request, access_token, session)
+    if isinstance(auth, Response):
+        return auth
+
+    job = await get_job(session, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
+
+    extraction = latest_extraction(job)
+    preview_paths = _page_preview_paths(extraction)
+    if 0 <= page_index < len(preview_paths):
+        path = resolve_preview_path(UPLOAD_DIR, preview_paths[page_index])
+        return FileResponse(path, media_type="image/png", filename=os.path.basename(path))
+
+    source_path = resolve_job_source_path(UPLOAD_DIR, job.stored_path)
+    png_bytes = render_page_png_bytes(source_path, page_index)
+    return StreamingResponse(io.BytesIO(png_bytes), media_type="image/png")
+
+
 @router.get("/api/ocr/jobs/{job_id}/stamp-crop")
 async def api_ocr_stamp_crop(
     job_id: int,
@@ -623,22 +703,8 @@ async def api_ocr_page_preview(
     access_token: str | None = Cookie(None),
     session: AsyncSession = Depends(get_session),
 ):
-    auth = await _auth_create_user(request, access_token, session)
-    if isinstance(auth, Response):
-        return auth
-
-    job = await get_job(session, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Задача OCR не найдена.")
-    extraction = latest_extraction(job)
-    path = extraction.page_preview_path if extraction else None
-    if not path or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="Превью листа не найдено.")
-    abs_upload = os.path.abspath(UPLOAD_DIR)
-    abs_path = os.path.abspath(path)
-    if not (abs_path == abs_upload or abs_path.startswith(abs_upload + os.sep)):
-        raise HTTPException(status_code=404, detail="Превью листа не найдено.")
-    return FileResponse(abs_path, media_type="image/png", filename=os.path.basename(abs_path))
+    """Backward-compatible preview of the first page."""
+    return await api_ocr_job_page(job_id, 0, request, access_token, session)
 
 
 @router.get("/api/ocr/health")

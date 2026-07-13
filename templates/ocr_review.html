@@ -41,6 +41,26 @@
         .roi-card .roi-label { font-size: 0.72rem; color: #495057; margin-top: 0.3rem; font-weight: 600; }
         .roi-card .roi-value { font-size: 0.7rem; color: #6c757d; word-break: break-all; margin-top: 0.15rem; }
         .roi-card.low-conf { border-color: #e0a800; background: #fffbeb; }
+        .product-checkboxes { display: grid; gap: 0.35rem; max-height: 220px; overflow: auto; margin-top: 0.35rem; }
+        .product-check-label { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; padding: 0.35rem 0.5rem; border-radius: 4px; border: 1px solid transparent; cursor: pointer; user-select: none; }
+        .product-check-label:hover { background: #f0f7ff; }
+        .product-check-label.selected { background: #d4edda; border-color: #b8dfc4; color: #155724; font-weight: 500; }
+        .product-check-label.primary-product { cursor: default; }
+        .product-check-label.primary-product .product-role { font-size: 0.72rem; color: #155724; margin-left: auto; }
+        .links-section { margin-top: 1rem; padding-top: 0.85rem; border-top: 1px solid #e9ecef; }
+        .search-results { border: 1px solid #dee2e6; border-radius: 4px; max-height: 180px; overflow: auto; margin-top: 0.35rem; }
+        .search-result-item { display: flex; align-items: flex-start; gap: 0.45rem; padding: 0.4rem 0.55rem; border-bottom: 1px solid #f1f3f5; font-size: 0.85rem; border-radius: 4px; }
+        .search-result-item.selected { background: #d4edda; border-color: #b8dfc4; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-empty { padding: 0.55rem; color: #6c757d; font-size: 0.85rem; }
+        .selected-links { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+        .selected-link-chip { background: #d4edda; border: 1px solid #b8dfc4; color: #155724; border-radius: 999px; padding: 0.15rem 0.55rem; font-size: 0.78rem; font-weight: 500; }
+        .spec-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+        .page-nav { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+        .page-nav button { padding: 0.35rem 0.7rem; border: 1px solid #ced4da; background: #fff; border-radius: 4px; cursor: pointer; }
+        .page-sheet-preview { margin-top: 0.75rem; }
+        .page-sheet-preview img { max-width: 100%; height: auto; display: block; border: 1px solid #dee2e6; border-radius: 4px; }
+        .file-actions { margin-top: 0.35rem; }
     </style>
 </head>
 <body>
@@ -53,13 +73,19 @@
         <div class="warning">Распознавание слабое{% if job.error_message %}: {{ job.error_message }}{% endif %}. Проверьте поля и при необходимости исправьте вручную.</div>
         {% elif not ocr_available %}
         <div class="warning">Сервис OCR сейчас недоступен. Можно заполнить карточку вручную и создать документ.</div>
+        {% elif page_count and page_count > 1 %}
+        <div class="warning">В файле {{ page_count }} стр.{% if has_specification %} Обнаружена спецификация (стр. {{ spec_page_indices|join(', ') if spec_page_indices else '?' }}){% endif %}. Проверьте ссылки на входящие документы ниже.</div>
         {% else %}
         <p class="hint">Проверьте распознанные поля штампа. Жёлтая подсветка — низкая уверенность OCR. Подсказки ФИО и кода организации не подставляются автоматически — нажмите chip, чтобы выбрать. Новый проект и изделие создаются в разделе «Проекты».</p>
         {% endif %}
 
         <div class="layout">
             <div class="panel">
-                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}</div>
+                <div class="meta"><strong>Файл:</strong> {{ job.original_filename }}
+                    <div class="file-actions">
+                        <a class="btn btn-secondary" href="{{ source_file_url }}" target="_blank" rel="noopener">Открыть исходный файл</a>
+                    </div>
+                </div>
                 <div class="meta"><strong>Статус:</strong> {{ OCR_JOB_STATUS_LABELS.get(job.status, job.status.value) }}</div>
                 {% if job.pipeline_version %}<div class="meta"><strong>Пайплайн:</strong> {{ job.pipeline_version }}{% if geometry.get('engine') %} ({{ geometry.get('engine') }}){% endif %}</div>{% endif %}
                 {% if geometry.get('latency_ms') %}<div class="meta"><strong>Время OCR:</strong> {{ geometry.get('latency_ms') }} мс</div>{% endif %}
@@ -81,6 +107,19 @@
                         <div class="roi-value">{% if roi.value %}{{ roi.value }}{% else %}—{% endif %}{% if roi.conf is not none %} ({{ '%.0f'|format(roi.conf * 100) }}%){% endif %}</div>
                     </div>
                     {% endfor %}
+                </div>
+                {% endif %}
+                {% if page_count and page_count > 0 %}
+                <div class="page-sheet-preview">
+                    <p class="hint">Лист документа{% if page_count > 1 %} ({{ page_count }} стр.){% endif %}:</p>
+                    <img id="sheet-preview" src="{{ page_preview_base_url }}0" alt="Превью листа">
+                    {% if page_count > 1 %}
+                    <div class="page-nav">
+                        <button type="button" id="page-prev">← Пред.</button>
+                        <span id="page-indicator">Стр. 1 / {{ page_count }}</span>
+                        <button type="button" id="page-next">След. →</button>
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
                 <div class="actions">
@@ -117,10 +156,15 @@
                             </select>
                         </div>
                         <div class="project-subgroup">
-                            <label for="existing_product_id">Изделие *</label>
+                            <label for="existing_product_id">Основное изделие *</label>
                             <select id="existing_product_id" name="existing_product_id" required>
                                 <option value="">— выберите проект —</option>
                             </select>
+                        </div>
+                        <div class="project-subgroup" id="additional-products-block" hidden>
+                            <span class="section-label">Применяемость (изделия проекта)</span>
+                            <div class="product-checkboxes" id="additional-products"></div>
+                            <p class="hint">Основное изделие выбирается выше. Отметьте дополнительные изделия, для которых документ также применим (ГОСТ 2.501).</p>
                         </div>
                         <p class="hint">Создать проект или изделие можно в разделе «Проекты».</p>
                     </div>
@@ -255,6 +299,31 @@
                     <div class="checkbox-group form-group">
                         <label><input type="checkbox" name="has_approver_signature" value="true" {% if prefill.has_approver_signature == 'true' %}checked{% endif %}> Подпись утвердившего в штампе</label>
                     </div>
+
+                    {% if can_add_document_links(user) %}
+                    <div class="links-section">
+                        <span class="section-label">Ссылки на записи</span>
+                        <p class="hint">Для СБ со спецификацией укажите документы, перечисленные на листе спецификации.</p>
+                        {% if spec_designations %}
+                        <p class="hint">Распознанные обозначения на спецификации:</p>
+                        <div class="spec-suggestions" id="spec-designation-suggestions">
+                            {% for designation in spec_designations %}
+                            <button type="button" class="suggest-chip spec-designation-chip" data-designation="{{ designation }}">{{ designation }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="form-group">
+                            <label for="links-search">Поиск по обозначению</label>
+                            <input type="text" id="links-search" placeholder="Начните вводить обозначение…" autocomplete="off">
+                            <div class="search-results" id="links-search-results">
+                                <div class="search-empty">Введите обозначение для поиска.</div>
+                            </div>
+                        </div>
+                        <div id="links-selected-inputs"></div>
+                        <div class="selected-links" id="links-selected-chips"></div>
+                    </div>
+                    {% endif %}
+
                     <datalist id="known-names">
                         {% for name in known_person_names %}
                         <option value="{{ name }}"></option>
@@ -275,6 +344,147 @@
         const kindGroup = document.getElementById('doc-kind-group');
         const projectSelect = document.getElementById('existing_project_id');
         const productSelect = document.getElementById('existing_product_id');
+        const additionalProductsBlock = document.getElementById('additional-products-block');
+        const additionalProducts = document.getElementById('additional-products');
+        const linksSearch = document.getElementById('links-search');
+        const linksResults = document.getElementById('links-search-results');
+        const linksSelectedInputs = document.getElementById('links-selected-inputs');
+        const linksSelectedChips = document.getElementById('links-selected-chips');
+        const searchApiUrl = '{{ search_designations_url }}';
+        const selectedLinks = new Map();
+        let searchTimer = null;
+
+        function renderAdditionalProducts(products, primaryId) {
+            if (!additionalProducts || !additionalProductsBlock) return;
+            additionalProducts.innerHTML = '';
+            if (!products.length) {
+                additionalProductsBlock.hidden = true;
+                return;
+            }
+            additionalProductsBlock.hidden = false;
+            products.forEach(p => {
+                const isPrimary = primaryId && String(p.id) === String(primaryId);
+                const label = document.createElement('label');
+                label.className = 'product-check-label' + (isPrimary ? ' selected primary-product' : '');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                if (isPrimary) {
+                    cb.checked = true;
+                    cb.disabled = true;
+                    cb.title = 'Основное изделие (задаётся в поле выше)';
+                } else {
+                    cb.name = 'additional_product_ids';
+                    cb.value = String(p.id);
+                    cb.addEventListener('change', () => {
+                        label.classList.toggle('selected', cb.checked);
+                    });
+                }
+                label.appendChild(cb);
+                const name = document.createElement('span');
+                name.textContent = p.name;
+                label.appendChild(name);
+                if (isPrimary) {
+                    const role = document.createElement('span');
+                    role.className = 'product-role';
+                    role.textContent = 'основное';
+                    label.appendChild(role);
+                }
+                additionalProducts.appendChild(label);
+            });
+        }
+
+        function syncLinkSelectionStyles() {
+            if (!linksResults) return;
+            linksResults.querySelectorAll('.search-result-item').forEach(row => {
+                const cb = row.querySelector('input[type="checkbox"]');
+                if (cb) row.classList.toggle('selected', cb.checked);
+            });
+        }
+
+        function renderSelectedLinkInputs() {
+            if (!linksSelectedInputs) return;
+            linksSelectedInputs.innerHTML = '';
+            selectedLinks.forEach((_label, id) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'link_target_ids';
+                input.value = String(id);
+                linksSelectedInputs.appendChild(input);
+            });
+            if (linksSelectedChips) {
+                linksSelectedChips.innerHTML = '';
+                selectedLinks.forEach((label) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'selected-link-chip';
+                    chip.textContent = label;
+                    linksSelectedChips.appendChild(chip);
+                });
+            }
+            syncLinkSelectionStyles();
+        }
+
+        function renderSearchResults(items) {
+            if (!linksResults) return;
+            if (!items.length) {
+                linksResults.innerHTML = '<div class="search-empty">Записи не найдены.</div>';
+                return;
+            }
+            linksResults.innerHTML = '';
+            items.forEach(item => {
+                const row = document.createElement('div');
+                const isSelected = selectedLinks.has(item.id);
+                row.className = 'search-result-item' + (isSelected ? ' selected' : '');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = isSelected;
+                checkbox.addEventListener('change', () => {
+                    const itemLabel = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
+                    if (checkbox.checked) selectedLinks.set(item.id, itemLabel);
+                    else selectedLinks.delete(item.id);
+                    renderSelectedLinkInputs();
+                });
+                const label = document.createElement('label');
+                label.textContent = item.designation + (item.doc_name ? ' — ' + item.doc_name : '');
+                row.appendChild(checkbox);
+                row.appendChild(label);
+                linksResults.appendChild(row);
+            });
+        }
+
+        async function runLinksSearch(query) {
+            if (!linksResults) return;
+            const q = (query || '').trim();
+            if (q.length < 2) {
+                linksResults.innerHTML = '<div class="search-empty">Введите не менее 2 символов.</div>';
+                return;
+            }
+            const resp = await fetch(searchApiUrl + '?q=' + encodeURIComponent(q), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!resp.ok) {
+                linksResults.innerHTML = '<div class="search-empty">Ошибка поиска.</div>';
+                return;
+            }
+            const data = await resp.json();
+            renderSearchResults(data.results || []);
+        }
+
+        async function resolveDesignationLink(designation) {
+            if (!designation) return;
+            const resp = await fetch(searchApiUrl + '?q=' + encodeURIComponent(designation), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const exact = (data.results || []).find(item => item.designation === designation);
+            const target = exact || (data.results || [])[0];
+            if (!target) return;
+            const label = target.designation + (target.doc_name ? ' — ' + target.doc_name : '');
+            selectedLinks.set(target.id, label);
+            renderSelectedLinkInputs();
+        }
 
         function syncType() {
             const isKd = docType.value === 'DD';
@@ -290,7 +500,11 @@
 
         async function loadProducts(projectId) {
             productSelect.innerHTML = '<option value="">— выберите —</option>';
-            if (!projectId) return;
+            if (!additionalProducts) additionalProducts.innerHTML = '';
+            if (!projectId) {
+                if (additionalProductsBlock) additionalProductsBlock.hidden = true;
+                return;
+            }
             const resp = await fetch('{{ url_path("/api/projects/") }}' + projectId + '/products', {
                 credentials: 'same-origin',
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -304,8 +518,35 @@
                 opt.textContent = p.name;
                 productSelect.appendChild(opt);
             });
+            renderAdditionalProducts(products, productSelect.value);
         }
         projectSelect.addEventListener('change', () => loadProducts(projectSelect.value));
+        productSelect.addEventListener('change', async () => {
+            const projectId = projectSelect.value;
+            if (!projectId) return;
+            const resp = await fetch('{{ url_path("/api/projects/") }}' + projectId + '/products', {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const products = Array.isArray(data) ? data : (data.products || []);
+            renderAdditionalProducts(products, productSelect.value);
+        });
+
+        if (linksSearch) {
+            linksSearch.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => runLinksSearch(linksSearch.value), 250);
+            });
+        }
+        document.querySelectorAll('.spec-designation-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const designation = btn.getAttribute('data-designation') || '';
+                if (linksSearch) linksSearch.value = designation;
+                runLinksSearch(designation).then(() => resolveDesignationLink(designation));
+            });
+        });
 
         document.querySelectorAll('.suggest-chip').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -315,6 +556,27 @@
                 if (input) input.value = btn.getAttribute('data-value') || '';
             });
         });
+
+        (function initPageViewer() {
+            const pageCount = {{ page_count or 1 }};
+            const sheetPreview = document.getElementById('sheet-preview');
+            const pageIndicator = document.getElementById('page-indicator');
+            const prevBtn = document.getElementById('page-prev');
+            const nextBtn = document.getElementById('page-next');
+            if (!sheetPreview || pageCount < 1) return;
+            let currentPage = 0;
+            const baseUrl = '{{ page_preview_base_url }}';
+            function showPage(index) {
+                currentPage = Math.max(0, Math.min(pageCount - 1, index));
+                sheetPreview.src = baseUrl + currentPage + '?t=' + Date.now();
+                if (pageIndicator) pageIndicator.textContent = 'Стр. ' + (currentPage + 1) + ' / ' + pageCount;
+                if (prevBtn) prevBtn.disabled = currentPage <= 0;
+                if (nextBtn) nextBtn.disabled = currentPage >= pageCount - 1;
+            }
+            if (prevBtn) prevBtn.addEventListener('click', () => showPage(currentPage - 1));
+            if (nextBtn) nextBtn.addEventListener('click', () => showPage(currentPage + 1));
+            showPage(0);
+        })();
 
         // Draw per-ROI crops from the stamp image
         (function renderRoiCrops() {

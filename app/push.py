@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from pywebpush import WebPushException, webpush
+from requests.exceptions import RequestException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import VAPID_CLAIMS, VAPID_PRIVATE_KEY
@@ -79,6 +80,10 @@ def send_web_push(
         return True
     except WebPushException as exc:
         logger.warning("Web push failed: %s", exc)
+        return False
+    except RequestException as exc:
+        # DNS / network errors to FCM must not break document commit or uploads.
+        logger.warning("Web push transport failed: %s", exc)
         return False
 
 
