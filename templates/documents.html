@@ -293,6 +293,9 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="form-group field-spec" id="is-specification-group">
+                        <label><input type="checkbox" id="is_specification" name="is_specification" value="true"> Электронная спецификация (обозначение без кода вида)</label>
+                    </div>
                     <div class="form-group field-okpo">
                         <label><input type="checkbox" id="is_okpo" name="is_okpo" value="true"> ОКПО</label>
                     </div>
@@ -703,6 +706,8 @@
         const executionInput = document.getElementById('execution');
         const executionGroup = document.getElementById('execution-group');
         const docKindSelect = document.getElementById('doc_kind_code');
+        const isSpecCheckbox = document.getElementById('is_specification');
+        const docKindGroup = document.getElementById('doc-kind-group');
         const docNameInput = document.getElementById('doc_name');
         const designationPreview = document.getElementById('designation-preview');
         const createForm = document.getElementById('create-doc-form');
@@ -779,7 +784,7 @@
             if (docTypeSelect.value === 'DD') {
                 execution = formatExecutionPreview(executionInput ? executionInput.value : '');
             }
-            const kind = docKindSelect.value;
+            const kind = (isSpecCheckbox && isSpecCheckbox.checked) ? '' : docKindSelect.value;
             const docName = docNameInput ? docNameInput.value.trim() : '';
             if (!org && !cls && !docName) {
                 designationPreview.textContent = '';
@@ -792,6 +797,17 @@
             if (docTypeSelect.value === 'DD' && kind) preview += kind;
             if (docName) preview += ' — ' + docName;
             designationPreview.textContent = preview;
+        }
+
+        function syncSpecificationMode() {
+            const isSpec = isSpecCheckbox && isSpecCheckbox.checked && docTypeSelect.value === 'DD';
+            if (docKindGroup) docKindGroup.style.display = isSpec ? 'none' : '';
+            if (isSpec && docKindSelect) docKindSelect.value = '';
+            updateDesignationPreview();
+        }
+
+        if (isSpecCheckbox) {
+            isSpecCheckbox.addEventListener('change', syncSpecificationMode);
         }
 
         async function checkOrg() {

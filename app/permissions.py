@@ -65,6 +65,10 @@ def can_add_document_links(user: User) -> bool:
     return _has(user, "add_document_links")
 
 
+def can_link_specification(user: User) -> bool:
+    return _has(user, "link_specification")
+
+
 def can_remove_document_links(user: User) -> bool:
     return _has(user, "remove_document_links")
 

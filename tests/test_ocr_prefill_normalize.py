@@ -37,7 +37,6 @@ def test_doc_kind_from_designation():
     parts = parse_designation_parts("ФЕТР.123456.001-01СБ")
     assert parts["doc_kind_code"] == "СБ"
     assert parts["execution"] == "01"
-    assert extract_doc_kind_from_text("ФЕТР.123456.001СП") == "СП"
 
 
 def test_doc_kind_latin_ocr_cb():

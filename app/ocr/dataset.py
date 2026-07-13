@@ -22,6 +22,7 @@ from app.models import (
     OcrJob,
     OcrJobStatus,
 )
+from app.specification_helpers import build_dataset_spec_payload
 from app.ocr.service import field_value, latest_extraction
 
 
@@ -120,7 +121,12 @@ def _sample_payload(job: OcrJob, annotation: OcrAnnotation | None, gt: OcrExtrac
             "stamp_size": geometry.get("stamp_size") or labels.get("stamp_size"),
             "stamp_roi_source": (geometry.get("stamp_roi") or {}).get("stamp_roi_source"),
             "dpi": geometry.get("dpi"),
+            "document_role": geometry.get("document_role"),
+            "spec_page_indices": geometry.get("spec_page_indices"),
+            "sections_found": geometry.get("sections_found"),
+            "spec_rows": geometry.get("spec_rows"),
         },
+        "spec_ground_truth": build_dataset_spec_payload(geometry),
     }
 
 
