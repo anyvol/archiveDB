@@ -114,6 +114,8 @@ def _run_backup(types: list[str], triggered_by: str) -> list[dict]:
     if POSTGRES_PASSWORD:
         env["PGPASSWORD"] = POSTGRES_PASSWORD
 
+    created_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
     if "db" in types:
         out = batch_dir / "db.dump"
         cmd = [
@@ -135,6 +137,7 @@ def _run_backup(types: list[str], triggered_by: str) -> list[dict]:
                 "status": "completed",
                 "checksum_sha256": _sha256(out),
                 "triggered_by": triggered_by,
+                "created_at": created_at,
             }
         )
 
@@ -151,6 +154,7 @@ def _run_backup(types: list[str], triggered_by: str) -> list[dict]:
                 "status": "completed",
                 "checksum_sha256": _sha256(out),
                 "triggered_by": triggered_by,
+                "created_at": created_at,
             }
         )
 
@@ -160,26 +164,59 @@ def _run_backup(types: list[str], triggered_by: str) -> list[dict]:
     return results
 
 
+def _batch_created_at(batch_name: str) -> datetime | None:
+    """Parse batch folder stamp (YYYY-MM-DD_HHMM or HHMMSS)."""
+    for fmt, width in (("%Y-%m-%d_%H%M%S", 17), ("%Y-%m-%d_%H%M", 16)):
+        try:
+            return datetime.strptime(batch_name[:width], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _remove_batch_dir(child: Path) -> None:
+    for p in child.rglob("*"):
+        if p.is_file():
+            p.unlink(missing_ok=True)
+    for p in sorted(child.rglob("*"), reverse=True):
+        if p.is_dir():
+            p.rmdir()
+    child.rmdir()
+
+
 def _cleanup_old_backups(schedule: dict | None = None) -> None:
+    """Delete batches older than retention days, but always keep the newest batch."""
     if not BACKUP_DIR.exists():
         return
     retention = _retention_days(schedule)
     cutoff = datetime.utcnow() - timedelta(days=retention)
+    batches: list[tuple[datetime, Path]] = []
     for child in BACKUP_DIR.iterdir():
         if not child.is_dir():
             continue
-        try:
-            created = datetime.strptime(child.name[:16], "%Y-%m-%d_%H%M")
-        except ValueError:
+        created = _batch_created_at(child.name)
+        if created is None:
             continue
+        batches.append((created, child))
+    if not batches:
+        return
+    batches.sort(key=lambda item: item[0], reverse=True)
+    # Never delete the newest backup batch, even if it falls outside retention.
+    for created, child in batches[1:]:
         if created < cutoff:
-            for p in child.rglob("*"):
-                if p.is_file():
-                    p.unlink(missing_ok=True)
-            for p in sorted(child.rglob("*"), reverse=True):
-                if p.is_dir():
-                    p.rmdir()
-            child.rmdir()
+            _remove_batch_dir(child)
+
+
+def _enrich_list_item(item: dict, batch_name: str) -> dict:
+    """Ensure list entries have created_at derived from the batch stamp when missing."""
+    if item.get("created_at"):
+        return item
+    created = _batch_created_at(batch_name)
+    if created is None:
+        return item
+    enriched = dict(item)
+    enriched["created_at"] = created.isoformat() + "Z"
+    return enriched
 
 
 def _list_backups() -> list[dict]:
@@ -187,17 +224,44 @@ def _list_backups() -> list[dict]:
     if not BACKUP_DIR.exists():
         return items
     for batch in sorted(BACKUP_DIR.iterdir(), reverse=True):
+        if not batch.is_dir():
+            continue
         manifest = batch / "manifest.json"
         if manifest.exists():
-            data = json.loads(manifest.read_text(encoding="utf-8"))
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
             if isinstance(data, list):
-                items.extend(data)
+                items.extend(_enrich_list_item(entry, batch.name) for entry in data if isinstance(entry, dict))
             continue
         for path in batch.iterdir():
             if path.suffix == ".dump":
-                items.append({"backup_id": f"{batch.name}_db", "backup_type": "db", "file_path": str(path), "size_bytes": path.stat().st_size, "status": "completed"})
+                items.append(
+                    _enrich_list_item(
+                        {
+                            "backup_id": f"{batch.name}_db",
+                            "backup_type": "db",
+                            "file_path": str(path),
+                            "size_bytes": path.stat().st_size,
+                            "status": "completed",
+                        },
+                        batch.name,
+                    )
+                )
             elif path.name == "files.tar.gz":
-                items.append({"backup_id": f"{batch.name}_files", "backup_type": "files", "file_path": str(path), "size_bytes": path.stat().st_size, "status": "completed"})
+                items.append(
+                    _enrich_list_item(
+                        {
+                            "backup_id": f"{batch.name}_files",
+                            "backup_type": "files",
+                            "file_path": str(path),
+                            "size_bytes": path.stat().st_size,
+                            "status": "completed",
+                        },
+                        batch.name,
+                    )
+                )
     return items
 
 
@@ -261,6 +325,10 @@ async def _auto_backup_loop() -> None:
                 due = _interval_due(schedule, _last_auto_run_at, now)
             else:
                 due = _cron_matches(str(schedule.get("cron", "0 2 * * *")), now)
+                # Avoid re-running within the same UTC minute while cron still matches.
+                if due and _last_auto_run_at is not None:
+                    if _last_auto_run_at.replace(second=0, microsecond=0) == now.replace(second=0, microsecond=0):
+                        due = False
 
             if not due:
                 continue
@@ -269,8 +337,13 @@ async def _auto_backup_loop() -> None:
                 if schedule.get("mode") == "interval":
                     if not _interval_due(schedule, _last_auto_run_at, now):
                         continue
-                elif not _cron_matches(str(schedule.get("cron", "0 2 * * *")), now):
-                    continue
+                else:
+                    if not _cron_matches(str(schedule.get("cron", "0 2 * * *")), now):
+                        continue
+                    if _last_auto_run_at is not None and (
+                        _last_auto_run_at.replace(second=0, microsecond=0) == now.replace(second=0, microsecond=0)
+                    ):
+                        continue
 
                 await asyncio.to_thread(_run_backup, types, "auto-schedule")
                 _last_auto_run_at = now

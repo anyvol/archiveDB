@@ -36,13 +36,14 @@
             <label><input type="checkbox" name="backup_db" value="true" {% if schedule.backup_db %}checked{% endif %}> Бекап базы данных</label><br>
             <label><input type="checkbox" name="backup_files" value="true" {% if schedule.backup_files %}checked{% endif %}> Бекап загруженных файлов</label>
         </div>
+        <input type="hidden" name="retention_days" value="{{ schedule.retention_days }}">
         <button type="submit" class="btn">Сохранить расписание</button>
     </form>
 </div>
 
 <div class="card">
     <h3>Хранение старых бекапов</h3>
-    <p style="font-size:0.9rem;color:#6c757d;">Бекапы старше указанного срока автоматически удаляются при создании нового бекапа.</p>
+    <p style="font-size:0.9rem;color:#6c757d;">Бекапы старше указанного срока удаляются при создании нового. Последний (самый свежий) бекап не удаляется автоматически.</p>
     <form method="post" action="{{ url_path('/admin/backups/schedule') }}">
         <input type="hidden" name="enabled" value="{{ 'true' if schedule.enabled else 'false' }}">
         <input type="hidden" name="mode" value="{{ schedule.mode }}">
@@ -111,7 +112,6 @@
             if (!resp.ok) return;
             const data = await resp.json();
             if (!Array.isArray(data.records)) return;
-            const tbody = table.querySelector('tbody') || table;
             const rows = data.records.map(r => '<tr>'
                 + '<td>' + (r.backup_id || '') + '</td>'
                 + '<td>' + (r.backup_type || '') + '</td>'
@@ -120,9 +120,8 @@
                 + '<td>' + (r.created_at_display || '') + '</td>'
                 + '<td>' + (r.triggered_by || '—') + '</td>'
                 + '</tr>').join('');
-            if (tbody.tagName === 'TABLE') {
-                table.innerHTML = '<tr><th>ID</th><th>Тип</th><th>Размер</th><th>Статус</th><th>Когда</th><th>Кем</th></tr>' + (rows || '<tr><td colspan="6">Бекапов пока нет.</td></tr>');
-            }
+            table.innerHTML = '<tr><th>ID</th><th>Тип</th><th>Размер</th><th>Статус</th><th>Когда</th><th>Кем</th></tr>'
+                + (rows || '<tr><td colspan="6">Бекапов пока нет.</td></tr>');
         } catch (e) { /* ignore */ }
     }
     setInterval(refreshBackupHistory, 30000);

@@ -509,7 +509,9 @@ async def admin_run_backup(
 
     try:
         result = await trigger_backup(types, triggered_by=user.login)
-        await sync_backup_records(session, result.get("results", []))
+        await sync_backup_records(session, result.get("results", []), prune=False)
+        # Re-sync full list so retention deletions are reflected in history.
+        await sync_backup_records(session, await list_remote_backups())
     except Exception:
         logger.exception("Backup failed")
         return _see_other(url_path("/admin/backups?error=run"))

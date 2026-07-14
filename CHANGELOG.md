@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.25.2
+
+- **Administration — backups history:** automatic backups now appear in history. Listing no longer fails when `schedule.json` sits next to backup folders; records sync from the backup agent and removed batches are pruned from the UI history.
+- **Administration — backup retention:** cleanup always keeps the newest backup batch so the last remaining backup is never deleted automatically when older batches are purged.
+- **Administration — backups UI:** history table refresh works again; saving the schedule no longer resets retention days to 30.
+
 ## 0.25.1
 
 - **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
