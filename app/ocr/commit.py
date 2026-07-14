@@ -46,6 +46,7 @@ from app.ocr.normalize import (
 from app.ocr.service import field_value, latest_extraction
 from app.product_helpers import validate_product_belongs_to_project
 from app.project_helpers import get_project_by_id
+from app.ocr.commit_spec import OcrCommitResult, commit_with_specification
 
 
 def _form_int_list(form: dict[str, Any], key: str) -> list[int]:
@@ -156,6 +157,63 @@ async def commit_ocr_job(
             continue
         seen_links.add(target_id)
         unique_link_ids.append(target_id)
+
+    extraction = latest_extraction(job)
+    geometry = dict((extraction.geometry if extraction else {}) or {})
+    document_role = geometry.get("document_role")
+    if geometry.get("has_specification") and document_role in (
+        "standalone_specification",
+        "combined_a4",
+        "assembly_with_spec_pages",
+    ):
+        org_id = await get_or_create_org_id(session, org_code, is_okpo=is_okpo, org_name=org_name)
+        class_code_id = await get_or_create_class_id(session, class_code, is_kd=is_kd)
+        if is_kd:
+            if reg_number:
+                prni_to_save = int(reg_number)
+            else:
+                prni_to_save = await get_next_prni(
+                    session,
+                    org_id,
+                    class_code_id,
+                    org_code,
+                    class_code,
+                    execution=execution,
+                    doc_kind_code=doc_kind_code or None,
+                )
+        else:
+            raise HTTPException(status_code=400, detail="Спецификация поддерживается только для КД.")
+        spec_result = await commit_with_specification(
+            session,
+            job,
+            user,
+            form,
+            extraction=extraction,
+            geometry=geometry,
+            org_id=org_id,
+            class_code_id=class_code_id,
+            org_code=org_code,
+            class_code=class_code,
+            prni=prni_to_save,
+            execution=execution,
+            doc_kind_code=doc_kind_code or "СБ",
+            project_id=project.id,
+            product_id=product.id,
+            doc_name=doc_name,
+            developed_by=developed_by,
+            reviewed_by=reviewed_by,
+            approved_by=approved_by,
+            developer_signed_date=developer_signed_date,
+            reviewer_signed_date=reviewer_signed_date,
+            approver_signed_date=approver_signed_date,
+            has_developer_signature=bool(has_developer_signature),
+            has_reviewer_signature=bool(has_reviewer_signature),
+            has_approver_signature=bool(has_approver_signature),
+            document_format=document_format,
+            extra_product_ids=extra_product_ids,
+        )
+        setattr(spec_result.primary, "_ocr_commit_result", spec_result)
+        return spec_result.primary
 
     base_doc = BaseDocument(
         type=doc_type,

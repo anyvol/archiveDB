@@ -28,6 +28,7 @@ class DocumentStatus(str, enum.Enum):
     approved = "approved"
     requires_correction = "requires_correction"
     correction_requested = "correction_requested"
+    auto_draft = "auto_draft"
 
 
 class NotificationEventType(str, enum.Enum):
@@ -71,6 +72,7 @@ DOCUMENT_STATUS_LABELS = {
     DocumentStatus.approved: "Утверждено",
     DocumentStatus.requires_correction: "Требуется исправление",
     DocumentStatus.correction_requested: "Запрошено исправление",
+    DocumentStatus.auto_draft: "Создано автоматически, нужна информация",
 }
 
 DISPLAY_STATUS_NO_FILE = "Файл не загружен"
@@ -80,7 +82,20 @@ DOCUMENT_TYPE_LABELS = {
     "TD": "ТД",
 }
 
-DOC_KIND_CODES = ("СБ", "СП", "ГЧ", "ТУ", "Э2", "Е1", "РЭ", "ВП", "ПС")
+DOC_KIND_CODES = ("СБ", "ГЧ", "ТУ", "Э2", "Е1", "РЭ", "ВП", "ПС")
+
+GOST_SPEC_SECTIONS = (
+    "Документация",
+    "Комплексы",
+    "Сборочные единицы",
+    "Детали",
+    "Стандартные изделия",
+    "Прочие изделия",
+    "Материалы",
+    "Комплекты",
+)
+
+SPECIFICATION_FOLDER = "Спецификация"
 
 GOVERNED_DOCUMENT_TYPES = ("DD", "TD")
 
@@ -258,6 +273,36 @@ class DocumentLink(Base):
     creator = relationship("User")
 
 
+class SpecificationEntrySource(str, enum.Enum):
+    ocr = "ocr"
+    manual = "manual"
+
+
+class SpecificationEntry(Base):
+    """Строка таблицы спецификации (электронная спецификация по ГОСТ 2.055)."""
+
+    __tablename__ = "specification_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    host_document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    section = Column(String(64), nullable=False, default="")
+    position = Column(String(16), nullable=True)
+    row_format = Column(String(16), nullable=True)
+    zone = Column(String(16), nullable=True)
+    row_designation = Column(String(128), nullable=True)
+    row_name = Column(String(512), nullable=True)
+    quantity = Column(String(32), nullable=True)
+    note = Column(String(512), nullable=True)
+    linked_document_id = Column(Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    match_confidence = Column(String(16), nullable=True)
+    source = Column(String(16), nullable=False, default=SpecificationEntrySource.ocr.value)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    host_document = relationship("BaseDocument", foreign_keys=[host_document_id], back_populates="specification_entries")
+    linked_document = relationship("BaseDocument", foreign_keys=[linked_document_id])
+
+
 class Organization(Base):
     __tablename__ = "organizations"
     id = Column(Integer, primary_key=True)
@@ -319,6 +364,10 @@ class BaseDocument(Base):
     correction_request_comment = Column(Text, nullable=True)
     registration_notified_at = Column(DateTime, nullable=True)
     auto_recognized = Column(Boolean, default=False, nullable=False)
+    is_specification = Column(Boolean, default=False, nullable=False)
+    contains_embedded_specification = Column(Boolean, default=False, nullable=False)
+    assembly_document_id = Column(Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    specification_document_id = Column(Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
 
     project = relationship("Project", back_populates="documents")
     product = relationship("Product", back_populates="documents")
@@ -369,6 +418,23 @@ class BaseDocument(Base):
         back_populates="target_document",
         foreign_keys="DocumentLink.target_document_id",
         cascade="all, delete-orphan",
+    )
+    specification_entries = relationship(
+        "SpecificationEntry",
+        back_populates="host_document",
+        foreign_keys="SpecificationEntry.host_document_id",
+        cascade="all, delete-orphan",
+        order_by="SpecificationEntry.sort_order",
+    )
+    assembly_document = relationship(
+        "BaseDocument",
+        foreign_keys=[assembly_document_id],
+        remote_side="BaseDocument.id",
+    )
+    specification_document = relationship(
+        "BaseDocument",
+        foreign_keys=[specification_document_id],
+        remote_side="BaseDocument.id",
     )
 
 
@@ -631,10 +697,10 @@ OCR_JOB_STATUS_LABELS = {
     OcrJobStatus.needs_review: "На проверке",
     OcrJobStatus.needs_annotation: "Нужна разметка",
     OcrJobStatus.ready: "Готово",
-    OcrJobStatus.committed: "Создан документ",
+    OcrJobStatus.committed: "Принят",
     OcrJobStatus.failed: "Ошибка",
     OcrJobStatus.discarded: "Отклонено",
-    OcrJobStatus.labeled: "Учебный пример",
+    OcrJobStatus.labeled: "Принят (учебный)",
 }
 
 OCR_INBOX_FOLDER = "_ocr_inbox"

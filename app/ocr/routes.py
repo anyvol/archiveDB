@@ -311,7 +311,9 @@ async def ocr_review_page(
     if job.status == OcrJobStatus.discarded:
         raise HTTPException(status_code=400, detail="Задача отклонена.")
     if job.status == OcrJobStatus.committed and job.document_id:
-        return RedirectResponse(url=url_path(f"/documents/{job.document_id}"), status_code=303)
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
+    if job.status == OcrJobStatus.labeled:
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
 
     extraction = latest_extraction(job)
     prefill = prefill_from_extraction(extraction)
@@ -368,7 +370,13 @@ async def ocr_review_page(
             "default_developed_by": prefill.get("developed_by") or auth.full_name or "",
             "page_count": geometry.get("page_count") or job.page_count,
             "has_specification": bool(geometry.get("has_specification")),
+            "document_role": geometry.get("document_role"),
+            "is_specification_document": bool(geometry.get("is_specification_document")),
             "spec_page_indices": geometry.get("spec_page_indices") or [],
+            "assembly_page_indices": geometry.get("assembly_page_indices") or [],
+            "embedded_spec_pages": geometry.get("embedded_spec_pages") or [],
+            "sections_found": geometry.get("sections_found") or [],
+            "spec_rows": geometry.get("spec_rows") or [],
             "spec_designations": geometry.get("spec_designations") or [],
             "search_designations_url": url_path("/api/documents/search-designations"),
             "source_file_url": url_path(f"/api/ocr/jobs/{job.id}/source"),
@@ -397,7 +405,7 @@ async def ocr_annotate_page(
     if job.status == OcrJobStatus.discarded:
         raise HTTPException(status_code=400, detail="Задача отклонена.")
     if job.status == OcrJobStatus.committed and job.document_id:
-        return RedirectResponse(url=url_path(f"/documents/{job.document_id}"), status_code=303)
+        return RedirectResponse(url=url_path(f"/ocr/batches/{job.batch_id}"), status_code=303)
 
     extraction = latest_extraction(job)
     annotation = await latest_annotation(session, job_id)
@@ -519,9 +527,16 @@ async def api_commit_ocr_job(
             )
         raise
 
-    redirect = url_path(f"/documents/{doc.id}")
+    batch_id = job.batch_id
+    redirect = url_path(f"/ocr/batches/{batch_id}")
+    commit_extra = getattr(doc, "_ocr_commit_result", None)
+    payload = {"ok": True, "document_id": doc.id, "redirect": redirect, "batch_id": batch_id}
+    if commit_extra:
+        payload["message"] = commit_extra.message
+        if commit_extra.secondary:
+            payload["secondary_document_id"] = commit_extra.secondary.id
     if wants_json_response(request) or form.get("_ajax") == "1":
-        return JSONResponse({"ok": True, "document_id": doc.id, "redirect": redirect})
+        return JSONResponse(payload)
     return RedirectResponse(url=redirect, status_code=303)
 
 

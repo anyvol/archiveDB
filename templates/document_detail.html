@@ -39,6 +39,7 @@
         .status-approved { color: #155724; background: #d4edda; }
         .status-correction { color: #721c24; background: #f8d7da; }
         .status-correction-requested { color: #004085; background: #cce5ff; }
+        .status-auto-draft { color: #856404; background: #ffe8a1; border: 1px solid #ffca2c; }
         .hint { font-size: 0.875rem; color: #6c757d; margin: 0.5rem 0 1rem; line-height: 1.45; }
         .btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; font-size: 0.875rem; }
         .btn-primary { background: #007bff; color: white; }
@@ -132,6 +133,8 @@
         <div class="success">Применяемость удалена.</div>
         {% elif success == 'links_added' %}
         <div class="success">Ссылки добавлены.</div>
+        {% elif success == 'spec_linked' %}
+        <div class="success">Спецификация привязана к сборочному чертежу.</div>
         {% elif success == 'link_removed' %}
         <div class="success">Ссылка удалена.</div>
         {% endif %}
@@ -272,6 +275,61 @@
                 <p class="hint">Запись не применена в других проектах и изделиях.</p>
                 {% endif %}
             </div>
+
+            {% if doc.design_document and doc.design_document.doc_kind_code == 'СБ' %}
+            <div class="record-section">
+                <div class="record-label">Спецификация</div>
+                {% if doc.contains_embedded_specification %}
+                <p class="hint">Спецификация на листе СБ (совмещённый формат А4).</p>
+                {% elif linked_specification %}
+                {% set spec_des = linked_specification.design_document.designation if linked_specification.design_document else ('#' ~ linked_specification.id) %}
+                <p><a href="{{ url_path('/documents/' ~ linked_specification.id) }}">{{ spec_des }}{% if linked_specification.doc_name %} — {{ linked_specification.doc_name }}{% endif %}</a></p>
+                {% else %}
+                <p class="hint">Спецификация не привязана.</p>
+                {% if can_link_specification(user) %}
+                <button type="button" class="btn btn-secondary btn-compact" id="find-spec-btn">Найти спецификацию</button>
+                <button type="button" class="btn btn-secondary btn-compact" id="open-links-modal-spec">Привязать</button>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if doc.is_specification and assembly_parent %}
+            <div class="record-section">
+                <div class="record-label">Сборочный чертеж</div>
+                {% set asm_des = assembly_parent.design_document.designation if assembly_parent.design_document else ('#' ~ assembly_parent.id) %}
+                <p><a href="{{ url_path('/documents/' ~ assembly_parent.id) }}">{{ asm_des }}{% if assembly_parent.doc_name %} — {{ assembly_parent.doc_name }}{% endif %}</a></p>
+            </div>
+            {% endif %}
+
+            {% if spec_entries_grouped %}
+            <div class="record-section">
+                <div class="record-label">Состав спецификации</div>
+                {% for section_name, entries in spec_entries_grouped.items() %}
+                <details {% if loop.first %}open{% endif %} style="margin-top:0.5rem;">
+                    <summary><strong>{{ section_name or 'Прочее' }}</strong> ({{ entries|length }})</summary>
+                    <ul class="record-list" style="margin-top:0.5rem;">
+                        {% for entry in entries %}
+                        <li>
+                            {% if entry.position %}<span class="record-label">Поз. {{ entry.position }}</span>{% endif %}
+                            {% if entry.linked_document %}
+                            {% set ld = entry.linked_document %}
+                            {% set ld_des = ld.design_document.designation if ld.design_document else (ld.tech_document.designation if ld.tech_document else ('#' ~ ld.id)) %}
+                            <a href="{{ url_path('/documents/' ~ ld.id) }}">{{ entry.row_designation or ld_des }}</a>
+                            {% if ld.status.value == 'auto_draft' %}<span class="status-badge status-auto-draft">нужна информация</span>{% endif %}
+                            {% elif entry.row_designation %}
+                            <span>{{ entry.row_designation }}</span>
+                            <span class="status-badge status-auto-draft">нет в архиве</span>
+                            {% endif %}
+                            {% if entry.row_name %} — {{ entry.row_name }}{% endif %}
+                            {% if entry.quantity %} <span class="record-label">Кол. {{ entry.quantity }}</span>{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </details>
+                {% endfor %}
+            </div>
+            {% endif %}
 
             <div class="record-section">
                 <div class="record-label">Ссылки</div>
@@ -542,6 +600,11 @@
             </div>
             <form method="post" action="{{ url_path('/documents/' ~ doc.id ~ '/links') }}" id="links-form">
                 <div id="links-selected-inputs"></div>
+                {% if doc.design_document and doc.design_document.doc_kind_code == 'СБ' and can_link_specification(user) %}
+                <div class="form-group">
+                    <label><input type="checkbox" name="link_as_specification" id="link-as-specification" value="true"> Это спецификация (привязать к СБ, не обычная ссылка)</label>
+                </div>
+                {% endif %}
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary modal-cancel">Отмена</button>
                     <button type="submit" class="btn btn-primary" id="links-submit">Добавить ссылки</button>
@@ -914,6 +977,40 @@
 
         if (openModal === 'applicability' && applicabilityModal) applicabilityModal.classList.add('active');
         if (openModal === 'links' && linksModal && openLinksBtn) openLinksBtn.click();
+
+        const findSpecBtn = document.getElementById('find-spec-btn');
+        const openLinksSpecBtn = document.getElementById('open-links-modal-spec');
+        const specSearchBase = {{ spec_search_base|tojson }};
+        if (findSpecBtn) {
+            findSpecBtn.addEventListener('click', async () => {
+                try {
+                    const resp = await fetch('{{ url_path('/api/documents/' ~ doc.id ~ '/find-specification') }}');
+                    const data = await resp.json();
+                    const items = data.results || [];
+                    if (!items.length) {
+                        alert('Спецификация с обозначением «' + (data.search_base || specSearchBase) + '» не найдена.');
+                        return;
+                    }
+                    const lines = items.map(i => i.designation + (i.doc_name ? ' — ' + i.doc_name : '')).join('\n');
+                    if (confirm('Найдены записи:\n\n' + lines + '\n\nОткрыть первую?')) {
+                        window.location.href = '{{ url_path('/documents') }}/' + items[0].id;
+                    }
+                } catch (e) {
+                    alert('Ошибка поиска спецификации.');
+                }
+            });
+        }
+        if (openLinksSpecBtn && linksModal && openLinksBtn) {
+            openLinksSpecBtn.addEventListener('click', () => {
+                openLinksBtn.click();
+                const specCb = document.getElementById('link-as-specification');
+                if (specCb) specCb.checked = true;
+                if (linksSearch && specSearchBase) {
+                    linksSearch.value = specSearchBase;
+                    runLinksSearch(specSearchBase);
+                }
+            });
+        }
     </script>
 </body>
 </html>

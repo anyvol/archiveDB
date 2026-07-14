@@ -17,7 +17,7 @@
         .status-processing, .status-queued { color: #856404; }
         .status-failed { color: #721c24; }
         .status-needs_review, .status-ready { color: #155724; }
-        .status-committed { color: #004085; }
+        .status-committed, .status-labeled { color: #004085; }
         .hint { color: #6c757d; font-size: 0.9rem; margin-bottom: 1rem; }
         .actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
     </style>
@@ -47,10 +47,10 @@
                     <td>
                         {% if job.status.value == 'committed' and job.document_id %}
                         <a class="btn" href="{{ url_path('/documents/' ~ job.document_id) }}">Документ</a>
-                        {% elif job.status.value != 'discarded' %}
-                        <a class="btn" href="{{ url_path('/ocr/jobs/' ~ job.id ~ '/review') }}">Сверка</a>
-                        {% else %}
+                        {% elif job.status.value in ('labeled', 'discarded') %}
                         —
+                        {% else %}
+                        <a class="btn" href="{{ url_path('/ocr/jobs/' ~ job.id ~ '/review') }}">Сверка</a>
                         {% endif %}
                     </td>
                 </tr>

@@ -7,6 +7,7 @@ STATUS_CSS_CLASS = {
     DocumentStatus.approved: "status-approved",
     DocumentStatus.requires_correction: "status-correction",
     DocumentStatus.correction_requested: "status-correction-requested",
+    DocumentStatus.auto_draft: "status-auto-draft",
 }
 
 

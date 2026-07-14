@@ -11,7 +11,8 @@ from typing import Any
 from format_detect import detect_format_from_file
 from pipeline.ocr_engine import engine_name, ocr_cell
 from pipeline.render import deskew, render_pages, save_rgb
-from pipeline.spec_detect import detect_specification_pages
+from pipeline.spec_detect import classify_document
+from pipeline.spec_extract import extract_spec_rows_from_pages
 from pipeline.stamp import extract_stamp, iter_cells
 
 logger = logging.getLogger(__name__)
@@ -138,20 +139,43 @@ def run_extract(
     low_conf_fields = [k for k, f in fields.items() if f.get("value") and (f.get("conf") or 0) < 0.5]
 
     spec_analysis: dict[str, Any] = {}
-    if total_pages > 1:
-        try:
-            spec_analysis = detect_specification_pages(all_pages_raw)
-        except Exception as exc:
-            logger.warning("spec page detection failed job=%s: %s", job_id, exc)
+    spec_rows: list[dict[str, Any]] = []
+    try:
+        stamp_roi_norm = None
+        if stamp_meta and isinstance(stamp_meta.get("stamp_roi_norm"), (list, tuple)):
+            roi = stamp_meta["stamp_roi_norm"]
+            if len(roi) == 4:
+                stamp_roi_norm = float(roi[1])
+        spec_analysis = classify_document(
+            all_pages_raw,
+            format_hint=fmt_hint or format_code,
+            stamp_roi_top_norm=stamp_roi_norm,
+        )
+        if spec_analysis.get("has_specification"):
+            spec_rows = extract_spec_rows_from_pages(
+                all_pages_raw,
+                spec_analysis.get("spec_page_indices") or [],
+                embedded_pages=spec_analysis.get("embedded_spec_pages"),
+            )
+    except Exception as exc:
+        logger.warning("spec classification failed job=%s: %s", job_id, exc)
 
     geometry = {
         "format_from_dims": format_code,
         "format_from_ocr": format_from_ocr,
         "page_count": total_pages,
         "page_preview_paths": page_preview_paths,
+        "document_role": spec_analysis.get("document_role"),
         "has_specification": spec_analysis.get("has_specification", False),
+        "is_specification_document": spec_analysis.get("is_specification_document", False),
         "spec_page_indices": spec_analysis.get("spec_page_indices", []),
-        "spec_designations": spec_analysis.get("designations", []),
+        "assembly_page_indices": spec_analysis.get("assembly_page_indices", []),
+        "embedded_spec_pages": spec_analysis.get("embedded_spec_pages", []),
+        "spec_designations": spec_analysis.get("spec_designations", spec_analysis.get("designations", [])),
+        "sections_found": spec_analysis.get("sections_found", []),
+        "spec_rows": spec_rows,
+        "detection_confidence": spec_analysis.get("detection_confidence", 0.0),
+        "markers": spec_analysis.get("markers", {}),
         "stamp_roi": stamp_meta,
         "stamp_bbox_px": list(stamp_bbox),
         "stamp_size": [int(stamp.shape[1]), int(stamp.shape[0])],

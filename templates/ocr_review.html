@@ -73,8 +73,21 @@
         <div class="warning">Распознавание слабое{% if job.error_message %}: {{ job.error_message }}{% endif %}. Проверьте поля и при необходимости исправьте вручную.</div>
         {% elif not ocr_available %}
         <div class="warning">Сервис OCR сейчас недоступен. Можно заполнить карточку вручную и создать документ.</div>
+        {% elif has_specification %}
+        <div class="warning">
+            {% if document_role == 'combined_a4' %}
+            Обнаружен совмещённый лист А4: СБ со спецификацией на одном листе. Будет создана одна запись СБ с пометкой «спецификация на листе».
+            {% elif document_role == 'assembly_with_spec_pages' %}
+            В файле {{ page_count }} стр.: сборочный чертёж и отдельные листы спецификации. Будут созданы две записи (СБ и спецификация) с разделением файла.
+            {% elif document_role == 'standalone_specification' %}
+            Документ распознан как спецификация.
+            {% else %}
+            Обнаружена спецификация (стр. {{ spec_page_indices|join(', ') if spec_page_indices else '?' }}).
+            {% endif %}
+            {% if sections_found %} Разделы: {{ sections_found|join(', ') }}.{% endif %}
+        </div>
         {% elif page_count and page_count > 1 %}
-        <div class="warning">В файле {{ page_count }} стр.{% if has_specification %} Обнаружена спецификация (стр. {{ spec_page_indices|join(', ') if spec_page_indices else '?' }}){% endif %}. Проверьте ссылки на входящие документы ниже.</div>
+        <div class="warning">В файле {{ page_count }} стр. Проверьте поля штампа и при необходимости ссылки.</div>
         {% else %}
         <p class="hint">Проверьте распознанные поля штампа. Жёлтая подсветка — низкая уверенность OCR. Подсказки ФИО и кода организации не подставляются автоматически — нажмите chip, чтобы выбрать. Новый проект и изделие создаются в разделе «Проекты».</p>
         {% endif %}
@@ -300,7 +313,38 @@
                         <label><input type="checkbox" name="has_approver_signature" value="true" {% if prefill.has_approver_signature == 'true' %}checked{% endif %}> Подпись утвердившего в штампе</label>
                     </div>
 
-                    {% if can_add_document_links(user) %}
+                    {% if spec_rows %}
+                    <div class="links-section" id="spec-rows-section">
+                        <span class="section-label">Строки спецификации (проверьте и исправьте)</span>
+                        <p class="hint">Строки с низкой уверенностью привязки можно дополнить вручную после создания записи.</p>
+                        <div style="max-height:240px;overflow:auto;border:1px solid #dee2e6;border-radius:4px;">
+                            <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                                <thead><tr style="background:#f8f9fa;">
+                                    <th style="padding:0.35rem;text-align:left;">Раздел</th>
+                                    <th style="padding:0.35rem;text-align:left;">Обозначение</th>
+                                    <th style="padding:0.35rem;text-align:left;">Наименование</th>
+                                    <th style="padding:0.35rem;text-align:left;">Кол.</th>
+                                </tr></thead>
+                                <tbody id="spec-rows-body">
+                                {% for row in spec_rows %}
+                                <tr>
+                                    <td style="padding:0.25rem;"><input name="spec_row_section_{{ loop.index0 }}" value="{{ row.section or '' }}" style="width:100%;"></td>
+                                    <td style="padding:0.25rem;"><input name="spec_row_designation_{{ loop.index0 }}" value="{{ row.designation or row.row_designation or '' }}" style="width:100%;"></td>
+                                    <td style="padding:0.25rem;"><input name="spec_row_name_{{ loop.index0 }}" value="{{ row.name or row.row_name or '' }}" style="width:100%;"></td>
+                                    <td style="padding:0.25rem;"><input name="spec_row_qty_{{ loop.index0 }}" value="{{ row.quantity or '' }}" style="width:4rem;"></td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <input type="hidden" name="spec_rows_json" id="spec-rows-json" value="">
+                        <div class="checkbox-group form-group" style="margin-top:0.5rem;">
+                            <label><input type="checkbox" name="auto_create_spec_rows" value="true" checked> Создать записи «нужна информация» для строк без совпадения в архиве</label>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if can_add_document_links(user) and not is_specification_document and document_role != 'standalone_specification' %}
                     <div class="links-section">
                         <span class="section-label">Ссылки на записи</span>
                         <p class="hint">Для СБ со спецификацией укажите документы, перечисленные на листе спецификации.</p>
@@ -603,6 +647,28 @@
             if (stamp.complete && stamp.naturalWidth) paint();
             else stamp.addEventListener('load', paint);
         })();
+
+        const reviewForm = document.getElementById('ocr-commit-form');
+        const specRowsJson = document.getElementById('spec-rows-json');
+        if (reviewForm && specRowsJson) {
+            reviewForm.addEventListener('submit', () => {
+                const rows = [];
+                document.querySelectorAll('#spec-rows-body tr').forEach((tr, index) => {
+                    const section = tr.querySelector(`input[name="spec_row_section_${index}"]`);
+                    const designation = tr.querySelector(`input[name="spec_row_designation_${index}"]`);
+                    const name = tr.querySelector(`input[name="spec_row_name_${index}"]`);
+                    const qty = tr.querySelector(`input[name="spec_row_qty_${index}"]`);
+                    rows.push({
+                        section: section ? section.value : '',
+                        designation: designation ? designation.value : '',
+                        name: name ? name.value : '',
+                        quantity: qty ? qty.value : '',
+                        sort_order: index,
+                    });
+                });
+                specRowsJson.value = JSON.stringify(rows);
+            });
+        }
     </script>
     {% include "_session_auth.html" %}
 </body>
