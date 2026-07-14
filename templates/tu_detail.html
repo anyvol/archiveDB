@@ -28,7 +28,7 @@
             <h2>ТУ {{ record.number }}</h2>
             <div class="record-line"><span class="record-label">Наименование</span><br>{{ record.name }}</div>
             <div class="record-line"><span class="record-label">ОКПД2</span><br>{{ record.okpd2 }}</div>
-            <div class="record-line"><span class="record-label">Изделие (порядковый №)</span><br>{{ record.product_index }}</div>
+            <div class="record-line"><span class="record-label">Порядковый № ТУ</span><br>{{ record.product_index }}</div>
             <div class="record-line"><span class="record-label">ОКПО</span><br>{{ record.okpo }}</div>
             <div class="record-line"><span class="record-label">Год выпуска</span><br>{{ record.year }}</div>
             <div class="record-line"><span class="record-label">Дата регистрации</span><br>{{ format_datetime(record.created_at, app_timezone) }}</div>

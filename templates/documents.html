@@ -206,10 +206,11 @@
             </div>
 
             <div id="tu-create-fields" class="archive-create-fields">
-                <p><small>Формат номера: ОКПД2-изделие-порядковый номер-ОКПО-год (например, 26.20.13-002-95979699-2024).</small></p>
+                <p><small>Формат: ТУ XX.XX.XX–YYY–ZZZZZZZZ–ГГГГ (например, 26.20.13-002-95979699-2024).<br>
+                XX.XX.XX — первые 6 цифр кода продукции по ОКПД 2; YYY — порядковый номер ТУ (присваивает организация-разработчик); ZZZZZZZZ — ОКПО организации; ГГГГ — год утверждения.</small></p>
                 <div class="designation-row">
-                    <div class="form-group"><label for="tu_okpd2">ОКПД2 *</label><input type="text" id="tu_okpd2" name="tu_okpd2" placeholder="26.20.13" maxlength="32" pattern="\d{2}\.\d{2}\.\d{2}"></div>
-                    <div class="form-group"><label for="tu_product_index">Изделие *</label><input type="text" id="tu_product_index" name="tu_product_index" placeholder="002" maxlength="3" pattern="\d{1,3}"></div>
+                    <div class="form-group"><label for="tu_okpd2">ОКПД 2 *</label><input type="text" id="tu_okpd2" name="tu_okpd2" placeholder="26.20.13" maxlength="32" pattern="\d{2}\.\d{2}\.\d{2}"></div>
+                    <div class="form-group"><label for="tu_product_index">Порядковый № ТУ *</label><input type="text" id="tu_product_index" name="tu_product_index" placeholder="002" maxlength="3" pattern="\d{1,3}"></div>
                     <div class="form-group"><label for="tu_okpo">ОКПО *</label><input type="text" id="tu_okpo" name="tu_okpo" placeholder="95979699" maxlength="8" pattern="\d{8}" value="{% if preferred_org_okpo and preferred_org_code %}{{ preferred_org_code }}{% else %}95979699{% endif %}"></div>
                     <div class="form-group"><label for="tu_year">Год *</label><input type="number" id="tu_year" name="tu_year" min="2000" max="2100" placeholder="2024"></div>
                 </div>
@@ -1169,7 +1170,7 @@
                         return;
                     }
                     if (!tuProductIndex || !/^\d{1,3}$/.test(tuProductIndex.value.trim())) {
-                        showFormMessage('Укажите порядковый номер изделия (1–3 цифры).', 'error');
+                        showFormMessage('Укажите порядковый номер ТУ (1–3 цифры).', 'error');
                         return;
                     }
                     if (!tuOkpo || !/^\d{8}$/.test(tuOkpo.value.trim())) {
