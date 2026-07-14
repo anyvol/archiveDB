@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.26.0
+
+- **Electronic specification (GOST 2.055 / 2.106):** GOST-based detection of specification pages and `document_role` in OCR geometry (`standalone_specification`, `assembly_with_spec_pages`, `combined_a4`, `assembly_drawing`).
+- **Archive model:** `is_specification`, `contains_embedded_specification`, SB↔spec links (`specification_document_id`, `assembly_document_id`), table `specification_entries` with GOST sections.
+- **OCR commit:** separate SB + spec records with split PDF for multi-page files; combined A4 saves one SB with embedded spec; auto-draft records (`auto_draft` status) for unmatched spec rows.
+- **Document card:** «Спецификация» block for СБ (find by designation from card, link with «Это спецификация»); «Состав спецификации» grouped by section.
+- **Permissions:** `link_specification` in role matrix (defaults mirror document links).
+- **Dataset export:** `spec_ground_truth` in labels JSON for future ML on specifications.
+- **Doc kind cleanup:** removed `СП` from KD kind codes; electronic specifications use `is_specification` only.
+- **OCR batch workflow:** after «Принять и создать документ» or «Сохранить как учебный пример» you return to the batch page; accepted jobs show status «Принят» / «Принят (учебный)».
+
 ## 0.25.2
 
 - **Administration — backups history:** automatic backups now appear in history. Listing no longer fails when `schedule.json` sits next to backup folders; records sync from the backup agent and removed batches are pruned from the UI history.
@@ -11,6 +22,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.25.1
 
+- **Alembic:** restored missing revision `s9t0u1v2w3x4` (specification schema) so API startup no longer fails with `Can't locate revision identified by 's9t0u1v2w3x4'` after a database was upgraded during the 0.26.0 preview branch.
 - **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
 - **OCR review — multiple products:** on the verification screen you can assign additional products from the same project (applicability) alongside the primary product.
 - **OCR — multi-page SB / specification:** multi-page PDFs are scanned for specification sheets; recognized designations are suggested on the review screen with a link picker to attach referenced archive records at commit time.

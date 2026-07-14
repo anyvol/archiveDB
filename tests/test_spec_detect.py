@@ -1,10 +1,15 @@
 """Tests for multi-page specification detection in OCR pipeline."""
 
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 
-from pipeline.spec_detect import detect_specification_pages
+OCR_DIR = Path(__file__).resolve().parents[1] / "ocr"
+sys.path.insert(0, str(OCR_DIR))
+
+from pipeline.spec_detect import detect_specification_pages  # noqa: E402
 
 
 def _blank_page() -> np.ndarray:
@@ -26,8 +31,8 @@ def test_detect_specification_pages_finds_title_page():
         if h < 200:
             return {"raw": "СПЕЦИФИКАЦИЯ", "value": "СПЕЦИФИКАЦИЯ", "conf": 0.9}
         return {
-            "raw": "ФЕТР.123456.001СБ ФЕТР.123456.002СП ФЕТР.123456.003ГЧ",
-            "value": "ФЕТР.123456.001СБ ФЕТР.123456.002СП ФЕТР.123456.003ГЧ",
+            "raw": "ФЕТР.123456.001СБ ФЕТР.123456.002 ГЧ ФЕТР.123456.003ГЧ",
+            "value": "ФЕТР.123456.001СБ ФЕТР.123456.002 ГЧ ФЕТР.123456.003ГЧ",
             "conf": 0.8,
         }
 

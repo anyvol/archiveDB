@@ -80,7 +80,14 @@ from app.document_format import DOCUMENT_FORMATS, DOCUMENT_FORMAT_LABELS, is_val
 from app.metadata_helpers import detect_document_format_from_bytes
 from app.name_helpers import fetch_known_person_names, normalize_person_name
 from app.config import UPLOAD_DIR, ROOT_PATH, url_path, app_scope, SERVICE_VERSION, VAPID_PUBLIC_KEY
-from app.project_delete import delete_project as delete_project_record
+from app.specification_helpers import (
+    find_specification_for_assembly,
+    get_entries_grouped_by_section,
+    is_assembly_drawing,
+    link_specification_to_assembly,
+    search_specification_candidates,
+    strip_assembly_kind_suffix,
+)
 from app.permissions import (
     can_create_document,
     can_manage_project,
@@ -92,6 +99,7 @@ from app.permissions import (
     can_request_minor_correction,
     can_respond_correction_request,
     can_add_document_links,
+    can_link_specification,
     can_add_applicability,
     can_remove_applicability,
     can_remove_document_links,
@@ -249,6 +257,7 @@ templates.env.globals["can_respond_correction_request"] = can_respond_correction
 templates.env.globals["is_governed_document"] = is_governed_document
 templates.env.globals["can_remove_document_links"] = can_remove_document_links
 templates.env.globals["can_add_document_links"] = can_add_document_links
+templates.env.globals["can_link_specification"] = can_link_specification
 templates.env.globals["can_add_applicability"] = can_add_applicability
 templates.env.globals["can_remove_applicability"] = can_remove_applicability
 templates.env.globals["can_manage_project"] = can_manage_project
@@ -1213,6 +1222,7 @@ async def create_document_record(
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
+    is_specification = form_data.get("is_specification") == "true"
     execution_raw = (form_data.get("execution") or "").strip()
     existing_project_id = (form_data.get("existing_project_id") or "").strip()
     existing_product_id = (form_data.get("existing_product_id") or "").strip()
@@ -1231,6 +1241,11 @@ async def create_document_record(
         raise HTTPException(status_code=400, detail="Неверный код вида документа.")
 
     is_kd = doc_type == "DD"
+    if is_specification and not is_kd:
+        raise HTTPException(status_code=400, detail="Спецификация поддерживается только для КД.")
+    if is_specification:
+        doc_kind_code = ""
+
     execution = parse_execution_input(execution_raw) if is_kd else None
     if not is_kd and execution_raw:
         raise HTTPException(status_code=400, detail="Исполнение доступно только для конструкторской документации.")
@@ -1272,6 +1287,7 @@ async def create_document_record(
         project_id=project.id,
         product_id=product.id,
         status=DocumentStatus.pending_review,
+        is_specification=is_specification,
     )
     session.add(base_doc)
     await session.flush()
@@ -1637,6 +1653,18 @@ async def document_detail_page(
     available_applicability_products = await get_available_applicability_products(session, doc)
     applicability_project_options = build_applicability_modal_options(available_applicability_products)
 
+    linked_specification = None
+    assembly_parent = None
+    spec_entries_grouped: dict = {}
+    spec_search_base = ""
+    if is_assembly_drawing(doc):
+        linked_specification = await find_specification_for_assembly(session, doc)
+        spec_search_base = strip_assembly_kind_suffix(designation)
+    if doc.is_specification and doc.assembly_document_id:
+        assembly_parent = await fetch_document(session, doc.assembly_document_id)
+    if doc.is_specification or doc.contains_embedded_specification:
+        spec_entries_grouped = await get_entries_grouped_by_section(session, doc_id)
+
     can_preview = bool(doc.file_path and preview_media_type(doc.file_path))
     preview_is_image = bool(
         doc.file_path and preview_media_type(doc.file_path or "").startswith("image/")
@@ -1662,6 +1690,10 @@ async def document_detail_page(
             "incoming_links": incoming_links,
             "available_applicability_products": available_applicability_products,
             "applicability_project_options": applicability_project_options,
+            "linked_specification": linked_specification,
+            "assembly_parent": assembly_parent,
+            "spec_entries_grouped": spec_entries_grouped,
+            "spec_search_base": spec_search_base,
             "open_modal": request.query_params.get("modal"),
             "service_version": SERVICE_VERSION,
             **ctx,
@@ -1824,6 +1856,28 @@ async def add_links_route(
     form = await request.form()
     target_ids = [int(value) for value in form.getlist("target_ids") if str(value).isdigit()]
 
+    if form.get("link_as_specification") == "true":
+        if not can_link_specification(user):
+            raise HTTPException(status_code=403, detail="Недостаточно прав для привязки спецификации.")
+        if not is_assembly_drawing(doc):
+            raise HTTPException(status_code=400, detail="Привязка спецификации доступна только для СБ.")
+        if len(target_ids) != 1:
+            raise HTTPException(status_code=400, detail="Выберите одну запись спецификации.")
+        spec_doc = await fetch_document(session, target_ids[0])
+        if not spec_doc or not spec_doc.is_specification:
+            raise HTTPException(status_code=400, detail="Выбранная запись не является спецификацией.")
+        try:
+            await link_specification_to_assembly(session, spec_doc, doc, user)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else "spec_link_error"
+            if wants_json_response(request):
+                return JSONResponse(status_code=exc.status_code, content={"detail": detail})
+            return RedirectResponse(url=url_path(f"/documents/{doc_id}?error={quote(detail)}"), status_code=303)
+        await session.commit()
+        if wants_json_response(request):
+            return JSONResponse({"success": True, "redirect_url": url_path(f"/documents/{doc_id}?success=spec_linked")})
+        return RedirectResponse(url=url_path(f"/documents/{doc_id}?success=spec_linked"), status_code=303)
+
     try:
         await add_document_links(session, doc, target_ids, user)
         from app.document_applicability import propagate_applicability_to_outgoing_links
@@ -1892,6 +1946,24 @@ async def delete_link_route(
         url=url_path(f"/documents/{doc_id}?success=link_removed"),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@app.get("/api/documents/{doc_id}/find-specification")
+async def find_specification_api(
+    doc_id: int,
+    session: AsyncSession = Depends(get_session),
+    access_token: Optional[str] = Cookie(None),
+):
+    await _require_user(access_token, session)
+    doc = await fetch_document(session, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден.")
+    if not is_assembly_drawing(doc):
+        return {"results": [], "search_base": ""}
+    designation = get_document_designation(doc)
+    base = strip_assembly_kind_suffix(designation)
+    results = await search_specification_candidates(session, base)
+    return {"results": results, "search_base": base}
 
 
 @app.get("/api/documents/search-designations")

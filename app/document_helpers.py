@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import HTTPException, UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOAD_DIR
-from app.models import DOC_KIND_CODES, MISC_DOCS_FOLDER
+from app.models import DOC_KIND_CODES, MISC_DOCS_FOLDER, SPECIFICATION_FOLDER
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -44,6 +44,7 @@ def _resolve_upload_subdirectory(
     *,
     product_slug: Optional[str] = None,
     doc_kind_code: Optional[str] = None,
+    is_specification: bool = False,
     misc_document: bool = False,
 ) -> str:
     base = os.path.join(UPLOAD_DIR, project_slug)
@@ -51,6 +52,8 @@ def _resolve_upload_subdirectory(
         base = os.path.join(base, product_slug)
     if misc_document:
         return os.path.join(base, MISC_DOCS_FOLDER)
+    if is_specification:
+        return os.path.join(base, SPECIFICATION_FOLDER)
     if doc_kind_code and doc_kind_code in DOC_KIND_CODES:
         return os.path.join(base, doc_kind_code)
     return base
@@ -216,6 +219,7 @@ def save_document_file_from_path(
     *,
     product_slug: Optional[str] = None,
     doc_kind_code: Optional[str] = None,
+    is_specification: bool = False,
     designation: Optional[str] = None,
     doc_name: Optional[str] = None,
 ) -> tuple[str, str]:
@@ -229,6 +233,7 @@ def save_document_file_from_path(
         project_slug,
         product_slug=product_slug,
         doc_kind_code=doc_kind_code,
+        is_specification=is_specification,
     )
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, disk_name)
