@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.26.1
+
+- **Locale — dates:** date fields again use the Russian calendar and `ДД.ММ.ГГГГ` (instead of the browser-native English `MM/DD/YYYY` picker).
+- **Locale — file upload:** the file chooser button label is «Выберите файл» regardless of browser language.
+- **Orders:** opening an order from the Приказы tab no longer fails with SQLAlchemy `unique()` / joined eager-load error.
+- **Headers:** ТУ, ИИ, and order view/edit pages use the same blue header styling as the rest of the archive.
+
 ## 0.26.0
 
 - **Electronic specification (GOST 2.055 / 2.106):** GOST-based detection of specification pages and `document_role` in OCR geometry (`standalone_specification`, `assembly_with_spec_pages`, `combined_a4`, `assembly_drawing`).

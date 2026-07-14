@@ -199,7 +199,7 @@ from app.password_reset import (
     reset_password_with_token,
 )
 from app.settings_store import get_app_timezone
-from app.timezone_utils import format_date, format_datetime, date_input_value
+from app.timezone_utils import format_date, format_datetime, date_input_value, parse_user_date, normalize_date_string
 from app.document_applicability import (
     add_document_applicability,
     build_applicability_modal_options,
@@ -1130,7 +1130,9 @@ async def create_document_record(
             reviewer_signed = form_data.get("ii_reviewer_signed") == "true"
             approver_signed = form_data.get("ii_approver_signed") == "true"
             try:
-                change_date = datetime.strptime(change_date_raw, "%Y-%m-%d")
+                change_date = parse_user_date(change_date_raw)
+                if change_date is None:
+                    raise ValueError("invalid date")
                 project_id = int(project_id_raw)
                 product_id = int(product_id_raw)
             except (ValueError, TypeError):
@@ -1190,7 +1192,9 @@ async def create_document_record(
         order_date_raw = (form_data.get("order_date") or "").strip()
         order_file = form_data.get("order_file")
         try:
-            order_date = datetime.strptime(order_date_raw, "%Y-%m-%d")
+            order_date = parse_user_date(order_date_raw)
+            if order_date is None:
+                raise ValueError("invalid date")
         except ValueError:
             raise HTTPException(status_code=400, detail="Укажите корректную дату приказа.")
         if not order_file or not getattr(order_file, "filename", None):
@@ -1216,9 +1220,9 @@ async def create_document_record(
     developed_by = normalize_person_name(form_data.get("developed_by") or "")
     reviewed_by = normalize_person_name(form_data.get("reviewed_by") or "") or None
     approved_by = normalize_person_name(form_data.get("approved_by") or "") or None
-    developer_signed_date = (form_data.get("developer_signed_date") or "").strip() or None
-    reviewer_signed_date = (form_data.get("reviewer_signed_date") or "").strip() or None
-    approver_signed_date = (form_data.get("approver_signed_date") or "").strip() or None
+    developer_signed_date = normalize_date_string(form_data.get("developer_signed_date"))
+    reviewer_signed_date = normalize_date_string(form_data.get("reviewer_signed_date"))
+    approver_signed_date = normalize_date_string(form_data.get("approver_signed_date"))
     is_okpo = form_data.get("is_okpo") == "true"
     org_name = form_data.get("org_name")
     doc_kind_code = (form_data.get("doc_kind_code") or "").strip()
@@ -2059,9 +2063,9 @@ async def edit_document(
     new_developed_by = normalize_person_name(developed_by)
     new_reviewed_by = normalize_person_name(reviewed_by) or None
     new_approved_by = normalize_person_name(approved_by) or None
-    new_developer_signed_date = developer_signed_date.strip() or None
-    new_reviewer_signed_date = reviewer_signed_date.strip() or None
-    new_approver_signed_date = approver_signed_date.strip() or None
+    new_developer_signed_date = normalize_date_string(developer_signed_date)
+    new_reviewer_signed_date = normalize_date_string(reviewer_signed_date)
+    new_approver_signed_date = normalize_date_string(approver_signed_date)
 
     changes = []
     old_doc_name = doc.doc_name
