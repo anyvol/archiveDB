@@ -5,6 +5,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 ## 0.25.1
 
+- **Alembic:** restored missing revision `s9t0u1v2w3x4` (specification schema) so API startup no longer fails with `Can't locate revision identified by 's9t0u1v2w3x4'` after a database was upgraded during the 0.26.0 preview branch.
 - **OCR commit — push resilience:** web push transport errors (DNS/network to FCM) no longer abort document creation from OCR commit or uploads; failures are logged and skipped.
 - **OCR review — multiple products:** on the verification screen you can assign additional products from the same project (applicability) alongside the primary product.
 - **OCR — multi-page SB / specification:** multi-page PDFs are scanned for specification sheets; recognized designations are suggested on the review screen with a link picker to attach referenced archive records at commit time.

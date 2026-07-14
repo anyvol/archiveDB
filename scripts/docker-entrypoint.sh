@@ -8,7 +8,15 @@ echo "Alembic current (before upgrade):"
 alembic current || true
 
 echo "Running Alembic upgrade..."
-alembic upgrade head
+if ! alembic upgrade head; then
+  echo "ERROR: alembic upgrade head failed."
+  echo "If the database points at a revision not present in this image"
+  echo "(e.g. after switching off an unmerged feature branch), restore that"
+  echo "migration file or stamp back to a known revision:"
+  echo "  docker compose exec api alembic stamp <known_revision>"
+  echo "Then restart the API. Known head files live in alembic/versions/."
+  exit 1
+fi
 
 echo "Alembic current (after upgrade):"
 alembic current || true
