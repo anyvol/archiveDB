@@ -3,8 +3,13 @@
 from app.admin.router import router
 
 
-def test_broadcast_email_route_before_user_id_route():
+def test_mailing_broadcast_route_registered():
     post_paths = [route.path for route in router.routes if hasattr(route, "methods") and "POST" in route.methods]
-    broadcast_idx = post_paths.index("/users/broadcast-email")
-    user_update_idx = post_paths.index("/users/{user_id}")
-    assert broadcast_idx < user_update_idx
+    assert "/mailing/broadcast-email" in post_paths
+    assert "/mailing/schedule" in post_paths
+    assert "/users/broadcast-email" not in post_paths
+
+
+def test_mailing_page_route_registered():
+    get_paths = [route.path for route in router.routes if hasattr(route, "methods") and "GET" in route.methods]
+    assert "/mailing" in get_paths

@@ -5,7 +5,6 @@
 {% if success == '1' %}<div class="alert alert-success">Изменения сохранены.</div>{% endif %}
 {% if success == 'deleted' %}<div class="alert alert-success">Пользователь удалён.</div>{% endif %}
 {% if success == 'email_sent' %}<div class="alert alert-success">Письмо отправлено пользователю {{ request.query_params.get('for_login') }}.</div>{% endif %}
-{% if success == 'broadcast' %}<div class="alert alert-success">Рассылка отправлена ({{ request.query_params.get('count') }} получателей).</div>{% endif %}
 {% if success == 'access_code' %}
 <div class="alert alert-success">
     Код доступа для <strong>{{ request.query_params.get('for_login') }}</strong>:
@@ -16,22 +15,6 @@
 {% if error == 'master_admin' %}<div class="alert alert-error">Роль главного администратора нельзя назначить или снять через UI.</div>{% endif %}
 {% if error and error not in ['master_admin', 'not_found'] %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if error == 'not_found' %}<div class="alert alert-error">Пользователь не найден.</div>{% endif %}
-
-<div class="card">
-    <h3 style="margin-top:0;">Рассылка всем пользователям</h3>
-    <form method="post" action="{{ url_path('/admin/users/broadcast-email') }}">
-        <div class="form-group">
-            <label for="broadcast_subject">Тема</label>
-            <input type="text" id="broadcast_subject" name="subject" required maxlength="200">
-        </div>
-        <div class="form-group">
-            <label for="broadcast_body">Текст письма</label>
-            <textarea id="broadcast_body" name="body" required rows="5" style="width:100%;box-sizing:border-box;"></textarea>
-            <small style="color:#6c757d;">Подпись добавится автоматически: Администратор сервиса «Архив документов»</small>
-        </div>
-        <button type="submit" class="btn" onclick="return confirm('Отправить письмо всем пользователям с подтверждённым email?')">Отправить всем</button>
-    </form>
-</div>
 
 <div class="card">
     <table id="users-table">
