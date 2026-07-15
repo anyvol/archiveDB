@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## 0.26.2
+
+- **Administration — mailing:** new «Рассылка» section; broadcast to all verified users moved here from «Пользователи».
+- **Administration — scheduled mailing:** cron-based emails to manually listed addresses with a custom signature, subject, and body (runs in the API process using the app timezone).
+
 ## 0.26.1
 
 - **Locale — dates:** date fields again use the Russian calendar and `ДД.ММ.ГГГГ` (instead of the browser-native English `MM/DD/YYYY` picker).

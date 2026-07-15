@@ -1,0 +1,71 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Рассылка{% endblock %}
+{% block content %}
+<h2>Рассылка</h2>
+{% if success == 'broadcast' %}<div class="alert alert-success">Рассылка отправлена ({{ request.query_params.get('count') }} получателей).</div>{% endif %}
+{% if success == 'schedule' %}<div class="alert alert-success">Расписание рассылки сохранено.</div>{% endif %}
+{% if error == 'cron' %}<div class="alert alert-error">Некорректное cron-выражение: укажите 5 полей (мин час день месяц день_недели).</div>{% endif %}
+{% if error == 'addresses' %}<div class="alert alert-error">Укажите хотя бы один корректный email-адрес.</div>{% endif %}
+{% if error == 'fields' %}<div class="alert alert-error">Для расписания укажите тему и текст письма.</div>{% endif %}
+{% if error and error not in ['cron', 'addresses', 'fields'] %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+<div class="card">
+    <h3 style="margin-top:0;">Рассылка всем пользователям</h3>
+    <p style="color:#6c757d;margin-top:0;">Письмо уйдёт всем пользователям с подтверждённым email.</p>
+    <form method="post" action="{{ url_path('/admin/mailing/broadcast-email') }}">
+        <div class="form-group">
+            <label for="broadcast_subject">Тема</label>
+            <input type="text" id="broadcast_subject" name="subject" required maxlength="200">
+        </div>
+        <div class="form-group">
+            <label for="broadcast_body">Текст письма</label>
+            <textarea id="broadcast_body" name="body" required rows="5" style="width:100%;box-sizing:border-box;"></textarea>
+            <small style="color:#6c757d;">Подпись добавится автоматически: Администратор сервиса «Архив документов»</small>
+        </div>
+        <button type="submit" class="btn" onclick="return confirm('Отправить письмо всем пользователям с подтверждённым email?')">Отправить всем</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Рассылка по расписанию (cron)</h3>
+    <p style="color:#6c757d;margin-top:0;">
+        Письма отправляются на указанные вручную адреса по cron-расписанию
+        (время — часовой пояс приложения: <strong>{{ timezone }}</strong>).
+    </p>
+    <form method="post" action="{{ url_path('/admin/mailing/schedule') }}">
+        <div class="form-group">
+            <label><input type="checkbox" name="enabled" value="true" {% if schedule.enabled %}checked{% endif %}> Включить рассылку по расписанию</label>
+        </div>
+        <div class="form-group">
+            <label for="mail-cron">Cron-выражение (мин час день месяц день_недели)</label>
+            <input type="text" id="mail-cron" name="cron" value="{{ schedule.cron }}" placeholder="0 9 * * 1" required>
+            <small style="color:#6c757d;">Например: <code>0 9 * * 1</code> — каждый понедельник в 09:00 (1 = пн … 6 = сб, 0 или 7 = вс)</small>
+        </div>
+        <div class="form-group">
+            <label for="mail-addresses">Адреса получателей</label>
+            <textarea id="mail-addresses" name="addresses" rows="4" style="width:100%;box-sizing:border-box;" placeholder="user1@example.com&#10;user2@example.com">{{ addresses_text }}</textarea>
+            <small style="color:#6c757d;">По одному адресу на строку (или через запятую / точку с запятой)</small>
+        </div>
+        <div class="form-group">
+            <label for="mail-signature">Подпись</label>
+            <textarea id="mail-signature" name="signature" rows="3" style="width:100%;box-sizing:border-box;" placeholder="С уважением,&#10;Администратор">{{ schedule.signature }}</textarea>
+            <small style="color:#6c757d;">Указывается вручную; будет добавлена в конец письма</small>
+        </div>
+        <div class="form-group">
+            <label for="mail-subject">Тема</label>
+            <input type="text" id="mail-subject" name="subject" value="{{ schedule.subject }}" maxlength="200" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div class="form-group">
+            <label for="mail-body">Текст письма</label>
+            <textarea id="mail-body" name="body" rows="6" style="width:100%;box-sizing:border-box;">{{ schedule.body }}</textarea>
+        </div>
+        <button type="submit" class="btn">Сохранить расписание</button>
+    </form>
+    {% if schedule.last_sent_at or schedule.last_error %}
+    <p style="margin-top:1rem;font-size:0.9rem;color:#495057;">
+        {% if schedule.last_sent_at %}Последняя отправка: {{ schedule.last_sent_at }} ({{ schedule.last_sent_count }} получателей).{% endif %}
+        {% if schedule.last_error %}<br><span style="color:#721c24;">Ошибка: {{ schedule.last_error }}</span>{% endif %}
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -25,6 +25,12 @@ from app.permissions import is_master_admin
 from app.admin.services.users import delete_user_account
 from app.admin.services.messaging import send_admin_email_to_user, send_admin_email_to_all
 from app.admin_access import issue_admin_access_code
+from app.mailing_schedule import (
+    MailingScheduleConfig,
+    get_mailing_schedule,
+    parse_address_text,
+    save_mailing_schedule,
+)
 from app.settings_store import (
     SETTING_APP_TIMEZONE,
     SETTING_SMTP,
@@ -199,7 +205,36 @@ async def admin_users(
     )
 
 
-@router.post("/users/broadcast-email")
+@router.get("/mailing", response_class=HTMLResponse)
+async def admin_mailing(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    schedule = await get_mailing_schedule(session)
+    ctx = await _admin_context(session, user, "mailing")
+    return templates.TemplateResponse(
+        "admin/mailing.html",
+        {
+            "request": request,
+            "schedule": schedule,
+            "addresses_text": "\n".join(schedule.addresses),
+            "timezone": await get_app_timezone(session),
+            "success": request.query_params.get("success"),
+            "error": request.query_params.get("error"),
+            **ctx,
+        },
+    )
+
+
+@router.post("/mailing/broadcast-email")
 async def admin_broadcast_email(
     subject: str = Form(...),
     body: str = Form(...),
@@ -217,8 +252,53 @@ async def admin_broadcast_email(
         sent = await send_admin_email_to_all(session, subject, body)
     except Exception as exc:
         logger.exception("Admin broadcast email failed")
-        return _see_other(url_path(f"/admin/users?error={quote(str(exc)[:120])}"))
-    return _see_other(url_path(f"/admin/users?success=broadcast&count={sent}"))
+        return _see_other(url_path(f"/admin/mailing?error={quote(str(exc)[:120])}"))
+    return _see_other(url_path(f"/admin/mailing?success=broadcast&count={sent}"))
+
+
+@router.post("/mailing/schedule")
+async def admin_save_mailing_schedule(
+    enabled: str = Form("false"),
+    cron: str = Form("0 9 * * 1"),
+    addresses: str = Form(""),
+    signature: str = Form(""),
+    subject: str = Form(""),
+    body: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    access_token: str | None = Cookie(None),
+):
+    if not access_token:
+        return RedirectResponse(url=url_path("/login"))
+    try:
+        user = await _require_master_admin_page(access_token, session)
+    except HTTPException:
+        return RedirectResponse(url=url_path("/documents"))
+
+    parsed_addresses = parse_address_text(addresses)
+    existing = await get_mailing_schedule(session)
+    try:
+        config = MailingScheduleConfig(
+            enabled=enabled == "true",
+            cron=cron.strip() or "0 9 * * 1",
+            addresses=parsed_addresses,
+            signature=signature,
+            subject=subject.strip(),
+            body=body,
+            last_sent_at=existing.last_sent_at,
+            last_sent_count=existing.last_sent_count,
+            last_error=existing.last_error,
+            last_run_minute=existing.last_run_minute,
+        )
+    except Exception:
+        return _see_other(url_path("/admin/mailing?error=cron"))
+
+    if config.enabled and not config.addresses:
+        return _see_other(url_path("/admin/mailing?error=addresses"))
+    if config.enabled and (not config.subject.strip() or not config.body.strip()):
+        return _see_other(url_path("/admin/mailing?error=fields"))
+
+    await save_mailing_schedule(session, config, updated_by_id=user.id)
+    return _see_other(url_path("/admin/mailing?success=schedule"))
 
 
 @router.post("/users/{user_id}")

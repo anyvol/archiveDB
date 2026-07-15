@@ -115,6 +115,7 @@ from app.permissions import (
 from app.role_permissions import load_role_permissions
 from app.backup_schedule import get_backup_schedule
 from app.admin.services.backups import apply_remote_backup_schedule
+from app.admin.services.mailing_runner import start_mailing_runner, stop_mailing_runner
 from app.change_log import (
     get_document_change_history,
     format_change_event_summary,
@@ -230,8 +231,12 @@ async def lifespan(app: FastAPI):
             await apply_remote_backup_schedule(schedule.model_dump())
         except Exception:
             logger.exception("Failed to sync backup schedule on startup")
-    yield
-    await engine.dispose()
+    start_mailing_runner()
+    try:
+        yield
+    finally:
+        await stop_mailing_runner()
+        await engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)

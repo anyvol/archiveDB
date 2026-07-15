@@ -11,21 +11,36 @@ from app.models import User
 ADMIN_MAIL_SIGNATURE = '\n\n--\nАдминистратор сервиса "Архив документов"'
 
 
-def format_admin_email_body(body: str) -> str:
+def format_admin_email_body(body: str, signature: str | None = None) -> str:
     text = body.strip()
+    if signature is None:
+        sig = ADMIN_MAIL_SIGNATURE
+    else:
+        sig = signature.strip()
+        if sig:
+            sig = f"\n\n--\n{sig}"
+        else:
+            sig = ""
     if not text:
-        return ADMIN_MAIL_SIGNATURE.strip()
-    return f"{text}{ADMIN_MAIL_SIGNATURE}"
+        return sig.lstrip("\n") or ""
+    return f"{text}{sig}"
 
 
-async def send_admin_email(session: AsyncSession, to_address: str, subject: str, body: str) -> None:
+async def send_admin_email(
+    session: AsyncSession,
+    to_address: str,
+    subject: str,
+    body: str,
+    *,
+    signature: str | None = None,
+) -> None:
     if not await smtp_configured(session):
         raise RuntimeError("Почтовый сервер не настроен.")
     await send_email(
         session,
         to_address=to_address,
         subject=subject.strip(),
-        body_text=format_admin_email_body(body),
+        body_text=format_admin_email_body(body, signature),
     )
 
 
@@ -43,5 +58,26 @@ async def send_admin_email_to_all(session: AsyncSession, subject: str, body: str
     sent = 0
     for user in users:
         await send_admin_email(session, user.email, subject, body)
+        sent += 1
+    return sent
+
+
+async def send_admin_email_to_addresses(
+    session: AsyncSession,
+    addresses: list[str],
+    subject: str,
+    body: str,
+    *,
+    signature: str = "",
+) -> int:
+    if not addresses:
+        raise ValueError("Не указаны адреса получателей.")
+    if not subject.strip():
+        raise ValueError("Не указана тема письма.")
+    if not body.strip():
+        raise ValueError("Не указан текст письма.")
+    sent = 0
+    for address in addresses:
+        await send_admin_email(session, address, subject, body, signature=signature)
         sent += 1
     return sent
