@@ -40,7 +40,11 @@
         <div class="form-group">
             <label for="mail-cron">Cron-выражение (мин час день месяц день_недели)</label>
             <input type="text" id="mail-cron" name="cron" value="{{ schedule.cron }}" placeholder="0 9 * * 1" required>
-            <small style="color:#6c757d;">Например: <code>0 9 * * 1</code> — каждый понедельник в 09:00 (1 = пн … 6 = сб, 0 или 7 = вс)</small>
+            <small style="color:#6c757d;">
+                Примеры: <code>0 9 * * 1</code> — пн в 09:00;
+                <code>30 17 * * 1-5</code> — пн–пт в 17:30
+                (1 = пн … 6 = сб, 0 или 7 = вс; допускаются списки и диапазоны: <code>1,3,5</code>, <code>1-5</code>)
+            </small>
         </div>
         <div class="form-group">
             <label for="mail-stop-date">Остановить после даты</label>

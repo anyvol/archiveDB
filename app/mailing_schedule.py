@@ -98,40 +98,83 @@ def is_before_or_on_stop_date(config: MailingScheduleConfig, moment: datetime | 
     return local_day <= stop
 
 
+def _expand_cron_field(field: str, min_v: int, max_v: int) -> set[int] | None:
+    """Expand a cron field to allowed integers. None means «any» (* only).
+
+    Supports: ``*``, ``N``, ``N-M``, ``*/S``, ``N-M/S``, and comma lists.
+    """
+    field = field.strip()
+    if field == "*":
+        return None
+
+    values: set[int] = set()
+    for part in field.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        step = 1
+        if "/" in part:
+            base, step_s = part.split("/", 1)
+            if not step_s.isdigit():
+                continue
+            step = int(step_s)
+            if step <= 0:
+                continue
+        else:
+            base = part
+
+        if base == "*":
+            start, end = min_v, max_v
+        elif "-" in base:
+            left, right = base.split("-", 1)
+            if not (left.isdigit() and right.isdigit()):
+                continue
+            start, end = int(left), int(right)
+            if start > end:
+                continue
+        elif base.isdigit():
+            start = end = int(base)
+        else:
+            continue
+
+        for value in range(start, end + 1, step):
+            if min_v <= value <= max_v:
+                values.add(value)
+    return values
+
+
 def cron_matches(cron: str, moment) -> bool:
     """Match standard 5-field cron against a local datetime (minute hour dom month dow).
 
     Day-of-week uses standard cron numbering: 0 or 7 = Sunday, 1 = Monday … 6 = Saturday.
+    Supports ranges/lists/steps, e.g. ``30 17 * * 1-5``.
     """
     parts = cron.strip().split()
     if len(parts) != 5:
         return False
     minute, hour, dom, month, dow = parts
 
-    def _match(field: str, value: int) -> bool:
-        if field == "*":
-            return True
-        if field.isdigit():
-            return int(field) == value
-        if field.startswith("*/"):
-            try:
-                step = int(field[2:])
-            except ValueError:
-                return False
-            if step <= 0:
-                return False
-            return value % step == 0
-        return False
+    def _match(field: str, value: int, min_v: int, max_v: int) -> bool:
+        allowed = _expand_cron_field(field, min_v, max_v)
+        return allowed is None or value in allowed
 
     # Python weekday: Mon=0 … Sun=6 → cron: Sun=0, Mon=1 … Sat=6
     cron_dow = (moment.weekday() + 1) % 7
-    dow_ok = dow == "*" or _match(dow, cron_dow) or (dow == "7" and cron_dow == 0)
+    dow_allowed = _expand_cron_field(dow, 0, 7)
+    if dow_allowed is None:
+        dow_ok = True
+    else:
+        if 7 in dow_allowed:
+            dow_allowed = set(dow_allowed)
+            dow_allowed.add(0)
+            dow_allowed.discard(7)
+        dow_ok = cron_dow in dow_allowed
 
     return (
-        _match(minute, moment.minute)
-        and _match(hour, moment.hour)
-        and _match(dom, moment.day)
-        and _match(month, moment.month)
+        _match(minute, moment.minute, 0, 59)
+        and _match(hour, moment.hour, 0, 23)
+        and _match(dom, moment.day, 1, 31)
+        and _match(month, moment.month, 1, 12)
         and dow_ok
     )
 
