@@ -1,0 +1,410 @@
+<style>
+    .ru-date-wrap { position: relative; display: inline-flex; align-items: stretch; width: 100%; max-width: 100%; box-sizing: border-box; }
+    .ru-date-wrap .ru-date-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: 100%;
+        padding: 0.45rem 2.1rem 0.45rem 0.5rem;
+        box-sizing: border-box;
+        font: inherit;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        background: #fff;
+        color: #212529;
+    }
+    .ru-date-wrap .ru-date-toggle {
+        position: absolute;
+        right: 0.2rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1.75rem;
+        height: 1.75rem;
+        border: none;
+        background: transparent;
+        color: #495057;
+        cursor: pointer;
+        padding: 0;
+        border-radius: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .ru-date-wrap .ru-date-toggle:hover { background: #e9ecef; color: #212529; }
+    .ru-date-popup {
+        position: absolute;
+        z-index: 4000;
+        top: calc(100% + 0.25rem);
+        left: 0;
+        min-width: 16.5rem;
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        padding: 0.65rem;
+        display: none;
+    }
+    .ru-date-popup.open { display: block; }
+    .ru-date-popup-header { display: flex; align-items: center; justify-content: space-between; gap: 0.35rem; margin-bottom: 0.5rem; }
+    .ru-date-popup-title { font-size: 0.9rem; font-weight: 600; color: #212529; text-align: center; flex: 1; }
+    .ru-date-nav {
+        border: 1px solid #dee2e6;
+        background: #f8f9fa;
+        border-radius: 4px;
+        width: 1.75rem;
+        height: 1.75rem;
+        cursor: pointer;
+        color: #212529;
+    }
+    .ru-date-nav:hover { background: #e9ecef; }
+    .ru-date-weekdays, .ru-date-days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.15rem;
+        text-align: center;
+    }
+    .ru-date-weekdays span { font-size: 0.72rem; color: #6c757d; padding: 0.2rem 0; }
+    .ru-date-day {
+        border: none;
+        background: transparent;
+        border-radius: 4px;
+        padding: 0.35rem 0;
+        font-size: 0.82rem;
+        cursor: pointer;
+        color: #212529;
+    }
+    .ru-date-day:hover { background: #e7f1ff; }
+    .ru-date-day.muted { color: #adb5bd; }
+    .ru-date-day.selected { background: #007bff; color: #fff; }
+    .ru-date-day.today { outline: 1px solid #007bff; }
+    .ru-date-footer { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
+    .ru-date-footer button {
+        border: 1px solid #dee2e6;
+        background: #f8f9fa;
+        border-radius: 4px;
+        padding: 0.25rem 0.55rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    .ru-date-footer button:hover { background: #e9ecef; }
+    .metadata-person-row .ru-date-wrap .ru-date-input.metadata-input {
+        cursor: help;
+        width: 100%;
+        min-width: 0;
+        color: #212529;
+        padding: 0.5rem 2rem 0.5rem 0.35rem;
+        height: 2.5rem;
+        font-size: 0.95rem;
+        box-sizing: border-box;
+    }
+    .ru-file-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.5rem;
+    }
+    .ru-file-btn {
+        display: inline-block;
+        padding: 0.4rem 0.85rem;
+        border-radius: 4px;
+        border: 1px solid #adb5bd;
+        background: #f8f9fa;
+        color: #212529;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.875rem;
+    }
+    .ru-file-btn:hover { background: #e9ecef; }
+    .ru-file-name {
+        color: #495057;
+        font-size: 0.875rem;
+        word-break: break-all;
+    }
+    .ru-file-wrap input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+<script>
+(function () {
+    const MONTHS = [
+        'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+    const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function toIso(d) {
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+
+    function toDisplay(d) {
+        return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+    }
+
+    function parseFlexible(value) {
+        if (!value) return null;
+        const text = String(value).trim();
+        let m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) {
+            const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+            return isNaN(d.getTime()) ? null : d;
+        }
+        m = text.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+        if (m) {
+            const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+            return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+    }
+
+    function enhanceDateInput(input) {
+        if (!input || input.dataset.ruDateReady === '1') return;
+        input.dataset.ruDateReady = '1';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'ru-date-wrap';
+        input.parentNode.insertBefore(wrap, input);
+
+        const display = document.createElement('input');
+        display.type = 'text';
+        display.className = (input.className || '') + ' ru-date-input';
+        display.placeholder = 'дд.мм.гггг';
+        display.autocomplete = 'off';
+        display.inputMode = 'numeric';
+        if (input.id) {
+            display.id = input.id;
+            input.removeAttribute('id');
+        }
+        if (input.title) display.title = input.title;
+        if (input.getAttribute('aria-label')) display.setAttribute('aria-label', input.getAttribute('aria-label'));
+        if (input.required) display.required = true;
+        display.name = '';
+
+        const hidden = input;
+        hidden.type = 'hidden';
+        hidden.removeAttribute('required');
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'ru-date-toggle';
+        toggle.title = 'Календарь';
+        toggle.setAttribute('aria-label', 'Открыть календарь');
+        toggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/></svg>';
+
+        const popup = document.createElement('div');
+        popup.className = 'ru-date-popup';
+        popup.innerHTML =
+            '<div class="ru-date-popup-header">' +
+            '<button type="button" class="ru-date-nav" data-dir="-1" aria-label="Предыдущий месяц">‹</button>' +
+            '<div class="ru-date-popup-title"></div>' +
+            '<button type="button" class="ru-date-nav" data-dir="1" aria-label="Следующий месяц">›</button>' +
+            '</div>' +
+            '<div class="ru-date-weekdays">' + WEEKDAYS.map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>' +
+            '<div class="ru-date-days"></div>' +
+            '<div class="ru-date-footer">' +
+            '<button type="button" data-action="today">Сегодня</button>' +
+            '<button type="button" data-action="clear">Очистить</button>' +
+            '</div>';
+
+        wrap.appendChild(display);
+        wrap.appendChild(toggle);
+        wrap.appendChild(popup);
+        wrap.appendChild(hidden);
+
+        let viewYear;
+        let viewMonth;
+        const initial = parseFlexible(hidden.value);
+        if (initial) {
+            display.value = toDisplay(initial);
+            hidden.value = toIso(initial);
+            viewYear = initial.getFullYear();
+            viewMonth = initial.getMonth();
+        } else {
+            const now = new Date();
+            viewYear = now.getFullYear();
+            viewMonth = now.getMonth();
+            if (hidden.value) {
+                display.value = hidden.value;
+            }
+        }
+
+        function syncFromDisplay() {
+            const parsed = parseFlexible(display.value);
+            if (parsed) {
+                display.value = toDisplay(parsed);
+                hidden.value = toIso(parsed);
+                viewYear = parsed.getFullYear();
+                viewMonth = parsed.getMonth();
+                hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+            if (!display.value.trim()) {
+                hidden.value = '';
+                hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+            return false;
+        }
+
+        function closePopup() {
+            popup.classList.remove('open');
+        }
+
+        function openPopup() {
+            document.querySelectorAll('.ru-date-popup.open').forEach(function (el) {
+                if (el !== popup) el.classList.remove('open');
+            });
+            const selected = parseFlexible(hidden.value || display.value);
+            if (selected) {
+                viewYear = selected.getFullYear();
+                viewMonth = selected.getMonth();
+            }
+            renderCalendar();
+            popup.classList.add('open');
+        }
+
+        function renderCalendar() {
+            popup.querySelector('.ru-date-popup-title').textContent = MONTHS[viewMonth] + ' ' + viewYear;
+            const daysEl = popup.querySelector('.ru-date-days');
+            daysEl.innerHTML = '';
+            const first = new Date(viewYear, viewMonth, 1);
+            const startOffset = (first.getDay() + 6) % 7; // Monday-first
+            const start = new Date(viewYear, viewMonth, 1 - startOffset);
+            const selectedIso = hidden.value;
+            const todayIso = toIso(new Date());
+            for (let i = 0; i < 42; i++) {
+                const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'ru-date-day';
+                btn.textContent = String(day.getDate());
+                const iso = toIso(day);
+                if (day.getMonth() !== viewMonth) btn.classList.add('muted');
+                if (iso === selectedIso) btn.classList.add('selected');
+                if (iso === todayIso) btn.classList.add('today');
+                btn.addEventListener('click', function () {
+                    display.value = toDisplay(day);
+                    hidden.value = iso;
+                    closePopup();
+                    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+                daysEl.appendChild(btn);
+            }
+        }
+
+        popup.querySelectorAll('.ru-date-nav').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const dir = Number(btn.getAttribute('data-dir'));
+                viewMonth += dir;
+                if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
+                if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }
+                renderCalendar();
+            });
+        });
+
+        popup.querySelector('[data-action="today"]').addEventListener('click', function () {
+            const now = new Date();
+            display.value = toDisplay(now);
+            hidden.value = toIso(now);
+            closePopup();
+            hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        popup.querySelector('[data-action="clear"]').addEventListener('click', function () {
+            display.value = '';
+            hidden.value = '';
+            closePopup();
+            hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        toggle.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (popup.classList.contains('open')) closePopup();
+            else openPopup();
+        });
+
+        display.addEventListener('change', syncFromDisplay);
+        display.addEventListener('blur', syncFromDisplay);
+        display.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                syncFromDisplay();
+                closePopup();
+            }
+        });
+
+        const form = hidden.form || display.closest('form');
+        if (form && !form.dataset.ruDateSubmitBound) {
+            form.dataset.ruDateSubmitBound = '1';
+            form.addEventListener('submit', function () {
+                form.querySelectorAll('.ru-date-wrap').forEach(function (w) {
+                    const shown = w.querySelector('.ru-date-input');
+                    const store = w.querySelector('input[type="hidden"]');
+                    if (!shown || !store) return;
+                    const parsed = parseFlexible(shown.value);
+                    store.value = parsed ? toIso(parsed) : (shown.value.trim() ? store.value : '');
+                });
+            });
+        }
+    }
+
+    function enhanceFileInput(input) {
+        if (!input || input.dataset.ruFileReady === '1') return;
+        if (input.closest('.drop-zone') || input.closest('.ru-file-wrap')) return;
+        const style = window.getComputedStyle(input);
+        if (style.display === 'none' || style.visibility === 'hidden') return;
+        input.dataset.ruFileReady = '1';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'ru-file-wrap';
+        input.parentNode.insertBefore(wrap, input);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ru-file-btn';
+        button.textContent = input.multiple ? 'Выберите файлы' : 'Выберите файл';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'ru-file-name';
+        nameEl.textContent = 'Файл не выбран';
+
+        wrap.appendChild(button);
+        wrap.appendChild(nameEl);
+        wrap.appendChild(input);
+
+        function updateName() {
+            if (!input.files || !input.files.length) {
+                nameEl.textContent = 'Файл не выбран';
+                return;
+            }
+            if (input.files.length === 1) {
+                nameEl.textContent = input.files[0].name;
+                return;
+            }
+            nameEl.textContent = 'Выбрано файлов: ' + input.files.length;
+        }
+
+        button.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', updateName);
+        updateName();
+    }
+
+    function enhanceAll(root) {
+        (root || document).querySelectorAll('input[type="date"]').forEach(enhanceDateInput);
+        (root || document).querySelectorAll('input[type="file"]').forEach(enhanceFileInput);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        enhanceAll(document);
+    });
+
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('.ru-date-popup.open').forEach(function (popup) {
+            if (!popup.parentNode.contains(e.target)) {
+                popup.classList.remove('open');
+            }
+        });
+    });
+
+    window.ArchiveRuUI = { enhanceAll: enhanceAll, parseFlexible: parseFlexible, toIso: toIso, toDisplay: toDisplay };
+})();
+</script>

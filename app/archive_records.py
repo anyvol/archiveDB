@@ -434,7 +434,7 @@ async def get_archive_order(session: AsyncSession, record_id: int) -> ArchiveOrd
         )
         .where(ArchiveOrder.id == record_id)
     )
-    return result.scalar_one_or_none()
+    return result.scalars().unique().one_or_none()
 
 
 async def get_archive_technical_spec(session: AsyncSession, record_id: int) -> ArchiveTechnicalSpec | None:

@@ -6,7 +6,7 @@ from app.document_display import (
     get_document_display_status,
     format_field_change,
 )
-from app.timezone_utils import format_date, format_datetime, date_input_value
+from app.timezone_utils import format_date, format_datetime, date_input_value, parse_user_date, normalize_date_string
 
 
 def _doc(**kwargs) -> BaseDocument:
@@ -61,6 +61,19 @@ def test_date_input_value():
     assert date_input_value("07.07.2026") == "2026-07-07"
     assert date_input_value(None) == ""
     assert date_input_value("") == ""
+
+
+def test_parse_user_date_accepts_russian_and_iso():
+    assert parse_user_date("14.07.2026").date().isoformat() == "2026-07-14"
+    assert parse_user_date("2026-07-14").date().isoformat() == "2026-07-14"
+    assert parse_user_date("") is None
+    assert parse_user_date(None) is None
+
+
+def test_normalize_date_string():
+    assert normalize_date_string("14.07.2026") == "2026-07-14"
+    assert normalize_date_string("2026-07-14") == "2026-07-14"
+    assert normalize_date_string("  ") is None
 
 
 def test_format_document_products_cell_includes_own_and_applicability_products():
