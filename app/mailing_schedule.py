@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.settings_store import get_setting, set_setting
+from app.timezone_utils import normalize_date_string
 
 SETTING_MAILING_SCHEDULE = "mailing_schedule"
 
@@ -26,6 +28,7 @@ class MailingScheduleConfig(BaseModel):
     signature: str = ""
     subject: str = ""
     body: str = ""
+    stop_date: str | None = None
     last_sent_at: str | None = None
     last_sent_count: int = 0
     last_error: str | None = None
@@ -38,6 +41,19 @@ class MailingScheduleConfig(BaseModel):
         if len(parts) != 5:
             raise ValueError("cron must have 5 fields")
         return value.strip()
+
+    @field_validator("stop_date", mode="before")
+    @classmethod
+    def validate_stop_date(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        normalized = normalize_date_string(text)
+        if not normalized:
+            raise ValueError("invalid stop_date")
+        return normalized
 
     @field_validator("addresses")
     @classmethod
@@ -62,6 +78,24 @@ def parse_address_text(raw: str) -> list[str]:
     """Split addresses entered as newlines, commas, or semicolons."""
     parts = re.split(r"[\n,;]+", raw or "")
     return [p.strip() for p in parts if p.strip()]
+
+
+def parse_stop_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def is_before_or_on_stop_date(config: MailingScheduleConfig, moment: datetime | date) -> bool:
+    """Return True if mailing is still allowed for this local day (stop_date inclusive)."""
+    stop = parse_stop_date(config.stop_date)
+    if stop is None:
+        return True
+    local_day = moment.date() if isinstance(moment, datetime) else moment
+    return local_day <= stop
 
 
 def cron_matches(cron: str, moment) -> bool:

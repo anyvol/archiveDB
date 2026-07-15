@@ -7,7 +7,8 @@
 {% if error == 'cron' %}<div class="alert alert-error">Некорректное cron-выражение: укажите 5 полей (мин час день месяц день_недели).</div>{% endif %}
 {% if error == 'addresses' %}<div class="alert alert-error">Укажите хотя бы один корректный email-адрес.</div>{% endif %}
 {% if error == 'fields' %}<div class="alert alert-error">Для расписания укажите тему и текст письма.</div>{% endif %}
-{% if error and error not in ['cron', 'addresses', 'fields'] %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if error == 'stop_date' %}<div class="alert alert-error">Некорректная дата остановки рассылки.</div>{% endif %}
+{% if error and error not in ['cron', 'addresses', 'fields', 'stop_date'] %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
 <div class="card">
     <h3 style="margin-top:0;">Рассылка всем пользователям</h3>
@@ -42,6 +43,11 @@
             <small style="color:#6c757d;">Например: <code>0 9 * * 1</code> — каждый понедельник в 09:00 (1 = пн … 6 = сб, 0 или 7 = вс)</small>
         </div>
         <div class="form-group">
+            <label for="mail-stop-date">Остановить после даты</label>
+            <input type="date" id="mail-stop-date" name="stop_date" value="{{ schedule.stop_date or '' }}">
+            <small style="color:#6c757d;">Необязательно. В указанный день рассылка ещё выполняется; на следующий день она автоматически выключается. Оставьте пустым, чтобы не ограничивать.</small>
+        </div>
+        <div class="form-group">
             <label for="mail-addresses">Адреса получателей</label>
             <textarea id="mail-addresses" name="addresses" rows="4" style="width:100%;box-sizing:border-box;" placeholder="user1@example.com&#10;user2@example.com">{{ addresses_text }}</textarea>
             <small style="color:#6c757d;">По одному адресу на строку (или через запятую / точку с запятой)</small>
@@ -61,9 +67,10 @@
         </div>
         <button type="submit" class="btn">Сохранить расписание</button>
     </form>
-    {% if schedule.last_sent_at or schedule.last_error %}
+    {% if schedule.last_sent_at or schedule.last_error or schedule.stop_date %}
     <p style="margin-top:1rem;font-size:0.9rem;color:#495057;">
-        {% if schedule.last_sent_at %}Последняя отправка: {{ schedule.last_sent_at }} ({{ schedule.last_sent_count }} получателей).{% endif %}
+        {% if schedule.stop_date %}Остановка после: {{ schedule.stop_date }}.{% endif %}
+        {% if schedule.last_sent_at %}{% if schedule.stop_date %}<br>{% endif %}Последняя отправка: {{ schedule.last_sent_at }} ({{ schedule.last_sent_count }} получателей).{% endif %}
         {% if schedule.last_error %}<br><span style="color:#721c24;">Ошибка: {{ schedule.last_error }}</span>{% endif %}
     </p>
     {% endif %}

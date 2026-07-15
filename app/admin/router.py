@@ -264,6 +264,7 @@ async def admin_save_mailing_schedule(
     signature: str = Form(""),
     subject: str = Form(""),
     body: str = Form(""),
+    stop_date: str = Form(""),
     session: AsyncSession = Depends(get_session),
     access_token: str | None = Cookie(None),
 ):
@@ -284,12 +285,16 @@ async def admin_save_mailing_schedule(
             signature=signature,
             subject=subject.strip(),
             body=body,
+            stop_date=stop_date.strip() or None,
             last_sent_at=existing.last_sent_at,
             last_sent_count=existing.last_sent_count,
             last_error=existing.last_error,
             last_run_minute=existing.last_run_minute,
         )
-    except Exception:
+    except Exception as exc:
+        detail = str(exc).lower()
+        if "stop_date" in detail:
+            return _see_other(url_path("/admin/mailing?error=stop_date"))
         return _see_other(url_path("/admin/mailing?error=cron"))
 
     if config.enabled and not config.addresses:

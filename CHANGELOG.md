@@ -7,6 +7,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 
 - **Administration — mailing:** new «Рассылка» section; broadcast to all verified users moved here from «Пользователи».
 - **Administration — scheduled mailing:** cron-based emails to manually listed addresses with a custom signature, subject, and body (runs in the API process using the app timezone).
+- **Administration — scheduled mailing stop date:** optional end date; after that day the schedule turns off automatically.
 
 ## 0.26.1
 

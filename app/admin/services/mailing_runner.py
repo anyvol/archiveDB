@@ -10,6 +10,7 @@ from app.database import async_session
 from app.mailing_schedule import (
     cron_matches,
     get_mailing_schedule,
+    is_before_or_on_stop_date,
     save_mailing_schedule,
 )
 from app.admin.services.messaging import send_admin_email_to_addresses
@@ -40,6 +41,16 @@ async def run_due_mailing(now: datetime | None = None) -> bool:
             moment = moment.replace(tzinfo=tz)
         else:
             moment = moment.astimezone(tz)
+
+        if not is_before_or_on_stop_date(schedule, moment):
+            schedule.enabled = False
+            schedule.last_error = None
+            await save_mailing_schedule(session, schedule)
+            logger.info(
+                "Scheduled mailing stopped: past stop_date=%s",
+                schedule.stop_date,
+            )
+            return False
 
         if not cron_matches(schedule.cron, moment):
             return False
