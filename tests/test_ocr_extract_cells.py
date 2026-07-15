@@ -5,14 +5,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-OCR_DIR = Path(__file__).resolve().parents[1] / "ocr"
-sys.path.insert(0, str(OCR_DIR))
+from sidecar_import import load_sidecar
 
-from main import app  # noqa: E402
+OCR_DIR = Path(__file__).resolve().parents[1] / "ocr"
+if str(OCR_DIR) not in sys.path:
+    sys.path.insert(0, str(OCR_DIR))
+
+ocr_main = load_sidecar("ocr_service_main", "ocr/main.py")
+app = ocr_main.app
+
 from pipeline.extract_cells import default_template_cells, run_extract_cells  # noqa: E402
 
 client = TestClient(app)
@@ -49,8 +53,6 @@ def test_run_extract_cells_manual_text(tmp_path):
 
 
 def test_extract_cells_http(tmp_path, monkeypatch):
-    import main as ocr_main
-
     monkeypatch.setattr(ocr_main, "UPLOADS_DIR", str(tmp_path))
     img = Image.new("RGB", (400, 200), color=(255, 255, 255))
     path = tmp_path / "stamp.png"
