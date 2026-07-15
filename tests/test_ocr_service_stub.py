@@ -9,12 +9,17 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from sidecar_import import load_sidecar
+
 OCR_DIR = Path(__file__).resolve().parents[1] / "ocr"
-sys.path.insert(0, str(OCR_DIR))
+if str(OCR_DIR) not in sys.path:
+    sys.path.insert(0, str(OCR_DIR))
 
-from main import PIPELINE_VERSION, app  # noqa: E402
+ocr_main = load_sidecar("ocr_service_main", "ocr/main.py")
+PIPELINE_VERSION = ocr_main.PIPELINE_VERSION
+app = ocr_main.app
+
 from pipeline.stamp import CELL_TEMPLATE_FORM1, crop_norm, extract_stamp  # noqa: E402
-
 
 client = TestClient(app)
 
@@ -41,8 +46,6 @@ def test_stamp_roi_and_cells():
 
 
 def test_extract_image_creates_fields(tmp_path, monkeypatch):
-    import main as ocr_main
-
     monkeypatch.setattr(ocr_main, "UPLOADS_DIR", str(tmp_path))
     img = Image.new("RGB", (2480, 3508), color=(255, 255, 255))
     path = tmp_path / "sheet.png"

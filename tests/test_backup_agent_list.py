@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import json
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-BACKUP_DIR = Path(__file__).resolve().parents[1] / "backup"
-if str(BACKUP_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKUP_DIR))
+from sidecar_import import load_sidecar
 
-import main as backup_main  # noqa: E402
+backup_main = load_sidecar("backup_agent_main", "backup/main.py")
 
 
 @pytest.fixture()

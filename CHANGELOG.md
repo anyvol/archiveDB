@@ -9,6 +9,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.
 - **Locale — file upload:** the file chooser button label is «Выберите файл» regardless of browser language.
 - **Orders:** opening an order from the Приказы tab no longer fails with SQLAlchemy `unique()` / joined eager-load error.
 - **Headers:** ТУ, ИИ, and order view/edit pages use the same blue header styling as the rest of the archive.
+- **CI:** backup and OCR sidecar tests no longer collide on the bare module name `main` (unique `importlib` loads).
 
 ## 0.26.0
 
