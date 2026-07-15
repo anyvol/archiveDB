@@ -76,6 +76,30 @@ def test_cron_matches_monday_morning():
     assert not cron_matches("0 9 * * 2", moment)
 
 
+def test_cron_matches_weekday_range_evening():
+    # Mon–Fri 17:30 — 2026-07-13 Monday, 2026-07-18 Saturday
+    monday = datetime(2026, 7, 13, 17, 30)
+    friday = datetime(2026, 7, 17, 17, 30)
+    saturday = datetime(2026, 7, 18, 17, 30)
+    monday_wrong_minute = datetime(2026, 7, 13, 17, 0)
+    assert cron_matches("30 17 * * 1-5", monday)
+    assert cron_matches("30 17 * * 1-5", friday)
+    assert not cron_matches("30 17 * * 1-5", saturday)
+    assert not cron_matches("30 17 * * 1-5", monday_wrong_minute)
+
+
+def test_cron_matches_list_and_step():
+    tuesday = datetime(2026, 7, 14, 9, 0)  # Tue
+    thursday = datetime(2026, 7, 16, 9, 0)  # Thu
+    wednesday = datetime(2026, 7, 15, 9, 0)  # Wed
+    assert cron_matches("0 9 * * 2,4", tuesday)
+    assert cron_matches("0 9 * * 2,4", thursday)
+    assert not cron_matches("0 9 * * 2,4", wednesday)
+    assert cron_matches("*/15 9 * * *", datetime(2026, 7, 13, 9, 0))
+    assert cron_matches("*/15 9 * * *", datetime(2026, 7, 13, 9, 30))
+    assert not cron_matches("*/15 9 * * *", datetime(2026, 7, 13, 9, 10))
+
+
 def test_format_admin_email_body_default_signature():
     text = format_admin_email_body("Hello")
     assert text.startswith("Hello")
